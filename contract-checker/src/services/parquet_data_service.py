@@ -218,6 +218,7 @@ class ParquetDataService:
                 "werkbon": row["werkbon"],
                 "werkbon_code": werkbon_code,
                 "aanmaakdatum": self._format_date(row.get("aanmaakdatum")),
+                "melddatum": self._format_date(row.get("melddatum")),
                 "status": str(row["status"]).strip() if row["status"] else "",
                 "documentstatus": str(row["documentstatus"]).strip() if row["documentstatus"] else "",
                 "admin_fase": row.get("administratieve_fase") or "",

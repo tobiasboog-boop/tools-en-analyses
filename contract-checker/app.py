@@ -346,7 +346,7 @@ with tab_classify:
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Datumbereik")
+        st.subheader("Melddatum")
 
         # Get date range from data
         df_wb = data_service.df_werkbonnen
@@ -451,10 +451,10 @@ with tab_classify:
                 limit=BATCH_SIZE * 5  # Load more to filter by date
             )
 
-            # Filter by date
+            # Filter by melddatum (consistent met count)
             filtered = []
             for wb in werkbonnen_list:
-                wb_date = wb.get("aanmaakdatum", "")
+                wb_date = wb.get("melddatum", "")
                 if wb_date:
                     try:
                         wb_date_obj = date.fromisoformat(str(wb_date)[:10])
@@ -480,7 +480,7 @@ with tab_classify:
         for i, wb in enumerate(werkbonnen):
             st.markdown(f"""
             **{i+1}. {wb.get('debiteur', 'Onbekend')[:40]}**
-            - Werkbon: {wb.get('werkbon_code', 'N/A')} | Datum: {wb.get('aanmaakdatum', 'N/A')}
+            - Werkbon: {wb.get('werkbon_code', 'N/A')} | Melddatum: {wb.get('melddatum', 'N/A')}
             - Paragrafen: {wb.get('paragraaf_count', 0)}
             """)
 
@@ -631,7 +631,7 @@ Classificeer deze werkbon. Geef je antwoord in JSON formaat."""
                     "werkbon_key": wb["hoofdwerkbon_key"],
                     "werkbon_code": wb.get("werkbon_code", ""),
                     "debiteur": debiteur,
-                    "datum": wb.get("aanmaakdatum", ""),
+                    "datum": wb.get("melddatum", ""),
                     "classificatie": "TWIJFEL",
                     "basis_classificatie": "GEEN_CONTRACT",
                     "confidence": 0.0,
