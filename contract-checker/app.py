@@ -103,7 +103,7 @@ def save_to_history(results: list):
             "contract_filename": r.get("contract_filename", ""),
             "classificatie": r.get("classificatie", ""),
             "basis_classificatie": r.get("basis_classificatie", ""),
-            "confidence": r.get("confidence", 0),
+            "confidence": r.get("confidence", 0) * 100,  # Store as percentage
             "toelichting": r.get("toelichting", ""),
             "contract_referentie": r.get("contract_referentie", ""),
             "totaal_kosten": r.get("totaal_kosten", 0),
@@ -285,7 +285,7 @@ with tab_history:
         st.dataframe(
             df_display[[
                 "timestamp", "werkbon_code", "debiteur", "datum",
-                "classificatie", "confidence", "toelichting", "contract_filename"
+                "classificatie", "confidence", "toelichting"
             ]].sort_values("timestamp", ascending=False),
             use_container_width=True,
             hide_index=True,
@@ -296,8 +296,7 @@ with tab_history:
                 "datum": "Werkbon Datum",
                 "classificatie": "Classificatie",
                 "confidence": st.column_config.NumberColumn("Confidence", format="%.0f%%"),
-                "toelichting": "Toelichting",
-                "contract_filename": "Contract"
+                "toelichting": "Toelichting"
             }
         )
 
