@@ -19,4 +19,5 @@ venv/
 
 # Large source files (keep Parquet only)
 data/*.json
+!data/metadata.json
 data/*.zip

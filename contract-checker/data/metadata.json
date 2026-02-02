@@ -1,0 +1,17 @@
+{
+  "export_timestamp": "2026-02-02T15:48:00",
+  "aantal_hoofdwerkbonnen": 500,
+  "aantal_werkbonnen": 676,
+  "aantal_paragrafen": 676,
+  "aantal_kosten": 1862,
+  "aantal_opbrengsten": 306,
+  "aantal_oplossingen": 0,
+  "aantal_opvolgingen": 0,
+  "debiteur_codes": ["005102", "007453", "177460"],
+  "status_filter": "Uitgevoerd + Historisch",
+  "debiteuren": {
+    "005102": "Trivire",
+    "007453": "Stichting Bazalt Wonen",
+    "177460": "Stichting Thuisvester"
+  }
+}
