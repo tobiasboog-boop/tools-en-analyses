@@ -3,6 +3,8 @@
 Contract Checker - DEMO VERSIE
 Publieke versie met Parquet data (geen database connectie).
 Conform DWH versie qua layout en functionaliteit.
+
+Version: 2026-02-02-v2 (melddatum filtering)
 """
 import json
 import streamlit as st
@@ -459,13 +461,19 @@ with tab_classify:
     # Load batch
     if st.session_state.werkbonnen_batch is None:
         with st.spinner("Werkbonnen laden..."):
-            # Get filtered werkbonnen - filter op melddatum in service
-            werkbonnen_list = data_service.get_hoofdwerkbon_list(
-                debiteur_codes=[d.split(" - ")[0].strip() for d in selected_debiteuren] if selected_debiteuren else None,
-                melddatum_start=str(filter_start),
-                melddatum_end=str(filter_end),
-                limit=BATCH_SIZE
-            )
+            try:
+                # Get filtered werkbonnen - filter op melddatum in service
+                debiteur_codes = [d.split(" - ")[0].strip() for d in selected_debiteuren] if selected_debiteuren else None
+                werkbonnen_list = data_service.get_hoofdwerkbon_list(
+                    debiteur_codes=debiteur_codes,
+                    melddatum_start=str(filter_start),
+                    melddatum_end=str(filter_end),
+                    limit=BATCH_SIZE
+                )
+            except TypeError as e:
+                # Fallback for old function signature (without date params)
+                st.warning(f"Herlaad de pagina voor de nieuwste versie: {e}")
+                werkbonnen_list = []
 
             st.session_state.werkbonnen_batch = werkbonnen_list
 
