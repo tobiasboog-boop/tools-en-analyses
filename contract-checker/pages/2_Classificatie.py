@@ -95,6 +95,11 @@ with st.sidebar:
 
     st.divider()
 
+    # Batch info
+    st.caption(f"Batch grootte: {len(st.session_state.werkbonnen_for_beoordeling)} geselecteerd")
+
+    st.divider()
+
     # Links
     st.markdown("### Links")
     st.markdown("[📖 Handleiding](https://notifica.nl/tools/contract-checker)")
@@ -102,8 +107,21 @@ with st.sidebar:
 
 
 # === MAIN CONTENT ===
-st.title("Werkbon Classificatie")
+
+# Demo disclaimer banner (zoals in pilot versie)
+st.markdown("""
+<div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 15px 20px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 20px;">
+    <strong style="color: #1e40af;">📊 DEMO VERSIE - Historische Data</strong>
+    <p style="color: #1e3a8a; margin: 8px 0 0 0; font-size: 0.9rem;">
+        Deze tool werkt met een historische dataset voor demonstratie- en validatiedoeleinden.
+        Aan de resultaten kunnen geen rechten worden ontleend. Handmatige controle blijft vereist.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+st.title("🤖 Werkbon Classificatie")
 st.caption("AI-gedreven beoordeling: binnen of buiten contract?")
+st.markdown("[📖 Handleiding & uitleg](https://notifica.nl/tools/contract-checker)")
 
 if not st.session_state.werkbonnen_for_beoordeling:
     st.info("Geen werkbonnen geselecteerd. Ga naar **Werkbon Selectie** om werkbonnen te kiezen.")
