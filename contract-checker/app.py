@@ -468,14 +468,18 @@ with tab_classify:
                 limit=500  # Get more to filter by date
             )
 
-            # Filter by melddatum in app
+            # Filter by melddatum in app (fallback to aanmaakdatum if melddatum not available)
             werkbonnen_list = []
             for wb in all_werkbonnen:
-                wb_date = wb.get("melddatum", "")
+                # Try melddatum first, then aanmaakdatum as fallback
+                wb_date = wb.get("melddatum") or wb.get("aanmaakdatum") or ""
                 if wb_date:
                     try:
                         wb_date_obj = date.fromisoformat(str(wb_date)[:10])
                         if filter_start <= wb_date_obj <= filter_end:
+                            # Ensure melddatum is set for display
+                            if not wb.get("melddatum"):
+                                wb["melddatum"] = wb.get("aanmaakdatum", "")
                             werkbonnen_list.append(wb)
                             if len(werkbonnen_list) >= BATCH_SIZE:
                                 break
