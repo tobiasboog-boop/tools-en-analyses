@@ -21,8 +21,8 @@ def check_password() -> bool:
 
     Call this at the start of each protected page.
     """
-    # Wachtwoord uit secrets of environment
-    correct_password = get_secret("APP_PASSWORD", "ContractCheck2024")
+    # Wachtwoord uit secrets of environment (zelfde als DWH versie)
+    correct_password = get_secret("APP_PASSWORD", "Xk9#mP2$vL7nQ4wR")
 
     def password_entered():
         """Checks if entered password is correct."""
