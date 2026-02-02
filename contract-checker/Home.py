@@ -20,6 +20,25 @@ st.set_page_config(
     layout="wide"
 )
 
+# CSS: Logo boven navigatie menu plaatsen
+st.markdown("""
+<style>
+    /* Verplaats logo naar boven de navigatie */
+    [data-testid="stSidebarNav"] {
+        padding-top: 0rem;
+    }
+    section[data-testid="stSidebar"] > div:first-child {
+        padding-top: 1rem;
+    }
+    /* Logo container styling */
+    .sidebar-logo {
+        display: flex;
+        justify-content: center;
+        padding: 1rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Wachtwoord check
 require_auth()
 
@@ -33,14 +52,13 @@ def get_logo_path():
     return None
 
 
+# === LOGO BOVEN NAVIGATIE ===
+logo_path = get_logo_path()
+if logo_path:
+    st.logo(logo_path, size="large")
+
 # === SIDEBAR ===
 with st.sidebar:
-    # Logo
-    logo_path = get_logo_path()
-    if logo_path:
-        st.image(logo_path, width=140)
-        st.divider()
-
     # Navigation links
     st.markdown("### Navigatie")
     st.page_link("Home.py", label="🏠 Home", icon=None)
@@ -262,6 +280,32 @@ with st.expander("ℹ️ Over deze demo"):
     **Validatie mogelijkheid:**
     Omdat dit historische werkbonnen zijn, kunnen we de AI classificatie vergelijken
     met de werkelijke facturatiestatus om de nauwkeurigheid (hit rate) te meten.
+    """)
+
+with st.expander("🔒 Eigendom & Licenties"):
+    st.markdown("""
+    ### Data eigendom
+
+    Uw werkbondata blijft te allen tijde **eigendom van uw organisatie**.
+    Notifica verwerkt de data uitsluitend voor de classificatie-analyse binnen deze tool.
+    Data wordt niet opgeslagen na afloop van uw sessie en wordt niet gebruikt voor
+    andere doeleinden.
+
+    ### Gebruiksrechten (Pilot)
+
+    Deze tool is ontwikkeld in samenwerking met en mede gefinancierd door de pilotpartner.
+    Als pilotpartner heeft u **volledig gebruiksrecht** op deze classificatie-tool voor
+    de duur van de samenwerking.
+
+    De **intellectuele eigendomsrechten** op de onderliggende methodiek, prompts en
+    software-architectuur blijven bij Notifica. Dit stelt ons in staat de tool door te
+    ontwikkelen en te verbeteren ten behoeve van alle gebruikers.
+
+    ### AI-verwerking
+
+    Deze tool maakt gebruik van Claude AI (Anthropic) voor de classificatie-analyse.
+    Tijdens de pilotfase worden de API-kosten gedragen door Notifica. Na afloop van
+    de pilot worden hierover separate afspraken gemaakt.
     """)
 
 # Footer

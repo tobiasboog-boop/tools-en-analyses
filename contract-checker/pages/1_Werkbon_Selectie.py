@@ -49,14 +49,13 @@ def get_logo_path():
     return None
 
 
+# === LOGO BOVEN NAVIGATIE ===
+logo_path = get_logo_path()
+if logo_path:
+    st.logo(logo_path, size="large")
+
 # === SIDEBAR ===
 with st.sidebar:
-    # Logo
-    logo_path = get_logo_path()
-    if logo_path:
-        st.image(logo_path, width=140)
-        st.divider()
-
     st.header("Filters")
 
     # Debiteur filter
