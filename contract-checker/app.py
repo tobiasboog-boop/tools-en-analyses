@@ -445,27 +445,15 @@ with tab_classify:
     # Load batch
     if st.session_state.werkbonnen_batch is None:
         with st.spinner("Werkbonnen laden..."):
-            # Get filtered werkbonnen
+            # Get filtered werkbonnen - filter op melddatum in service
             werkbonnen_list = data_service.get_hoofdwerkbon_list(
                 debiteur_codes=[d.split(" - ")[0].strip() for d in selected_debiteuren] if selected_debiteuren else None,
-                limit=BATCH_SIZE * 5  # Load more to filter by date
+                melddatum_start=str(filter_start),
+                melddatum_end=str(filter_end),
+                limit=BATCH_SIZE
             )
 
-            # Filter by melddatum (consistent met count)
-            filtered = []
-            for wb in werkbonnen_list:
-                wb_date = wb.get("melddatum", "")
-                if wb_date:
-                    try:
-                        wb_date_obj = date.fromisoformat(str(wb_date)[:10])
-                        if filter_start <= wb_date_obj <= filter_end:
-                            filtered.append(wb)
-                            if len(filtered) >= BATCH_SIZE:
-                                break
-                    except:
-                        pass
-
-            st.session_state.werkbonnen_batch = filtered[:BATCH_SIZE]
+            st.session_state.werkbonnen_batch = werkbonnen_list
 
     werkbonnen = st.session_state.werkbonnen_batch
 

@@ -186,6 +186,8 @@ class ParquetDataService:
     def get_hoofdwerkbon_list(
         self,
         debiteur_codes: List[str] = None,
+        melddatum_start: str = None,
+        melddatum_end: str = None,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """Get list of hoofdwerkbonnen for selection UI."""
@@ -200,8 +202,16 @@ class ParquetDataService:
             )
             df = df[mask]
 
-        # Sorteer op aanmaakdatum (nieuwste eerst)
-        df = df.sort_values("aanmaakdatum", ascending=False)
+        # Filter op melddatum als opgegeven
+        if melddatum_start or melddatum_end:
+            df["melddatum_str"] = df["melddatum"].astype(str).str[:10]
+            if melddatum_start:
+                df = df[df["melddatum_str"] >= str(melddatum_start)]
+            if melddatum_end:
+                df = df[df["melddatum_str"] <= str(melddatum_end)]
+
+        # Sorteer op melddatum (nieuwste eerst)
+        df = df.sort_values("melddatum", ascending=False)
 
         # Limit
         df = df.head(limit)
