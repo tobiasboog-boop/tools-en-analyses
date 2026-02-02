@@ -23,7 +23,7 @@ Deze app verwacht Parquet bestanden in de `data/` map:
 - `werkbonnen.parquet`
 - `werkbonparagrafen.parquet`
 - `kosten.parquet`
-- `opbrengsten.parquet`
+- `kostenregels.parquet`
 - `oplossingen.parquet`
 - `opvolgingen.parquet`
 - `metadata.json`

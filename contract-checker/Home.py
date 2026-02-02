@@ -40,7 +40,7 @@ if not data_path.exists() or not (data_path / "werkbonnen.parquet").exists():
     - data/werkbonnen.parquet
     - data/werkbonparagrafen.parquet
     - data/kosten.parquet
-    - data/opbrengsten.parquet
+    - data/kostenregels.parquet
     - data/oplossingen.parquet
     - data/opvolgingen.parquet
     """)
