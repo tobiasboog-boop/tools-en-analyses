@@ -461,19 +461,26 @@ with tab_classify:
     # Load batch
     if st.session_state.werkbonnen_batch is None:
         with st.spinner("Werkbonnen laden..."):
-            try:
-                # Get filtered werkbonnen - filter op melddatum in service
-                debiteur_codes = [d.split(" - ")[0].strip() for d in selected_debiteuren] if selected_debiteuren else None
-                werkbonnen_list = data_service.get_hoofdwerkbon_list(
-                    debiteur_codes=debiteur_codes,
-                    melddatum_start=str(filter_start),
-                    melddatum_end=str(filter_end),
-                    limit=BATCH_SIZE
-                )
-            except TypeError as e:
-                # Fallback for old function signature (without date params)
-                st.warning(f"Herlaad de pagina voor de nieuwste versie: {e}")
-                werkbonnen_list = []
+            # Get werkbonnen (without date filter in service for compatibility)
+            debiteur_codes = [d.split(" - ")[0].strip() for d in selected_debiteuren] if selected_debiteuren else None
+            all_werkbonnen = data_service.get_hoofdwerkbon_list(
+                debiteur_codes=debiteur_codes,
+                limit=500  # Get more to filter by date
+            )
+
+            # Filter by melddatum in app
+            werkbonnen_list = []
+            for wb in all_werkbonnen:
+                wb_date = wb.get("melddatum", "")
+                if wb_date:
+                    try:
+                        wb_date_obj = date.fromisoformat(str(wb_date)[:10])
+                        if filter_start <= wb_date_obj <= filter_end:
+                            werkbonnen_list.append(wb)
+                            if len(werkbonnen_list) >= BATCH_SIZE:
+                                break
+                    except (ValueError, TypeError):
+                        pass
 
             st.session_state.werkbonnen_batch = werkbonnen_list
 
