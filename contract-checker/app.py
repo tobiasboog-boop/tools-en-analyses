@@ -437,7 +437,21 @@ with tab_classify:
     # === LOAD BATCH ===
     st.header(f"Volgende {BATCH_SIZE} werkbonnen")
 
-    if st.button("🔄 Laad werkbonnen", type="secondary"):
+    # Check if filters changed - reset batch if so
+    current_filters = {
+        "start": str(filter_start),
+        "end": str(filter_end),
+        "debiteuren": tuple(sorted(selected_debiteuren)) if selected_debiteuren else ()
+    }
+    if "last_filters" not in st.session_state:
+        st.session_state.last_filters = None
+
+    if st.session_state.last_filters != current_filters:
+        st.session_state.werkbonnen_batch = None
+        st.session_state.classificatie_resultaten = []
+        st.session_state.last_filters = current_filters
+
+    if st.button("🔄 Laad nieuwe batch", type="secondary"):
         st.session_state.werkbonnen_batch = None
         st.session_state.classificatie_resultaten = []
         st.rerun()
