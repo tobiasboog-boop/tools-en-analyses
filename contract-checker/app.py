@@ -461,30 +461,38 @@ with tab_classify:
     # Load batch
     if st.session_state.werkbonnen_batch is None:
         with st.spinner("Werkbonnen laden..."):
-            # Get werkbonnen (without date filter in service for compatibility)
+            # Get werkbonnen directly from dataframe (more reliable than service method)
             debiteur_codes = [d.split(" - ")[0].strip() for d in selected_debiteuren] if selected_debiteuren else None
-            all_werkbonnen = data_service.get_hoofdwerkbon_list(
-                debiteur_codes=debiteur_codes,
-                limit=500  # Get more to filter by date
-            )
 
-            # Filter by melddatum in app (fallback to aanmaakdatum if melddatum not available)
+            df = data_service.df_werkbonnen.copy()
+
+            # Filter hoofdwerkbonnen only
+            df = df[df["werkbon_key"] == df["hoofdwerkbon_key"]]
+
+            # Filter op melddatum
+            df["melddatum_str"] = df["melddatum"].fillna("").astype(str).str[:10]
+            df = df[(df["melddatum_str"] >= str(filter_start)) & (df["melddatum_str"] <= str(filter_end))]
+
+            # Filter op debiteur als opgegeven
+            if debiteur_codes:
+                mask = df["debiteur"].apply(lambda x: any(code in str(x) for code in debiteur_codes))
+                df = df[mask]
+
+            # Sorteer en limit
+            df = df.sort_values("melddatum", ascending=False).head(BATCH_SIZE)
+
+            # Convert to list of dicts
             werkbonnen_list = []
-            for wb in all_werkbonnen:
-                # Try melddatum first, then aanmaakdatum as fallback
-                wb_date = wb.get("melddatum") or wb.get("aanmaakdatum") or ""
-                if wb_date:
-                    try:
-                        wb_date_obj = date.fromisoformat(str(wb_date)[:10])
-                        if filter_start <= wb_date_obj <= filter_end:
-                            # Ensure melddatum is set for display
-                            if not wb.get("melddatum"):
-                                wb["melddatum"] = wb.get("aanmaakdatum", "")
-                            werkbonnen_list.append(wb)
-                            if len(werkbonnen_list) >= BATCH_SIZE:
-                                break
-                    except (ValueError, TypeError):
-                        pass
+            for _, row in df.iterrows():
+                werkbon_code = str(row["werkbon"]).split(" - ")[0] if row["werkbon"] else ""
+                werkbonnen_list.append({
+                    "hoofdwerkbon_key": int(row["werkbon_key"]),
+                    "werkbon_code": werkbon_code,
+                    "debiteur": row["debiteur"],
+                    "melddatum": str(row["melddatum"])[:10] if row["melddatum"] else "",
+                    "aanmaakdatum": str(row.get("aanmaakdatum", ""))[:10] if row.get("aanmaakdatum") else "",
+                    "paragraaf_count": 0,  # Skip count for speed
+                })
 
             st.session_state.werkbonnen_batch = werkbonnen_list
 
