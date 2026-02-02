@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Classificatie - Publieke versie
 
-Classificeer geselecteerde werkbonnen met AI.
-Inclusief drempelwaardes voor JA/NEE/TWIJFEL classificatie.
+Classificeer werkbonnen met AI - single page flow conform DWH versie.
+Inclusief filters, batch laden, drempelwaardes en resultaten.
 """
 import json
 import streamlit as st
 from pathlib import Path
+from datetime import date, timedelta
 import sys
 
 # Add src to path
@@ -15,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.auth import require_auth, get_secret
 from src.services.parquet_data_service import ParquetDataService, WerkbonVerhaalBuilder
 
-st.set_page_config(page_title="Classificatie", layout="wide")
+st.set_page_config(page_title="Contract Checker", page_icon="🧪", layout="wide")
 
 # Wachtwoord check
 require_auth()
@@ -33,17 +34,34 @@ def get_logo_path():
 # Check for API key (from secrets or env)
 api_key = get_secret("ANTHROPIC_API_KEY", "")
 
-# Session state
-if "werkbonnen_for_beoordeling" not in st.session_state:
-    st.session_state.werkbonnen_for_beoordeling = []
+# Session state initialization
+if "werkbonnen_batch" not in st.session_state:
+    st.session_state.werkbonnen_batch = None
 if "classificatie_resultaten" not in st.session_state:
     st.session_state.classificatie_resultaten = []
+
+# Fixed batch size (like DWH version)
+BATCH_SIZE = 10
 
 
 # === LOGO BOVEN NAVIGATIE ===
 logo_path = get_logo_path()
 if logo_path:
     st.logo(logo_path, size="large")
+
+
+# Load data service
+@st.cache_resource
+def get_data_service():
+    data_dir = Path(__file__).parent.parent / "data"
+    return ParquetDataService(data_dir=str(data_dir))
+
+try:
+    data_service = get_data_service()
+except Exception as e:
+    st.error(f"Kon data niet laden: {e}")
+    st.stop()
+
 
 # === SIDEBAR ===
 with st.sidebar:
@@ -82,21 +100,7 @@ with st.sidebar:
     """)
 
     st.divider()
-
-    # Selection info
-    st.header("Geselecteerd")
-    selected_count = len(st.session_state.werkbonnen_for_beoordeling)
-    st.metric("Werkbonnen", selected_count)
-
-    if selected_count == 0:
-        st.warning("Selecteer eerst werkbonnen")
-        if st.button("← Naar Selectie"):
-            st.switch_page("pages/1_Werkbon_Selectie.py")
-
-    st.divider()
-
-    # Batch info
-    st.caption(f"Batch grootte: {len(st.session_state.werkbonnen_for_beoordeling)} geselecteerd")
+    st.caption(f"Batch grootte: {BATCH_SIZE} (vast)")
 
     st.divider()
 
@@ -108,7 +112,7 @@ with st.sidebar:
 
 # === MAIN CONTENT ===
 
-# Demo disclaimer banner (zoals in pilot versie)
+# Demo disclaimer banner
 st.markdown("""
 <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 15px 20px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 20px;">
     <strong style="color: #1e40af;">📊 DEMO VERSIE - Historische Data</strong>
@@ -119,35 +123,117 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.title("🤖 Werkbon Classificatie")
-st.caption("AI-gedreven beoordeling: binnen of buiten contract?")
+st.title("🧪 Contract Checker - DEMO")
+st.caption("Werkbonnen classificeren met AI")
 st.markdown("[📖 Handleiding & uitleg](https://notifica.nl/tools/contract-checker)")
 
-if not st.session_state.werkbonnen_for_beoordeling:
-    st.info("Geen werkbonnen geselecteerd. Ga naar **Werkbon Selectie** om werkbonnen te kiezen.")
-    st.stop()
 
+# Check API
 if not api_key:
-    st.warning("Voer een Anthropic API key in via de sidebar om te classificeren.")
+    st.warning("⚠️ Voer een Anthropic API key in via de sidebar om te classificeren.")
     st.stop()
 
 
-# Load data service
-@st.cache_resource
-def get_data_service():
-    data_dir = Path(__file__).parent.parent / "data"
-    return ParquetDataService(data_dir=str(data_dir))
+# === FILTERS ===
+st.header("Filters")
 
-data_service = get_data_service()
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("Datumbereik")
+
+    # Get date range from data
+    df_wb = data_service.df_werkbonnen
+    if "melddatum" in df_wb.columns:
+        df_wb["melddatum"] = df_wb["melddatum"].astype(str)
+        dates = df_wb["melddatum"].dropna()
+        dates = dates[dates.str.match(r'^\d{4}-\d{2}-\d{2}')]
+        if len(dates) > 0:
+            min_date = dates.min()[:10]
+            max_date = dates.max()[:10]
+        else:
+            min_date = "2024-01-01"
+            max_date = "2024-12-31"
+    else:
+        min_date = "2024-01-01"
+        max_date = "2024-12-31"
+
+    try:
+        default_end = date.fromisoformat(max_date)
+        default_start = default_end - timedelta(days=30)
+        min_date_obj = date.fromisoformat(min_date)
+        if default_start < min_date_obj:
+            default_start = min_date_obj
+    except:
+        default_end = date.today()
+        default_start = default_end - timedelta(days=30)
+
+    date_range = st.date_input(
+        "Selecteer periode",
+        value=(default_start, default_end),
+        key="date_filter"
+    )
+
+    if len(date_range) == 2:
+        filter_start, filter_end = date_range
+    else:
+        filter_start, filter_end = default_start, default_end
+
+with col2:
+    st.subheader("Debiteur")
+
+    # Get unique debiteuren
+    debiteuren = df_wb["debiteur"].dropna().unique()
+    debiteur_options = sorted([str(d) for d in debiteuren])
+
+    selected_debiteuren = st.multiselect(
+        "Filter op debiteur (leeg = alle)",
+        options=debiteur_options,
+        key="debiteur_filter"
+    )
+
+
+# Count werkbonnen with filters
+def count_werkbonnen(start_date, end_date, debiteur_filter):
+    """Count werkbonnen matching filters."""
+    df = data_service.df_werkbonnen.copy()
+
+    # Filter op hoofdwerkbonnen
+    df = df[df["werkbon_key"] == df["hoofdwerkbon_key"]]
+
+    # Date filter
+    if "melddatum" in df.columns:
+        df["melddatum_str"] = df["melddatum"].astype(str)
+        mask = (df["melddatum_str"] >= str(start_date)) & (df["melddatum_str"] <= str(end_date))
+        df = df[mask]
+
+    # Debiteur filter
+    if debiteur_filter:
+        df = df[df["debiteur"].isin(debiteur_filter)]
+
+    return len(df)
+
+
+total = count_werkbonnen(filter_start, filter_end, selected_debiteuren if selected_debiteuren else None)
+st.metric("Te classificeren werkbonnen", total)
+
+if total == 0:
+    st.info("Geen werkbonnen gevonden met de huidige filters. Pas de filters aan.")
+    st.stop()
+
+st.divider()
 
 
 # === CONTRACT CONTEXT ===
 st.header("Contract voorwaarden")
+st.caption("Plak hier de contracttekst waartegen de werkbonnen worden geclassificeerd")
+
 contract_context = st.text_area(
-    "Plak hier de relevante contractvoorwaarden",
+    "Contract tekst",
     height=200,
-    placeholder="Voer hier de contracttekst in die de AI moet gebruiken voor classificatie...",
-    help="De AI vergelijkt elke werkbon met deze contractvoorwaarden"
+    placeholder="Voer hier de relevante contractvoorwaarden in...\n\nBijvoorbeeld:\n- Artikel 1: Onderhoudswerkzaamheden...\n- Artikel 2: Uitgesloten van contract...",
+    help="De AI vergelijkt elke werkbon met deze contractvoorwaarden",
+    label_visibility="collapsed"
 )
 
 if not contract_context:
@@ -156,22 +242,62 @@ if not contract_context:
 st.divider()
 
 
-# === WERKBONNEN PREVIEW ===
-st.header(f"Te classificeren: {len(st.session_state.werkbonnen_for_beoordeling)} werkbonnen")
+# === LOAD BATCH ===
+st.header(f"Volgende {BATCH_SIZE} werkbonnen")
 
-with st.expander("Bekijk geselecteerde werkbonnen", expanded=False):
-    for i, wb in enumerate(st.session_state.werkbonnen_for_beoordeling[:20]):
+if st.button("🔄 Laad werkbonnen", type="secondary"):
+    st.session_state.werkbonnen_batch = None
+    st.session_state.classificatie_resultaten = []
+    st.rerun()
+
+# Load batch
+if st.session_state.werkbonnen_batch is None:
+    with st.spinner("Werkbonnen laden..."):
+        # Get filtered werkbonnen
+        werkbonnen_list = data_service.get_hoofdwerkbon_list(
+            debiteur_codes=[d.split(" - ")[0].strip() for d in selected_debiteuren] if selected_debiteuren else None,
+            limit=BATCH_SIZE * 5  # Load more to filter by date
+        )
+
+        # Filter by date
+        filtered = []
+        for wb in werkbonnen_list:
+            wb_date = wb.get("aanmaakdatum", "")
+            if wb_date:
+                try:
+                    wb_date_obj = date.fromisoformat(str(wb_date)[:10])
+                    if filter_start <= wb_date_obj <= filter_end:
+                        filtered.append(wb)
+                        if len(filtered) >= BATCH_SIZE:
+                            break
+                except:
+                    pass
+
+        st.session_state.werkbonnen_batch = filtered[:BATCH_SIZE]
+
+werkbonnen = st.session_state.werkbonnen_batch
+
+if not werkbonnen:
+    st.info("Geen werkbonnen gevonden met de huidige filters")
+    st.stop()
+
+st.success(f"{len(werkbonnen)} werkbonnen geladen")
+
+# Preview
+with st.expander(f"Bekijk {len(werkbonnen)} werkbonnen", expanded=True):
+    for i, wb in enumerate(werkbonnen):
         st.markdown(f"""
-        **{i+1}. {wb.get('werkbon_code', 'N/A')}** - {wb.get('debiteur', 'Onbekend')}
-        - Klant: {wb.get('klant', 'N/A')}
+        **{i+1}. {wb.get('debiteur', 'Onbekend')[:40]}**
+        - Werkbon: {wb.get('werkbon_code', 'N/A')} | Datum: {wb.get('aanmaakdatum', 'N/A')}
+        - Paragrafen: {wb.get('paragraaf_count', 0)}
         """)
-    if len(st.session_state.werkbonnen_for_beoordeling) > 20:
-        st.caption(f"... en {len(st.session_state.werkbonnen_for_beoordeling) - 20} meer")
+
+st.divider()
 
 
 # === CLASSIFICATION FUNCTION ===
 def classify_werkbon(werkbon_key: int, contract_text: str, api_key: str, threshold_ja: float, threshold_nee: float) -> dict:
-    """Classify a single werkbon using Claude API with threshold-based final classification."""
+    """Classify a single werkbon using Claude API."""
     import anthropic
 
     # Get werkbon data
@@ -298,15 +424,13 @@ Classificeer deze werkbon. Geef je antwoord in JSON formaat."""
 
 
 # === CLASSIFY BUTTON ===
-if contract_context and st.button("🚀 Start Classificatie", type="primary", use_container_width=True):
+if contract_context and st.button("🚀 Classificeer batch", type="primary", use_container_width=True):
     results = []
     progress = st.progress(0)
     status = st.empty()
 
-    werkbonnen = st.session_state.werkbonnen_for_beoordeling
-
     for i, wb in enumerate(werkbonnen):
-        status.text(f"Classificeren {i+1}/{len(werkbonnen)}: {wb.get('werkbon_code', '')}...")
+        status.text(f"Classificeren {i+1}/{len(werkbonnen)}: {wb.get('debiteur', '')[:30]}...")
 
         result = classify_werkbon(
             wb["hoofdwerkbon_key"],
@@ -319,7 +443,7 @@ if contract_context and st.button("🚀 Start Classificatie", type="primary", us
         # Add werkbon info to result
         result["werkbon_code"] = wb.get("werkbon_code", "")
         result["debiteur"] = wb.get("debiteur", "")
-        result["klant"] = wb.get("klant", "")
+        result["datum"] = wb.get("aanmaakdatum", "")
         results.append(result)
 
         progress.progress((i + 1) / len(werkbonnen))
@@ -328,6 +452,7 @@ if contract_context and st.button("🚀 Start Classificatie", type="primary", us
     progress.empty()
 
     st.session_state.classificatie_resultaten = results
+    st.session_state.werkbonnen_batch = None  # Clear for next batch
     st.success(f"✅ {len(results)} werkbonnen geclassificeerd!")
 
 
@@ -342,9 +467,8 @@ if st.session_state.classificatie_resultaten:
     ja = sum(1 for r in results if r.get("classificatie") == "JA")
     nee = sum(1 for r in results if r.get("classificatie") == "NEE")
     twijfel = sum(1 for r in results if r.get("classificatie") == "TWIJFEL")
-    errors = sum(1 for r in results if r.get("classificatie") == "ERROR" or "error" in r)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         st.markdown(f"""
@@ -370,22 +494,6 @@ if st.session_state.classificatie_resultaten:
         </div>
         """, unsafe_allow_html=True)
 
-    with col4:
-        if errors > 0:
-            st.markdown(f"""
-            <div style="padding: 1.5rem; background: #f3f4f6; border-radius: 0.5rem; text-align: center; border: 2px solid #9ca3af;">
-                <div style="font-size: 2.5rem; font-weight: bold; color: #4b5563;">{errors}</div>
-                <div style="color: #4b5563;">⚠️ Errors</div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
-            <div style="padding: 1.5rem; background: #f3f4f6; border-radius: 0.5rem; text-align: center; border: 2px solid #9ca3af;">
-                <div style="font-size: 2.5rem; font-weight: bold; color: #4b5563;">{len(results)}</div>
-                <div style="color: #4b5563;">📊 Totaal</div>
-            </div>
-            """, unsafe_allow_html=True)
-
     st.divider()
 
     # Detail per result
@@ -407,7 +515,7 @@ if st.session_state.classificatie_resultaten:
 
         st.markdown(f"""
         <div style="padding: 1rem; background: {color}; border-radius: 0.5rem; border-left: 4px solid {border}; margin-bottom: 0.5rem;">
-            <strong>{icon} {result.get('werkbon_code', result.get('debiteur', '')[:40])}</strong>
+            <strong>{icon} {result.get('debiteur', '')[:40]}</strong>
             <span style="margin-left: 1rem; padding: 0.2rem 0.5rem; background: white; border-radius: 0.25rem;">
                 {classificatie}
             </span>
@@ -417,14 +525,14 @@ if st.session_state.classificatie_resultaten:
         </div>
         """, unsafe_allow_html=True)
 
-        with st.expander(f"Details - {result.get('werkbon_code', 'Werkbon')}"):
+        with st.expander(f"Details - {result.get('debiteur', 'Werkbon')[:30]}"):
             tab1, tab2 = st.tabs(["📋 Classificatie", "📄 Volledige Werkbon Keten"])
 
             with tab1:
                 st.markdown(f"**Toelichting:** {result.get('toelichting', 'N/A')}")
                 st.markdown(f"**Contract referentie:** {result.get('contract_referentie', 'N/A')}")
-                st.markdown(f"**Klant:** {result.get('klant', 'N/A')}")
-                st.markdown(f"**Debiteur:** {result.get('debiteur', 'N/A')}")
+                st.markdown(f"**Werkbon:** {result.get('werkbon_code', 'N/A')}")
+                st.markdown(f"**Datum:** {result.get('datum', 'N/A')}")
 
                 if result.get("basis_classificatie"):
                     st.caption(f"Basis classificatie: {result['basis_classificatie']} (voor threshold)")
@@ -435,7 +543,7 @@ if st.session_state.classificatie_resultaten:
                         "Werkbon Keten (zoals verzonden naar Claude)",
                         result["verhaal"],
                         height=400,
-                        key=f"verhaal_{result.get('werkbon_key', i)}"
+                        key=f"verhaal_{result.get('werkbon_key', id(result))}"
                     )
                 else:
                     st.info("Geen werkbon keten beschikbaar")
@@ -447,7 +555,7 @@ if st.session_state.classificatie_resultaten:
     df = pd.DataFrame([{
         "Werkbon": r.get("werkbon_code", ""),
         "Debiteur": r.get("debiteur", ""),
-        "Klant": r.get("klant", ""),
+        "Datum": r.get("datum", ""),
         "Classificatie": r.get("classificatie", ""),
         "Basis": r.get("basis_classificatie", ""),
         "Confidence": f"{r.get('confidence', 0):.0%}",
@@ -464,15 +572,9 @@ if st.session_state.classificatie_resultaten:
         use_container_width=True
     )
 
-    # New classification button
+    # Next batch button
     st.divider()
-    col_new, col_clear = st.columns(2)
-    with col_new:
-        if st.button("🔄 Opnieuw classificeren", use_container_width=True):
-            st.session_state.classificatie_resultaten = []
-            st.rerun()
-    with col_clear:
-        if st.button("🗑️ Selectie wissen", use_container_width=True):
-            st.session_state.werkbonnen_for_beoordeling = []
-            st.session_state.classificatie_resultaten = []
-            st.switch_page("pages/1_Werkbon_Selectie.py")
+    if st.button("➡️ Volgende batch", type="primary", use_container_width=True):
+        st.session_state.classificatie_resultaten = []
+        st.session_state.werkbonnen_batch = None
+        st.rerun()
