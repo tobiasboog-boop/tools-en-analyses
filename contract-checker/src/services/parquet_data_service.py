@@ -171,8 +171,17 @@ class ParquetDataService:
         self._paragrafen_by_werkbon = self.df_paragrafen.groupby("werkbon_key")
         self._kosten_by_paragraaf = self.df_kosten.groupby("werkbonparagraaf_key")
         self._kostenregels_by_paragraaf = self.df_kostenregels.groupby("werkbonparagraaf_key")
-        self._oplossingen_by_paragraaf = self.df_oplossingen.groupby("werkbonparagraaf_key")
-        self._opvolgingen_by_paragraaf = self.df_opvolgingen.groupby("werkbonparagraaf_key")
+
+        # Handle empty DataFrames (may not have columns if no data)
+        if "werkbonparagraaf_key" in self.df_oplossingen.columns:
+            self._oplossingen_by_paragraaf = self.df_oplossingen.groupby("werkbonparagraaf_key")
+        else:
+            self._oplossingen_by_paragraaf = None
+
+        if "werkbonparagraaf_key" in self.df_opvolgingen.columns:
+            self._opvolgingen_by_paragraaf = self.df_opvolgingen.groupby("werkbonparagraaf_key")
+        else:
+            self._opvolgingen_by_paragraaf = None
 
     def get_hoofdwerkbon_list(
         self,
@@ -400,6 +409,8 @@ class ParquetDataService:
 
     def _load_opvolgingen(self, paragraaf: WerkbonParagraaf):
         """Load opvolgingen for a paragraaf."""
+        if self._opvolgingen_by_paragraaf is None:
+            return
         try:
             opv_df = self._opvolgingen_by_paragraaf.get_group(paragraaf.werkbonparagraaf_key)
         except KeyError:
@@ -417,6 +428,8 @@ class ParquetDataService:
 
     def _load_oplossingen(self, paragraaf: WerkbonParagraaf):
         """Load oplossingen for a paragraaf."""
+        if self._oplossingen_by_paragraaf is None:
+            return
         try:
             opl_df = self._oplossingen_by_paragraaf.get_group(paragraaf.werkbonparagraaf_key)
         except KeyError:
