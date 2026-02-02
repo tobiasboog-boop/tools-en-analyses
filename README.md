@@ -2,6 +2,36 @@
 
 Verzameling van herbruikbare tools voor Notifica.
 
+## Contract Checker (Demo)
+
+**Locatie:** `contract-checker/`
+
+AI-gedreven classificatie van werkbonnen: bepaal automatisch of werkzaamheden binnen of buiten een servicecontract vallen.
+
+### Features
+
+- Wachtwoord beveiligd
+- 500 historische werkbonnen (demo dataset)
+- Claude AI classificatie
+- Export naar CSV
+
+### Starten (lokaal)
+
+```bash
+cd contract-checker
+pip install -r requirements.txt
+streamlit run Home.py
+```
+
+### Streamlit Cloud
+
+Deploy via [share.streamlit.io](https://share.streamlit.io) met secrets:
+
+- `APP_PASSWORD` - toegangswachtwoord
+- `ANTHROPIC_API_KEY` - Claude API key
+
+---
+
 ## Offerte Generator
 
 **Locatie:** `offerte_generator.py`

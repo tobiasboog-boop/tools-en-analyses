@@ -1,0 +1,6 @@
+# Contract Check Public - Dependencies
+streamlit>=1.30.0
+pandas>=2.0.0
+pyarrow>=14.0.0
+anthropic>=0.18.0
+python-dotenv>=1.0.0
