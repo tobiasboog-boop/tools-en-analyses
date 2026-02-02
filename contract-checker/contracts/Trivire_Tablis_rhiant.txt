@@ -1,0 +1,87 @@
+# Contract: Trivire Tablis rhiant
+# Source: Contractvoorwaarden diverse WBV.xlsx (sheet: Trivire Tablis rhiant)
+# Extracted: 2026-01-23 15:30
+
+---
+
+|  | Contract individuele installaties Trivire: |  |  |  |  |
+| Tarief syntess | Item: | in contract | berekenen | vaste bedragen vanaf 1/7/2025 | Rhiant (Alles binnen < 2 m van de ketel binnen contract) |
+|  | voorrijkosten | X |  |  |  |
+|  | binnen de mantel van de cv-ketel: | X |  |  |  |
+|  | bijvullen en ontluchten | X |  |  |  |
+|  | rookgasafvoer | < 2m | > 2m |  |  |
+|  | rookgasafvoer ringen vervangen | X |  |  |  |
+|  | cv-leiding | < 2m | > 2m |  | Binnen contract leidingen uit het zicht wel berekenen! |
+|  | aanvoerleidingen radiator vervangen |  | X |  |  |
+|  | gasleiding | < 2m | > 2m |  |  |
+|  | waterleiding | < 2m | > 2m |  |  |
+|  | condensleiding | < 2m | > 2m |  |  |
+|  | Spoelen leidingen radiatoren |  | X |  |  |
+|  | expansievat | X |  |  |  |
+|  | radiatorkranen en appendages | X |  |  |  |
+|  | thermostaatkraan | X |  |  |  |
+|  | vulkraan | X |  |  |  |
+|  | luchtafscheider | X |  |  |  |
+|  | ontluchter | X |  |  |  |
+|  | vervangen batterijen kamerthermostaat | X |  |  |  |
+|  | leveren vulset | X |  |  |  |
+|  | Tappot  | X |  |  |  |
+|  | Verdeler |  | X |  |  |
+|  | Vloerverwarming regelingen etc. |  | X |  |  |
+| TR001 | Dakdoorvoeren RGA en LTV + geveldoorvoer (mat+arbeid) |  | X | 158.43 |  |
+| TR002 | radiator vervangen arbeid  |  | X | 169 |  |
+| TR003 | radiator materiaal per 100Watt incl. aansluitmat. |  | X | 19 |  |
+| TR004 | Leveren en monteren koolmonoxide melder |  | X | 115.1 |  |
+|  | leidingen in de vloer vervangen |  | X |  |  |
+|  | alle rookgasafvoeren uit het zicht |  | X |  |  |
+|  | Storingen aan:gevelkachelkachels, gasgestookte en elektra boilers, luchtverhitters |  | X |  |  |
+|  | ontkalken van boilers |  | X |  |  |
+|  | vervangen van voorraadboilers |  | X |  |  |
+|  | vervangen van zonnecollectoren |  | X |  |  |
+|  | huurdersgedrag en gevolgen hiervan* |  | X |  |  |
+|  | bevriezingen* |  | X |  |  |
+|  | geen stroom of gas of water* |  | X |  |  |
+|  | blikseminslag* |  | X |  |  |
+|  | roestinwerking in natte ruimtes* |  | X |  |  |
+|  | gevolg van gebrekkige bouwkundige voorzieningen* |  | X |  |  |
+|  | eigen thermostaat van bewoner bijv. Toon* |  | X |  |  |
+|  | voorzieningen treffen in lege woningen om bevriezing te voorkomen Trivire geeft deze door  | X |  |  |  |
+|  | storingen zonnecollectoren |  | X |  |  |
+|  | storingen WTW-units |  | X |  | Binnen contract |
+|  | storingen warmtepompen |  | X |  |  |
+|  | werkenderden + 5% + werkvoorbereiding |  | X |  |  |
+|  | Afsluiters | x |  |  |  |
+|  | Onderblokken | x |  |  |  |
+|  | Onderblokken (door verstopping) |  | x |  |  |
+|  | Installatie gevuld en ontlucht | x |  |  |  |
+|  | Kamerthermostaat | x |  |  |  |
+|  | Vastzetten koppeling | x |  |  |  |
+|  | Onderblok/ staartstuk verpakken | x |  |  |  |
+|  | Riolering |  | x |  |  |
+|  | Reparatie verdeler | x |  |  |  |
+|  | Reparatie verdeler (lang bezig geweest met reparatie) |  | x |  |  |
+|  | RGA beugelen |  | x |  |  |
+|  | Slang vervangen |  | x |  |  |
+|  | Waterslagdemper |  | x |  |  |
+|  | Geiser + moederhaard - in syntess = binnen contract | x |  |  |  |
+|  | Radiator hergemonteerd |  | x |  |  |
+|  | Slang tullen/ installatie gespoeld/schoongemaakt |  | x |  |  |
+|  | Onderblokken opengezet |  | x |  |  |
+|  | Afsluiter opengezet |  | x |  |  |
+|  | Klokthermostaat |  | x |  |  |
+|  | Servicebezoek fabrikant - binnen ketel = binnen contract | x |  |  |  |
+|  | Gasleiding ontlucht |  | x |  |  |
+|  | Rozetten geplaatst |  | x |  |  |
+|  | Tappot | x |  |  |  |
+|  | Batterij vervangen | x |  |  |  |
+|  | Vulset leveren | x |  |  |  |
+|  | Filters WTW-unit  | x |  |  |  |
+|  | Afdekmantel ketel (gaat niet zomaar stuk) | x |  |  |  |
+|  | Close-in boiler  |  | x |  |  |
+|  | Buitenvoeler |  | x |  |  |
+|  | < 2 m wil zeggen dichter dan 2 meter van de ketel |  |  |  |  |
+|  | > 2 m wil zeggen verder dan 2 meter van de ketel |  |  |  |  |
+|  | *altijd bon af laten tekenen  door bewoner! |  |  |  |  |
+|  | Geen spoed dan altijd vooraf een opdrachtbon aanvragen! |  |  |  |  |
+|  | werkvoorbereiding mag doorberekend worden (bijv. bij een bestelling) |  |  |  |  |
+|  | Uurtarief buitencontract week en weekend |  |  |  |  |

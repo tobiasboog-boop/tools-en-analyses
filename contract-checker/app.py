@@ -19,6 +19,45 @@ from src.services.parquet_data_service import ParquetDataService, WerkbonVerhaal
 # Fixed batch size (like DWH version)
 BATCH_SIZE = 10
 
+
+# === CONTRACT LOADING ===
+@st.cache_resource
+def load_contracts():
+    """Load all contracts from contracts folder."""
+    contracts_dir = Path(__file__).parent / "contracts"
+    contracts = {}
+
+    # Load metadata
+    meta_path = contracts_dir / "contracts_metadata.json"
+    if meta_path.exists():
+        with open(meta_path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+
+        for c in meta.get("contracts", []):
+            contract_file = contracts_dir / c["filename"]
+            if contract_file.exists():
+                content = contract_file.read_text(encoding="utf-8")
+                contracts[c["id"]] = {
+                    "id": c["id"],
+                    "filename": c["filename"],
+                    "content": content,
+                    "clients": c.get("clients", [])
+                }
+
+    return contracts
+
+
+def get_contract_for_debiteur(debiteur_code: str, contracts: dict):
+    """Get contract for a specific debiteur."""
+    # Extract code from "005102 - Trivire" format
+    code = debiteur_code.split(" - ")[0].strip() if " - " in debiteur_code else debiteur_code
+
+    for contract in contracts.values():
+        if code in contract.get("clients", []):
+            return contract
+    return None
+
+
 # === PAGE CONFIG ===
 st.set_page_config(
     page_title="Contract Checker - DEMO",
@@ -60,6 +99,12 @@ except Exception as e:
     st.error(f"Kon data niet laden: {e}")
     st.stop()
 
+# Load contracts
+contracts = load_contracts()
+if not contracts:
+    st.error("Geen contracten gevonden in contracts/ folder")
+    st.stop()
+
 # Check for API key (from secrets or env)
 api_key = get_secret("ANTHROPIC_API_KEY", "")
 
@@ -81,7 +126,7 @@ with st.sidebar:
     # API key check and input
     if api_key:
         st.success("✅ Claude API")
-        st.caption("Model: claude-sonnet-4-20250514")
+        st.caption("Model: claude-3-haiku-20240307")
     else:
         st.error("❌ Geen API key")
         api_key = st.text_input(
@@ -218,20 +263,10 @@ if total == 0:
 st.divider()
 
 
-# === CONTRACT CONTEXT ===
-st.header("Contract voorwaarden")
-st.caption("Plak hier de contracttekst waartegen de werkbonnen worden geclassificeerd")
-
-contract_context = st.text_area(
-    "Contract tekst",
-    height=200,
-    placeholder="Voer hier de relevante contractvoorwaarden in...\n\nBijvoorbeeld:\n- Artikel 1: Onderhoudswerkzaamheden...\n- Artikel 2: Uitgesloten van contract...",
-    help="De AI vergelijkt elke werkbon met deze contractvoorwaarden",
-    label_visibility="collapsed"
-)
-
-if not contract_context:
-    st.warning("⚠️ Voer contractvoorwaarden in om te kunnen classificeren")
+# === CONTRACT INFO ===
+# Show which contracts are available
+contract_options = {c["id"]: c["filename"] for c in contracts.values()}
+st.info(f"📋 Beschikbare contracten: {', '.join(contract_options.values())}")
 
 st.divider()
 
@@ -354,7 +389,7 @@ Classificeer deze werkbon. Geef je antwoord in JSON formaat."""
 
     try:
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-3-haiku-20240307",
             max_tokens=1024,
             system=system_prompt,
             messages=[{"role": "user", "content": user_message}]
@@ -418,17 +453,38 @@ Classificeer deze werkbon. Geef je antwoord in JSON formaat."""
 
 
 # === CLASSIFY BUTTON ===
-if contract_context and st.button("🚀 Classificeer batch", type="primary", use_container_width=True):
+if st.button("🚀 Classificeer batch", type="primary", use_container_width=True):
     results = []
     progress = st.progress(0)
     status = st.empty()
 
     for i, wb in enumerate(werkbonnen):
-        status.text(f"Classificeren {i+1}/{len(werkbonnen)}: {wb.get('debiteur', '')[:30]}...")
+        debiteur = wb.get("debiteur", "")
+        status.text(f"Classificeren {i+1}/{len(werkbonnen)}: {debiteur[:30]}...")
+
+        # Get contract for this werkbon's debiteur
+        contract = get_contract_for_debiteur(debiteur, contracts)
+
+        if not contract:
+            # No contract found for this debiteur
+            results.append({
+                "werkbon_key": wb["hoofdwerkbon_key"],
+                "werkbon_code": wb.get("werkbon_code", ""),
+                "debiteur": debiteur,
+                "datum": wb.get("aanmaakdatum", ""),
+                "classificatie": "TWIJFEL",
+                "basis_classificatie": "GEEN_CONTRACT",
+                "confidence": 0.0,
+                "toelichting": f"Geen contract gevonden voor debiteur {debiteur}",
+                "contract_referentie": "",
+                "contract_filename": None
+            })
+            progress.progress((i + 1) / len(werkbonnen))
+            continue
 
         result = classify_werkbon(
             wb["hoofdwerkbon_key"],
-            contract_context,
+            contract["content"],
             api_key,
             threshold_ja,
             threshold_nee
@@ -436,8 +492,9 @@ if contract_context and st.button("🚀 Classificeer batch", type="primary", use
 
         # Add werkbon info to result
         result["werkbon_code"] = wb.get("werkbon_code", "")
-        result["debiteur"] = wb.get("debiteur", "")
+        result["debiteur"] = debiteur
         result["datum"] = wb.get("aanmaakdatum", "")
+        result["contract_filename"] = contract["filename"]
         results.append(result)
 
         progress.progress((i + 1) / len(werkbonnen))
@@ -524,6 +581,7 @@ if st.session_state.classificatie_resultaten:
 
             with tab1:
                 st.markdown(f"**Toelichting:** {result.get('toelichting', 'N/A')}")
+                st.markdown(f"**Contract:** {result.get('contract_filename', 'N/A')}")
                 st.markdown(f"**Contract referentie:** {result.get('contract_referentie', 'N/A')}")
                 st.markdown(f"**Werkbon:** {result.get('werkbon_code', 'N/A')}")
                 st.markdown(f"**Datum:** {result.get('datum', 'N/A')}")
@@ -550,6 +608,7 @@ if st.session_state.classificatie_resultaten:
         "Werkbon": r.get("werkbon_code", ""),
         "Debiteur": r.get("debiteur", ""),
         "Datum": r.get("datum", ""),
+        "Contract": r.get("contract_filename", ""),
         "Classificatie": r.get("classificatie", ""),
         "Basis": r.get("basis_classificatie", ""),
         "Confidence": f"{r.get('confidence', 0):.0%}",

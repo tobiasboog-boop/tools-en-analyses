@@ -1,0 +1,21 @@
+# Contract: Thuisvester
+# Source: Contractvoorwaarden diverse WBV.xlsx (sheet: Thuisvester)
+# Extracted: 2026-01-23 15:30
+
+---
+
+| Contract Thuisvester |  |  |
+| Onderdeel cv- / ww installatie | Omschrijving | In contract of factureren |
+| Warmte-opwekking | Bij defect: CV-ketel alles binnen de mantel van de cv-ketel of stadsverwarmingsunit | in contract |
+| WTW-unit | Bij defect: alles binnen de mantel van de unit | in contract |
+| Appendages | Bij defect: overstortventiel, inlaatcombinatie, vul-/aftapkraan, expansievat alles nabij de cv-ketel | in contract |
+| Kamerthermostaat | Bij defect behorende bij de cv-ketel (1stuks) | in contract |
+| Radiatoren | Bij lekkage | in contract |
+| CV-leidingen en koppelingen | Bij lekkage of defect | in contract |
+| Rookgasafvoer (RGA) en luchttoevoer (LTV) in de woning in het zicht | Bij lekkage of defect | in contract |
+| Condensafvoer | tbv de cv-ketel, tot en met de eerste sifon onder de ketel | in contract |
+| CV-leidingen, luchtkanalen, RGA en LTV weggewerkt in schachten, in of onder vloeren of buitendaks | alle reparaties | factureren |
+| Vloerverwarmingsverdelers, pompen, regelingen ed | alle reparaties | factureren |
+| Kamerthermostaten en zonekleppen | tbv de naregelingen | factureren |
+| Beugelen RGA en LTV | aanvullend | factureren |
+| Slimme- en klokthermostaten | alle reparaties | factureren bedrag minus eenheidsprijs standaard kamerthermostaat |

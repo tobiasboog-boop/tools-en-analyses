@@ -1,0 +1,28 @@
+{
+  "contracts": [
+    {
+      "id": 1,
+      "filename": "Bazalt.txt",
+      "clients": [
+        "007453"
+      ],
+      "chars": 3355
+    },
+    {
+      "id": 2,
+      "filename": "Thuisvester.txt",
+      "clients": [
+        "177460"
+      ],
+      "chars": 1421
+    },
+    {
+      "id": 3,
+      "filename": "Trivire_Tablis_rhiant.txt",
+      "clients": [
+        "005102"
+      ],
+      "chars": 4321
+    }
+  ]
+}
