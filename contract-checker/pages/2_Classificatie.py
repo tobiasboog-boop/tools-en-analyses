@@ -78,7 +78,9 @@ if not api_key:
 # Load data service
 @st.cache_resource
 def get_data_service():
-    return ParquetDataService(data_dir="data")
+    # Use absolute path relative to this script
+    data_dir = Path(__file__).parent.parent / "data"
+    return ParquetDataService(data_dir=str(data_dir))
 
 data_service = get_data_service()
 

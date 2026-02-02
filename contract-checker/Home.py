@@ -29,8 +29,8 @@ require_auth()
 st.title("Contract Check Demo")
 st.caption("AI-gedreven classificatie van werkbonnen - Publieke demo versie")
 
-# Check of data beschikbaar is
-data_path = Path("data")
+# Check of data beschikbaar is (use absolute path relative to this script)
+data_path = Path(__file__).parent / "data"
 if not data_path.exists() or not (data_path / "werkbonnen.parquet").exists():
     st.error("""
     **Data niet gevonden!**
