@@ -204,14 +204,15 @@ class ParquetDataService:
 
         # Filter op melddatum als opgegeven
         if melddatum_start or melddatum_end:
-            df["melddatum_str"] = df["melddatum"].astype(str).str[:10]
+            # Convert to string, handle NaN
+            df["melddatum_str"] = df["melddatum"].fillna("").astype(str).str[:10]
             if melddatum_start:
-                df = df[df["melddatum_str"] >= str(melddatum_start)]
+                df = df[(df["melddatum_str"] >= str(melddatum_start)) & (df["melddatum_str"] != "")]
             if melddatum_end:
-                df = df[df["melddatum_str"] <= str(melddatum_end)]
+                df = df[(df["melddatum_str"] <= str(melddatum_end)) & (df["melddatum_str"] != "")]
 
-        # Sorteer op melddatum (nieuwste eerst)
-        df = df.sort_values("melddatum", ascending=False)
+        # Sorteer op melddatum (nieuwste eerst), NaN values at end
+        df = df.sort_values("melddatum", ascending=False, na_position="last")
 
         # Limit
         df = df.head(limit)
