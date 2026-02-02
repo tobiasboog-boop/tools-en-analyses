@@ -4,7 +4,7 @@ Contract Checker - DEMO VERSIE
 Publieke versie met Parquet data (geen database connectie).
 Conform DWH versie qua layout en functionaliteit.
 
-Version: 2026-02-02-v2 (melddatum filtering)
+Version: 2026-02-02-v3 (session state persistence)
 """
 import json
 import streamlit as st
@@ -60,71 +60,55 @@ def get_contract_for_debiteur(debiteur_code: str, contracts: dict):
     return None
 
 
-# === USAGE TRACKING ===
-USAGE_FILE = Path(__file__).parent / "data" / "usage_count.json"
-HISTORY_FILE = Path(__file__).parent / "data" / "classification_history.json"
-
+# === USAGE TRACKING (Session State - Streamlit Cloud compatible) ===
+# Note: Uses session state because Streamlit Cloud has ephemeral file storage
+# Data persists within a session but resets on page refresh
 
 def get_usage_count() -> int:
-    """Get total number of classifications."""
-    try:
-        if USAGE_FILE.exists():
-            with open(USAGE_FILE, "r") as f:
-                data = json.load(f)
-                return data.get("classification_count", 0)
-    except Exception:
-        pass
-    return 0
+    """Get total number of classifications from session state."""
+    if "usage_count" not in st.session_state:
+        st.session_state.usage_count = 0
+    return st.session_state.usage_count
 
 
 def increment_usage(count: int = 1):
-    """Increment the classification counter."""
-    try:
-        current = get_usage_count()
-        with open(USAGE_FILE, "w") as f:
-            json.dump({"classification_count": current + count}, f)
-    except Exception:
-        pass
+    """Increment the classification counter in session state."""
+    if "usage_count" not in st.session_state:
+        st.session_state.usage_count = 0
+    st.session_state.usage_count += count
 
 
 def load_history() -> list:
-    """Load classification history."""
-    try:
-        if HISTORY_FILE.exists():
-            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return []
+    """Load classification history from session state."""
+    if "classification_history" not in st.session_state:
+        st.session_state.classification_history = []
+    return st.session_state.classification_history
 
 
 def save_to_history(results: list):
-    """Save classification results to history."""
+    """Save classification results to session state history."""
     from datetime import datetime
-    try:
-        history = load_history()
-        timestamp = datetime.now().isoformat()
-        for r in results:
-            # Don't save the full verhaal to keep file size manageable
-            history_entry = {
-                "timestamp": timestamp,
-                "werkbon_key": r.get("werkbon_key"),
-                "werkbon_code": r.get("werkbon_code", ""),
-                "debiteur": r.get("debiteur", ""),
-                "datum": str(r.get("datum", "")),
-                "contract_filename": r.get("contract_filename", ""),
-                "classificatie": r.get("classificatie", ""),
-                "basis_classificatie": r.get("basis_classificatie", ""),
-                "confidence": r.get("confidence", 0),
-                "toelichting": r.get("toelichting", ""),
-                "contract_referentie": r.get("contract_referentie", ""),
-                "totaal_kosten": r.get("totaal_kosten", 0),
-            }
-            history.append(history_entry)
-        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history, f, indent=2, ensure_ascii=False)
-    except Exception as e:
-        st.warning(f"Kon geschiedenis niet opslaan: {e}")
+
+    if "classification_history" not in st.session_state:
+        st.session_state.classification_history = []
+
+    timestamp = datetime.now().isoformat()
+    for r in results:
+        history_entry = {
+            "timestamp": timestamp,
+            "werkbon_key": r.get("werkbon_key"),
+            "werkbon_code": r.get("werkbon_code", ""),
+            "debiteur": r.get("debiteur", ""),
+            "datum": str(r.get("datum", "")),
+            "contract_filename": r.get("contract_filename", ""),
+            "classificatie": r.get("classificatie", ""),
+            "basis_classificatie": r.get("basis_classificatie", ""),
+            "confidence": r.get("confidence", 0),
+            "toelichting": r.get("toelichting", ""),
+            "contract_referentie": r.get("contract_referentie", ""),
+            "totaal_kosten": r.get("totaal_kosten", 0),
+        }
+        st.session_state.classification_history.append(history_entry)
 
 
 # === PAGE CONFIG ===
@@ -234,6 +218,7 @@ with st.sidebar:
     st.divider()
     st.header("Demo Gebruik")
     st.metric("Geclassificeerd", f"{get_usage_count()} werkbonnen")
+    st.caption("Teller reset bij pagina refresh")
 
 # === MAIN CONTENT ===
 
@@ -247,6 +232,7 @@ tab_classify, tab_history = st.tabs(["🚀 Classificeren", "📜 Geschiedenis"])
 # === HISTORY TAB ===
 with tab_history:
     st.header("Classificatie Geschiedenis")
+    st.caption("Sessie-gebaseerd: geschiedenis wordt gewist bij pagina refresh. Download CSV om te bewaren.")
 
     history = load_history()
 
@@ -328,12 +314,10 @@ with tab_history:
 
         # Clear history button
         if st.button("🗑️ Wis geschiedenis", type="secondary"):
-            try:
-                HISTORY_FILE.unlink(missing_ok=True)
-                st.success("Geschiedenis gewist!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Kon geschiedenis niet wissen: {e}")
+            st.session_state.classification_history = []
+            st.session_state.usage_count = 0
+            st.success("Geschiedenis gewist!")
+            st.rerun()
 
 # === CLASSIFICATION TAB ===
 with tab_classify:
@@ -697,11 +681,18 @@ Classificeer deze werkbon. Geef je antwoord in JSON formaat."""
         increment_usage(len(results))
         save_to_history(results)
 
-        st.success(f"✅ {len(results)} werkbonnen geclassificeerd!")
+        # Set flag to show success message after rerun
+        st.session_state.just_classified = len(results)
+        st.rerun()  # Refresh to update sidebar counter
 
     # === RESULTS ===
     if st.session_state.classificatie_resultaten:
         results = st.session_state.classificatie_resultaten
+
+        # Show success message if just classified (after rerun)
+        if "just_classified" in st.session_state and st.session_state.just_classified:
+            st.success(f"✅ {st.session_state.just_classified} werkbonnen geclassificeerd!")
+            st.session_state.just_classified = None  # Clear flag
 
         st.divider()
         st.header("Resultaten")
