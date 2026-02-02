@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Classificatie - Publieke versie
-
-Classificeer werkbonnen met AI - single page flow conform DWH versie.
-Inclusief filters, batch laden, drempelwaardes en resultaten.
+"""
+Contract Checker - DEMO VERSIE
+Publieke versie met Parquet data (geen database connectie).
+Conform DWH versie qua layout en functionaliteit.
 """
 import json
 import streamlit as st
@@ -11,25 +11,54 @@ from datetime import date, timedelta
 import sys
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 from src.auth import require_auth, get_secret
 from src.services.parquet_data_service import ParquetDataService, WerkbonVerhaalBuilder
 
-st.set_page_config(page_title="Contract Checker", page_icon="🧪", layout="wide")
+# Fixed batch size (like DWH version)
+BATCH_SIZE = 10
 
-# Wachtwoord check
-require_auth()
+# === PAGE CONFIG ===
+st.set_page_config(
+    page_title="Contract Checker - DEMO",
+    page_icon="🧪",
+    layout="wide"
+)
 
-
-# === LOGO HELPER ===
+# === LOGO ===
 def get_logo_path():
     """Get logo path for embedding."""
-    logo_path = Path(__file__).parent.parent / "assets" / "notifica-logo-kleur.svg"
+    logo_path = Path(__file__).parent / "assets" / "notifica-logo-kleur.svg"
     if logo_path.exists():
         return str(logo_path)
     return None
 
+# === PASSWORD PROTECTION ===
+require_auth()
+
+# === DEMO DISCLAIMER ===
+st.markdown("""
+<div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 15px 20px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 20px;">
+    <strong style="color: #1e40af;">📊 DEMO VERSIE - Historische Data</strong>
+    <p style="color: #1e3a8a; margin: 8px 0 0 0; font-size: 0.9rem;">
+        Deze tool werkt met een historische dataset voor demonstratie- en validatiedoeleinden.
+        Aan de resultaten kunnen geen rechten worden ontleend. Handmatige controle blijft vereist.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+
+# === LOAD DATA SERVICE ===
+@st.cache_resource
+def get_data_service():
+    data_dir = Path(__file__).parent / "data"
+    return ParquetDataService(data_dir=str(data_dir))
+
+try:
+    data_service = get_data_service()
+except Exception as e:
+    st.error(f"Kon data niet laden: {e}")
+    st.stop()
 
 # Check for API key (from secrets or env)
 api_key = get_secret("ANTHROPIC_API_KEY", "")
@@ -40,31 +69,13 @@ if "werkbonnen_batch" not in st.session_state:
 if "classificatie_resultaten" not in st.session_state:
     st.session_state.classificatie_resultaten = []
 
-# Fixed batch size (like DWH version)
-BATCH_SIZE = 10
-
-
-# === LOGO BOVEN NAVIGATIE ===
-logo_path = get_logo_path()
-if logo_path:
-    st.logo(logo_path, size="large")
-
-
-# Load data service
-@st.cache_resource
-def get_data_service():
-    data_dir = Path(__file__).parent.parent / "data"
-    return ParquetDataService(data_dir=str(data_dir))
-
-try:
-    data_service = get_data_service()
-except Exception as e:
-    st.error(f"Kon data niet laden: {e}")
-    st.stop()
-
-
 # === SIDEBAR ===
 with st.sidebar:
+    # Logo bovenaan sidebar (zoals DWH versie)
+    logo_path = get_logo_path()
+    if logo_path:
+        st.image(logo_path, width=140)
+
     st.header("Status")
 
     # API key check and input
@@ -103,30 +114,13 @@ with st.sidebar:
     st.caption(f"Batch grootte: {BATCH_SIZE} (vast)")
 
     st.divider()
-
-    # Links
-    st.markdown("### Links")
     st.markdown("[📖 Handleiding](https://notifica.nl/tools/contract-checker)")
-    st.markdown("[🌐 notifica.nl](https://notifica.nl)")
-
 
 # === MAIN CONTENT ===
-
-# Demo disclaimer banner
-st.markdown("""
-<div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 15px 20px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 20px;">
-    <strong style="color: #1e40af;">📊 DEMO VERSIE - Historische Data</strong>
-    <p style="color: #1e3a8a; margin: 8px 0 0 0; font-size: 0.9rem;">
-        Deze tool werkt met een historische dataset voor demonstratie- en validatiedoeleinden.
-        Aan de resultaten kunnen geen rechten worden ontleend. Handmatige controle blijft vereist.
-    </p>
-</div>
-""", unsafe_allow_html=True)
 
 st.title("🧪 Contract Checker - DEMO")
 st.caption("Werkbonnen classificeren met AI")
 st.markdown("[📖 Handleiding & uitleg](https://notifica.nl/tools/contract-checker)")
-
 
 # Check API
 if not api_key:
