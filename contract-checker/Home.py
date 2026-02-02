@@ -23,6 +23,38 @@ st.set_page_config(
 # Wachtwoord check
 require_auth()
 
+
+# === LOGO HELPER ===
+def get_logo_path():
+    """Get logo path for embedding."""
+    logo_path = Path(__file__).parent / "assets" / "notifica-logo-kleur.svg"
+    if logo_path.exists():
+        return str(logo_path)
+    return None
+
+
+# === SIDEBAR ===
+with st.sidebar:
+    # Logo
+    logo_path = get_logo_path()
+    if logo_path:
+        st.image(logo_path, width=140)
+        st.divider()
+
+    # Navigation links
+    st.markdown("### Navigatie")
+    st.page_link("Home.py", label="🏠 Home", icon=None)
+    st.page_link("pages/1_Werkbon_Selectie.py", label="📋 Werkbon Selectie")
+    st.page_link("pages/2_Classificatie.py", label="🤖 Classificatie")
+
+    st.divider()
+
+    # Link to Notifica
+    st.markdown("### Links")
+    st.markdown("[📖 Handleiding](https://notifica.nl/tools/contract-checker)")
+    st.markdown("[🌐 notifica.nl](https://notifica.nl)")
+
+
 # ============================================
 # MAIN APP
 # ============================================
@@ -57,14 +89,15 @@ else:
 # ============================================
 # DEMO DATA BANNER
 # ============================================
-st.info(f"""
-📊 **Demo Dataset: Historische Werkbonnen**
-
-Deze app bevat een **subselectie van {metadata.get('aantal_hoofdwerkbonnen', '?')} historische werkbonnen**
-(status: Uitgevoerd + Historisch) voor demonstratiedoeleinden.
-
-De data is een snapshot van {metadata.get('export_timestamp', 'onbekende datum')[:10] if metadata.get('export_timestamp') else 'onbekende datum'}.
-""")
+st.markdown("""
+<div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 15px 20px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 20px;">
+    <strong style="color: #1e40af;">📊 DEMO VERSIE - Historische Data</strong>
+    <p style="color: #1e3a8a; margin: 8px 0 0 0; font-size: 0.9rem;">
+        Deze tool werkt met een <strong>historische dataset</strong> van werkbonnen (status: Uitgevoerd + Historisch).
+        De data is een snapshot voor demonstratie- en validatiedoeleinden.
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 st.divider()
 
@@ -100,6 +133,11 @@ with col4:
         f"{metadata.get('aantal_kosten', '?'):,}",
         help="Geregistreerde kosten"
     )
+
+# Debiteuren info
+debiteuren = metadata.get("debiteuren", {})
+if debiteuren:
+    st.caption(f"**Debiteuren:** {' | '.join([f'{code} - {naam}' for code, naam in debiteuren.items()])}")
 
 st.divider()
 
@@ -144,7 +182,7 @@ with col3:
         <div style="font-size: 2rem; margin-bottom: 0.5rem;">3</div>
         <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 0.5rem;">AI Classificatie</div>
         <div style="font-size: 0.85rem; opacity: 0.9;">
-            Claude AI beoordeelt elke werkbon: JA (binnen), NEE (buiten), of ONZEKER.
+            Claude AI beoordeelt elke werkbon: JA (binnen), NEE (buiten), of TWIJFEL.
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -155,7 +193,7 @@ with col4:
         <div style="font-size: 2rem; margin-bottom: 0.5rem;">4</div>
         <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 0.5rem;">Resultaten</div>
         <div style="font-size: 0.85rem; opacity: 0.9;">
-            Bekijk resultaten, valideer met historische data, exporteer naar Excel.
+            Bekijk resultaten met confidence scores, exporteer naar CSV.
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -228,4 +266,8 @@ with st.expander("ℹ️ Over deze demo"):
 
 # Footer
 st.divider()
-st.caption("Contract Check Demo | Notifica | Powered by Claude AI")
+st.markdown("""
+<div style="text-align: center; color: #666;">
+    Contract Check Demo | <a href="https://notifica.nl" target="_blank">Notifica</a> | Powered by Claude AI
+</div>
+""", unsafe_allow_html=True)

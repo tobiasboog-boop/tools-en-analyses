@@ -2,7 +2,9 @@
 """Classificatie - Publieke versie
 
 Classificeer geselecteerde werkbonnen met AI.
+Inclusief drempelwaardes voor JA/NEE/TWIJFEL classificatie.
 """
+import json
 import streamlit as st
 from pathlib import Path
 import sys
@@ -18,8 +20,15 @@ st.set_page_config(page_title="Classificatie", layout="wide")
 # Wachtwoord check
 require_auth()
 
-st.title("Werkbon Classificatie")
-st.caption("AI-gedreven beoordeling: binnen of buiten contract?")
+
+# === LOGO HELPER ===
+def get_logo_path():
+    """Get logo path for embedding."""
+    logo_path = Path(__file__).parent.parent / "assets" / "notifica-logo-kleur.svg"
+    if logo_path.exists():
+        return str(logo_path)
+    return None
+
 
 # Check for API key (from secrets or env)
 api_key = get_secret("ANTHROPIC_API_KEY", "")
@@ -28,36 +37,55 @@ api_key = get_secret("ANTHROPIC_API_KEY", "")
 if "werkbonnen_for_beoordeling" not in st.session_state:
     st.session_state.werkbonnen_for_beoordeling = []
 if "classificatie_resultaten" not in st.session_state:
-    st.session_state.classificatie_resultaten = {}
+    st.session_state.classificatie_resultaten = []
 
-# Sidebar
+
+# === SIDEBAR ===
 with st.sidebar:
-    st.header("Instellingen")
+    # Logo
+    logo_path = get_logo_path()
+    if logo_path:
+        st.image(logo_path, width=140)
+        st.divider()
 
-    # API key input (if not in env)
-    if not api_key:
+    st.header("Status")
+
+    # API key check and input
+    if api_key:
+        st.success("✅ Claude API")
+        st.caption("Model: claude-sonnet-4-20250514")
+    else:
+        st.error("❌ Geen API key")
         api_key = st.text_input(
             "Anthropic API Key",
             type="password",
             help="Nodig voor AI classificatie"
         )
+        if api_key:
+            st.session_state.manual_api_key = api_key
+
+    # Use manual API key if provided
+    if "manual_api_key" in st.session_state and st.session_state.manual_api_key:
+        api_key = st.session_state.manual_api_key
 
     st.divider()
 
-    # Confidence threshold
-    confidence_threshold = st.slider(
-        "Confidence drempel",
-        min_value=0.5,
-        max_value=0.95,
-        value=0.85,
-        step=0.05,
-        help="Minimale confidence voor definitieve classificatie"
-    )
+    # Drempelwaardes
+    st.header("Drempelwaardes")
+
+    threshold_ja = st.slider("JA drempel", 0.5, 1.0, 0.85, 0.05)
+    threshold_nee = st.slider("NEE drempel", 0.5, 1.0, 0.85, 0.05)
+
+    st.info(f"""
+    - JA + ≥{threshold_ja:.0%} → **JA**
+    - NEE + ≥{threshold_nee:.0%} → **NEE**
+    - Anders → **TWIJFEL**
+    """)
 
     st.divider()
 
     # Selection info
-    st.subheader("Geselecteerd")
+    st.header("Geselecteerd")
     selected_count = len(st.session_state.werkbonnen_for_beoordeling)
     st.metric("Werkbonnen", selected_count)
 
@@ -66,7 +94,18 @@ with st.sidebar:
         if st.button("← Naar Selectie"):
             st.switch_page("pages/1_Werkbon_Selectie.py")
 
-# Main content
+    st.divider()
+
+    # Links
+    st.markdown("### Links")
+    st.markdown("[📖 Handleiding](https://notifica.nl/tools/contract-checker)")
+    st.markdown("[🌐 notifica.nl](https://notifica.nl)")
+
+
+# === MAIN CONTENT ===
+st.title("Werkbon Classificatie")
+st.caption("AI-gedreven beoordeling: binnen of buiten contract?")
+
 if not st.session_state.werkbonnen_for_beoordeling:
     st.info("Geen werkbonnen geselecteerd. Ga naar **Werkbon Selectie** om werkbonnen te kiezen.")
     st.stop()
@@ -75,38 +114,47 @@ if not api_key:
     st.warning("Voer een Anthropic API key in via de sidebar om te classificeren.")
     st.stop()
 
+
 # Load data service
 @st.cache_resource
 def get_data_service():
-    # Use absolute path relative to this script
     data_dir = Path(__file__).parent.parent / "data"
     return ParquetDataService(data_dir=str(data_dir))
 
 data_service = get_data_service()
 
-# Contract context (simplified - no file loading in demo)
-st.subheader("Contract Context")
+
+# === CONTRACT CONTEXT ===
+st.header("Contract voorwaarden")
 contract_context = st.text_area(
-    "Contract voorwaarden (optioneel)",
-    height=150,
-    placeholder="Voer hier relevante contractvoorwaarden in die de AI moet meewegen...",
-    help="Beschrijf wat wel/niet onder het contract valt"
+    "Plak hier de relevante contractvoorwaarden",
+    height=200,
+    placeholder="Voer hier de contracttekst in die de AI moet gebruiken voor classificatie...",
+    help="De AI vergelijkt elke werkbon met deze contractvoorwaarden"
 )
+
+if not contract_context:
+    st.warning("⚠️ Voer contractvoorwaarden in om te kunnen classificeren")
 
 st.divider()
 
-# Classify button
-col_btn, col_info = st.columns([1, 3])
 
-with col_btn:
-    classify_clicked = st.button("🤖 Start Classificatie", type="primary")
+# === WERKBONNEN PREVIEW ===
+st.header(f"Te classificeren: {len(st.session_state.werkbonnen_for_beoordeling)} werkbonnen")
 
-with col_info:
-    st.caption(f"Classificeer {len(st.session_state.werkbonnen_for_beoordeling)} werkbonnen")
+with st.expander("Bekijk geselecteerde werkbonnen", expanded=False):
+    for i, wb in enumerate(st.session_state.werkbonnen_for_beoordeling[:20]):
+        st.markdown(f"""
+        **{i+1}. {wb.get('werkbon_code', 'N/A')}** - {wb.get('debiteur', 'Onbekend')}
+        - Klant: {wb.get('klant', 'N/A')}
+        """)
+    if len(st.session_state.werkbonnen_for_beoordeling) > 20:
+        st.caption(f"... en {len(st.session_state.werkbonnen_for_beoordeling) - 20} meer")
 
 
-def classify_werkbon(werkbon_key: int, contract_text: str, api_key: str) -> dict:
-    """Classify a single werkbon using Claude API."""
+# === CLASSIFICATION FUNCTION ===
+def classify_werkbon(werkbon_key: int, contract_text: str, api_key: str, threshold_ja: float, threshold_nee: float) -> dict:
+    """Classify a single werkbon using Claude API with threshold-based final classification."""
     import anthropic
 
     # Get werkbon data
@@ -118,38 +166,51 @@ def classify_werkbon(werkbon_key: int, contract_text: str, api_key: str) -> dict
     )
 
     if not keten:
-        return {"error": "Werkbon niet gevonden"}
+        return {"error": "Werkbon niet gevonden", "werkbon_key": werkbon_key}
 
     # Build verhaal
     builder = WerkbonVerhaalBuilder()
     verhaal = builder.build_verhaal(keten)
 
-    # Build prompt
-    system_prompt = """Je bent een expert in het beoordelen van werkbonnen voor een installatiebedrijf.
-Je taak is om te bepalen of uitgevoerde werkzaamheden binnen of buiten een onderhoudscontract vallen.
+    # System prompt
+    system_prompt = """Je bent een expert in het analyseren van servicecontracten voor verwarmingssystemen.
 
-BELANGRIJK:
-- Analyseer de werkbon GRONDIG: bekijk type, storing, oorzaak, oplossing, kosten
-- Vergelijk met de contractvoorwaarden
-- Geef een duidelijk oordeel: JA (binnen contract), NEE (buiten contract), of ONZEKER
-- Geef een confidence score (0-100%)
-- Leg je redenering uit
+Je taak is om te bepalen of een werkbon binnen of buiten een servicecontract valt.
 
-Antwoord in het volgende formaat:
-OORDEEL: [JA/NEE/ONZEKER]
-CONFIDENCE: [0-100]%
-REDENERING: [Korte uitleg van je beslissing]
-"""
+Analyseer het werkbon verhaal en vergelijk met de contractvoorwaarden. Let op:
+- Type werkzaamheden (onderhoud, reparatie, storing, modificatie)
+- Gebruikte materialen en onderdelen
+- Arbeidsuren en kostenposten
+- Specifieke uitsluitingen in het contract
+- Storingscodes en oorzaken
 
-    user_prompt = f"""## Contract voorwaarden:
-{contract_text if contract_text else "(Geen specifieke voorwaarden opgegeven)"}
+Geef je antwoord ALLEEN in het volgende JSON formaat:
+{
+    "classificatie": "JA" of "NEE",
+    "confidence": 0.0-1.0,
+    "contract_referentie": "Verwijzing naar relevant contract artikel",
+    "toelichting": "Korte uitleg van je redenering"
+}
 
-## Werkbon informatie:
+Classificatie:
+- JA: Werkzaamheden vallen volledig binnen het contract (niet factureren aan klant)
+- NEE: Werkzaamheden vallen buiten het contract (wel factureren aan klant)
+
+confidence: Je zekerheid over de classificatie (0.0 = zeer onzeker, 1.0 = zeer zeker)
+
+BELANGRIJK: Geef ALTIJD een classificatie (JA of NEE), ook als je onzeker bent.
+De confidence score geeft aan hoe zeker je bent."""
+
+    # Truncate contract if too long
+    contract_truncated = contract_text[:15000] if len(contract_text) > 15000 else contract_text
+
+    user_message = f"""### CONTRACT ###
+{contract_truncated}
+
+### WERKBON VERHAAL ###
 {verhaal}
 
-## Vraag:
-Valt deze werkbon BINNEN het contract (niet factureren) of BUITEN het contract (wel factureren)?
-"""
+Classificeer deze werkbon. Geef je antwoord in JSON formaat."""
 
     # Call Claude API
     client = anthropic.Anthropic(api_key=api_key)
@@ -159,150 +220,242 @@ Valt deze werkbon BINNEN het contract (niet factureren) of BUITEN het contract (
             model="claude-sonnet-4-20250514",
             max_tokens=1024,
             system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}]
+            messages=[{"role": "user", "content": user_message}]
         )
 
         response_text = response.content[0].text
 
-        # Parse response
-        result = {
-            "werkbon_key": werkbon_key,
-            "response": response_text,
-            "oordeel": "ONZEKER",
-            "confidence": 0,
-            "redenering": ""
-        }
+        # Parse JSON response
+        try:
+            text = response_text.strip()
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0]
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0]
 
-        lines = response_text.split("\n")
-        for line in lines:
-            line_upper = line.upper()
-            if "OORDEEL:" in line_upper:
-                if "JA" in line_upper:
-                    result["oordeel"] = "JA"
-                elif "NEE" in line_upper:
-                    result["oordeel"] = "NEE"
-                else:
-                    result["oordeel"] = "ONZEKER"
-            elif "CONFIDENCE:" in line_upper:
-                # Extract number
-                import re
-                match = re.search(r'(\d+)', line)
-                if match:
-                    result["confidence"] = int(match.group(1))
-            elif "REDENERING:" in line_upper:
-                result["redenering"] = line.split(":", 1)[1].strip() if ":" in line else ""
+            result = json.loads(text.strip())
 
-        return result
+            confidence = float(result.get("confidence", 0.5))
+            base_classificatie = result.get("classificatie", "NEE").upper()
+
+            # Apply thresholds
+            if base_classificatie == "JA":
+                final = "JA" if confidence >= threshold_ja else "TWIJFEL"
+            else:
+                final = "NEE" if confidence >= threshold_nee else "TWIJFEL"
+
+            return {
+                "werkbon_key": werkbon_key,
+                "classificatie": final,
+                "basis_classificatie": base_classificatie,
+                "confidence": confidence,
+                "contract_referentie": result.get("contract_referentie", ""),
+                "toelichting": result.get("toelichting", ""),
+                "verhaal": verhaal,
+                "totaal_kosten": keten.totaal_kosten,
+                "aantal_werkbonnen": keten.aantal_werkbonnen,
+                "raw_response": response_text
+            }
+
+        except (json.JSONDecodeError, KeyError) as e:
+            return {
+                "werkbon_key": werkbon_key,
+                "classificatie": "TWIJFEL",
+                "basis_classificatie": "PARSE_ERROR",
+                "confidence": 0.0,
+                "contract_referentie": "",
+                "toelichting": f"Kon response niet parsen: {str(e)}",
+                "verhaal": verhaal,
+                "totaal_kosten": keten.totaal_kosten if keten else 0,
+                "raw_response": response_text
+            }
 
     except Exception as e:
-        return {"error": str(e), "werkbon_key": werkbon_key}
+        return {
+            "werkbon_key": werkbon_key,
+            "error": str(e),
+            "classificatie": "ERROR",
+            "confidence": 0.0,
+            "toelichting": f"API fout: {str(e)}"
+        }
 
 
-# Run classification
-if classify_clicked:
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+# === CLASSIFY BUTTON ===
+if contract_context and st.button("🚀 Start Classificatie", type="primary", use_container_width=True):
+    results = []
+    progress = st.progress(0)
+    status = st.empty()
 
     werkbonnen = st.session_state.werkbonnen_for_beoordeling
-    total = len(werkbonnen)
 
     for i, wb in enumerate(werkbonnen):
-        status_text.text(f"Classificeren: {wb['werkbon_code']} ({i+1}/{total})")
+        status.text(f"Classificeren {i+1}/{len(werkbonnen)}: {wb.get('werkbon_code', '')}...")
 
         result = classify_werkbon(
             wb["hoofdwerkbon_key"],
             contract_context,
-            api_key
+            api_key,
+            threshold_ja,
+            threshold_nee
         )
 
-        st.session_state.classificatie_resultaten[wb["hoofdwerkbon_key"]] = result
+        # Add werkbon info to result
+        result["werkbon_code"] = wb.get("werkbon_code", "")
+        result["debiteur"] = wb.get("debiteur", "")
+        result["klant"] = wb.get("klant", "")
+        results.append(result)
 
-        progress_bar.progress((i + 1) / total)
+        progress.progress((i + 1) / len(werkbonnen))
 
-    status_text.text("Classificatie voltooid!")
-    st.balloons()
+    status.empty()
+    progress.empty()
 
-# Show results
+    st.session_state.classificatie_resultaten = results
+    st.success(f"✅ {len(results)} werkbonnen geclassificeerd!")
+
+
+# === RESULTS ===
 if st.session_state.classificatie_resultaten:
+    results = st.session_state.classificatie_resultaten
+
     st.divider()
-    st.subheader("Resultaten")
+    st.header("Resultaten")
 
     # Summary
-    resultaten = st.session_state.classificatie_resultaten
-    ja_count = sum(1 for r in resultaten.values() if r.get("oordeel") == "JA")
-    nee_count = sum(1 for r in resultaten.values() if r.get("oordeel") == "NEE")
-    onzeker_count = sum(1 for r in resultaten.values() if r.get("oordeel") == "ONZEKER")
-    error_count = sum(1 for r in resultaten.values() if "error" in r)
+    ja = sum(1 for r in results if r.get("classificatie") == "JA")
+    nee = sum(1 for r in results if r.get("classificatie") == "NEE")
+    twijfel = sum(1 for r in results if r.get("classificatie") == "TWIJFEL")
+    errors = sum(1 for r in results if r.get("classificatie") == "ERROR" or "error" in r)
 
     col1, col2, col3, col4 = st.columns(4)
+
     with col1:
-        st.metric("JA (binnen)", ja_count, help="Niet factureren")
+        st.markdown(f"""
+        <div style="padding: 1.5rem; background: #dcfce7; border-radius: 0.5rem; text-align: center; border: 2px solid #22c55e;">
+            <div style="font-size: 2.5rem; font-weight: bold; color: #166534;">{ja}</div>
+            <div style="color: #166534;">✅ Binnen contract</div>
+        </div>
+        """, unsafe_allow_html=True)
+
     with col2:
-        st.metric("NEE (buiten)", nee_count, help="Wel factureren")
+        st.markdown(f"""
+        <div style="padding: 1.5rem; background: #fee2e2; border-radius: 0.5rem; text-align: center; border: 2px solid #ef4444;">
+            <div style="font-size: 2.5rem; font-weight: bold; color: #991b1b;">{nee}</div>
+            <div style="color: #991b1b;">❌ Te factureren</div>
+        </div>
+        """, unsafe_allow_html=True)
+
     with col3:
-        st.metric("ONZEKER", onzeker_count, help="Handmatige beoordeling nodig")
+        st.markdown(f"""
+        <div style="padding: 1.5rem; background: #fed7aa; border-radius: 0.5rem; text-align: center; border: 2px solid #f97316;">
+            <div style="font-size: 2.5rem; font-weight: bold; color: #9a3412;">{twijfel}</div>
+            <div style="color: #9a3412;">❓ Handmatig checken</div>
+        </div>
+        """, unsafe_allow_html=True)
+
     with col4:
-        st.metric("Errors", error_count)
-
-    st.divider()
-
-    # Detail per werkbon
-    for wb in st.session_state.werkbonnen_for_beoordeling:
-        key = wb["hoofdwerkbon_key"]
-        result = resultaten.get(key, {})
-
-        if "error" in result:
-            st.error(f"**{wb['werkbon_code']}**: Error - {result['error']}")
-            continue
-
-        oordeel = result.get("oordeel", "?")
-        confidence = result.get("confidence", 0)
-        redenering = result.get("redenering", "")
-
-        # Color based on oordeel
-        if oordeel == "JA":
-            color = "🟢"
-        elif oordeel == "NEE":
-            color = "🔴"
+        if errors > 0:
+            st.markdown(f"""
+            <div style="padding: 1.5rem; background: #f3f4f6; border-radius: 0.5rem; text-align: center; border: 2px solid #9ca3af;">
+                <div style="font-size: 2.5rem; font-weight: bold; color: #4b5563;">{errors}</div>
+                <div style="color: #4b5563;">⚠️ Errors</div>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            color = "🟡"
+            st.markdown(f"""
+            <div style="padding: 1.5rem; background: #f3f4f6; border-radius: 0.5rem; text-align: center; border: 2px solid #9ca3af;">
+                <div style="font-size: 2.5rem; font-weight: bold; color: #4b5563;">{len(results)}</div>
+                <div style="color: #4b5563;">📊 Totaal</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-        # Confidence warning
-        conf_warning = " ⚠️" if confidence < confidence_threshold * 100 else ""
-
-        with st.expander(f"{color} {wb['werkbon_code']} - {oordeel} ({confidence}%){conf_warning}"):
-            st.markdown(f"**Oordeel:** {oordeel}")
-            st.markdown(f"**Confidence:** {confidence}%")
-            st.markdown(f"**Redenering:** {redenering}")
-
-            st.divider()
-
-            st.markdown("**Volledige AI response:**")
-            st.text(result.get("response", ""))
-
-    # Export button
     st.divider()
-    if st.button("📥 Exporteer naar CSV"):
-        import pandas as pd
-        from io import StringIO
 
-        rows = []
-        for wb in st.session_state.werkbonnen_for_beoordeling:
-            key = wb["hoofdwerkbon_key"]
-            result = resultaten.get(key, {})
-            rows.append({
-                "werkbon_code": wb["werkbon_code"],
-                "hoofdwerkbon_key": key,
-                "oordeel": result.get("oordeel", "ERROR"),
-                "confidence": result.get("confidence", 0),
-                "redenering": result.get("redenering", result.get("error", ""))
-            })
+    # Detail per result
+    for result in results:
+        classificatie = result.get("classificatie", "ERROR")
 
-        df = pd.DataFrame(rows)
-        csv = df.to_csv(index=False)
-        st.download_button(
-            "Download CSV",
-            csv,
-            file_name="classificatie_resultaten.csv",
-            mime="text/csv"
-        )
+        if classificatie == "JA":
+            color, border, icon = "#dcfce7", "#22c55e", "✅"
+        elif classificatie == "NEE":
+            color, border, icon = "#fee2e2", "#ef4444", "❌"
+        elif classificatie == "TWIJFEL":
+            color, border, icon = "#fed7aa", "#f97316", "❓"
+        else:
+            color, border, icon = "#f3f4f6", "#9ca3af", "⚠️"
+
+        confidence = result.get("confidence", 0)
+        kosten_info = f" | €{result.get('totaal_kosten', 0):,.2f}" if result.get('totaal_kosten') else ""
+        keten_info = f" | {result.get('aantal_werkbonnen', 1)} bon(nen)" if result.get('aantal_werkbonnen', 1) > 1 else ""
+
+        st.markdown(f"""
+        <div style="padding: 1rem; background: {color}; border-radius: 0.5rem; border-left: 4px solid {border}; margin-bottom: 0.5rem;">
+            <strong>{icon} {result.get('werkbon_code', result.get('debiteur', '')[:40])}</strong>
+            <span style="margin-left: 1rem; padding: 0.2rem 0.5rem; background: white; border-radius: 0.25rem;">
+                {classificatie}
+            </span>
+            <span style="margin-left: 0.5rem; color: #666; font-size: 0.9rem;">
+                ({confidence:.0%}){kosten_info}{keten_info}
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.expander(f"Details - {result.get('werkbon_code', 'Werkbon')}"):
+            tab1, tab2 = st.tabs(["📋 Classificatie", "📄 Volledige Werkbon Keten"])
+
+            with tab1:
+                st.markdown(f"**Toelichting:** {result.get('toelichting', 'N/A')}")
+                st.markdown(f"**Contract referentie:** {result.get('contract_referentie', 'N/A')}")
+                st.markdown(f"**Klant:** {result.get('klant', 'N/A')}")
+                st.markdown(f"**Debiteur:** {result.get('debiteur', 'N/A')}")
+
+                if result.get("basis_classificatie"):
+                    st.caption(f"Basis classificatie: {result['basis_classificatie']} (voor threshold)")
+
+            with tab2:
+                if result.get("verhaal"):
+                    st.text_area(
+                        "Werkbon Keten (zoals verzonden naar Claude)",
+                        result["verhaal"],
+                        height=400,
+                        key=f"verhaal_{result.get('werkbon_key', i)}"
+                    )
+                else:
+                    st.info("Geen werkbon keten beschikbaar")
+
+    # Export
+    st.divider()
+    import pandas as pd
+
+    df = pd.DataFrame([{
+        "Werkbon": r.get("werkbon_code", ""),
+        "Debiteur": r.get("debiteur", ""),
+        "Klant": r.get("klant", ""),
+        "Classificatie": r.get("classificatie", ""),
+        "Basis": r.get("basis_classificatie", ""),
+        "Confidence": f"{r.get('confidence', 0):.0%}",
+        "Kosten": f"€{r.get('totaal_kosten', 0):,.2f}",
+        "Toelichting": r.get("toelichting", ""),
+        "Contract Referentie": r.get("contract_referentie", "")
+    } for r in results])
+
+    st.download_button(
+        "📥 Download resultaten (CSV)",
+        df.to_csv(index=False),
+        "classificatie_resultaten.csv",
+        "text/csv",
+        use_container_width=True
+    )
+
+    # New classification button
+    st.divider()
+    col_new, col_clear = st.columns(2)
+    with col_new:
+        if st.button("🔄 Opnieuw classificeren", use_container_width=True):
+            st.session_state.classificatie_resultaten = []
+            st.rerun()
+    with col_clear:
+        if st.button("🗑️ Selectie wissen", use_container_width=True):
+            st.session_state.werkbonnen_for_beoordeling = []
+            st.session_state.classificatie_resultaten = []
+            st.switch_page("pages/1_Werkbon_Selectie.py")

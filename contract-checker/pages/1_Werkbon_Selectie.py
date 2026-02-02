@@ -38,8 +38,25 @@ except Exception as e:
     st.error(f"Kon data niet laden: {e}")
     st.stop()
 
-# Sidebar filters
+# Helper for logo path
+def get_logo_path():
+    """Zoek logo in assets map."""
+    base = Path(__file__).parent.parent
+    for filename in ["notifica-logo-kleur.svg", "notifica-logo.svg", "logo.svg", "logo.png"]:
+        logo = base / "assets" / filename
+        if logo.exists():
+            return str(logo)
+    return None
+
+
+# === SIDEBAR ===
 with st.sidebar:
+    # Logo
+    logo_path = get_logo_path()
+    if logo_path:
+        st.image(logo_path, width=140)
+        st.divider()
+
     st.header("Filters")
 
     # Debiteur filter
@@ -77,6 +94,12 @@ with st.sidebar:
 
         if st.button("▶️ Naar Classificatie", type="primary"):
             st.switch_page("pages/2_Classificatie.py")
+
+    # Links section
+    st.divider()
+    st.markdown("### Links")
+    st.markdown("[📖 Handleiding](https://notifica.nl/tools/contract-checker)")
+    st.markdown("[🌐 notifica.nl](https://notifica.nl)")
 
 # Main content
 if st.button("🔄 Werkbonnen laden", type="primary"):
