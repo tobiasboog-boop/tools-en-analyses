@@ -58,6 +58,32 @@ def get_contract_for_debiteur(debiteur_code: str, contracts: dict):
     return None
 
 
+# === USAGE TRACKING ===
+USAGE_FILE = Path(__file__).parent / "data" / "usage_count.json"
+
+
+def get_usage_count() -> int:
+    """Get total number of classifications."""
+    try:
+        if USAGE_FILE.exists():
+            with open(USAGE_FILE, "r") as f:
+                data = json.load(f)
+                return data.get("classification_count", 0)
+    except Exception:
+        pass
+    return 0
+
+
+def increment_usage(count: int = 1):
+    """Increment the classification counter."""
+    try:
+        current = get_usage_count()
+        with open(USAGE_FILE, "w") as f:
+            json.dump({"classification_count": current + count}, f)
+    except Exception:
+        pass
+
+
 # === PAGE CONFIG ===
 st.set_page_config(
     page_title="Contract Checker - DEMO",
@@ -160,6 +186,11 @@ with st.sidebar:
 
     st.divider()
     st.markdown("[📖 Handleiding](https://notifica.nl/tools/contract-checker)")
+
+    # Usage counter (like DWH "Pilot Gebruik")
+    st.divider()
+    st.header("Demo Gebruik")
+    st.metric("Geclassificeerd", f"{get_usage_count()} werkbonnen")
 
 # === MAIN CONTENT ===
 
@@ -504,6 +535,10 @@ if st.button("🚀 Classificeer batch", type="primary", use_container_width=True
 
     st.session_state.classificatie_resultaten = results
     st.session_state.werkbonnen_batch = None  # Clear for next batch
+
+    # Increment usage counter
+    increment_usage(len(results))
+
     st.success(f"✅ {len(results)} werkbonnen geclassificeerd!")
 
 
