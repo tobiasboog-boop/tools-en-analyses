@@ -4,7 +4,7 @@ Contract Checker - DEMO VERSIE
 Publieke versie met Parquet data (geen database connectie).
 Conform DWH versie qua layout en functionaliteit.
 
-Version: 2026-02-03-v2 (persistent storage + batch fix)
+Version: 2026-02-03-v3 (fix hoofdwerkbon_key)
 - Fix: "laad nieuwe batch" laadt nu daadwerkelijk nieuwe werkbonnen
 - Verwerkte werkbonnen worden bijgehouden in Parquet en overgeslagen bij volgende batch
 - Classificatie geschiedenis wordt persistent opgeslagen in Parquet
@@ -291,7 +291,7 @@ with st.sidebar:
 # === MAIN CONTENT ===
 
 st.title("🧪 Contract Checker - DEMO")
-st.caption("Werkbonnen classificeren met AI")
+st.caption("Werkbonnen classificeren met AI | v2026-02-03-v3")
 st.markdown("[📖 Handleiding & uitleg](https://notifica.nl/tools/contract-checker)")
 
 # === TABS ===
