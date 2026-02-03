@@ -511,8 +511,8 @@ with tab_classify:
             # Markeer huidige batch als verwerkt zodat ze niet opnieuw geladen worden
             if st.session_state.werkbonnen_batch:
                 for wb in st.session_state.werkbonnen_batch:
-                    if wb.get("werkbon_key"):
-                        st.session_state.processed_werkbon_keys.add(wb["werkbon_key"])
+                    if wb.get("hoofdwerkbon_key"):
+                        st.session_state.processed_werkbon_keys.add(wb["hoofdwerkbon_key"])
                 # Save to persistent storage
                 save_processed_werkbon_keys(st.session_state.processed_werkbon_keys)
             st.session_state.werkbonnen_batch = None
