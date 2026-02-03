@@ -4,7 +4,12 @@ Contract Checker - DEMO VERSIE
 Publieke versie met Parquet data (geen database connectie).
 Conform DWH versie qua layout en functionaliteit.
 
-Version: 2026-02-02-v3 (session state persistence)
+Version: 2026-02-03-v2 (persistent storage + batch fix)
+- Fix: "laad nieuwe batch" laadt nu daadwerkelijk nieuwe werkbonnen
+- Verwerkte werkbonnen worden bijgehouden in Parquet en overgeslagen bij volgende batch
+- Classificatie geschiedenis wordt persistent opgeslagen in Parquet
+- Teller blijft bewaard na pagina refresh
+- Toegevoegd: 'Reset verwerkte bonnen' knop
 """
 import json
 import streamlit as st
@@ -60,38 +65,65 @@ def get_contract_for_debiteur(debiteur_code: str, contracts: dict):
     return None
 
 
-# === USAGE TRACKING (Session State - Streamlit Cloud compatible) ===
-# Note: Uses session state because Streamlit Cloud has ephemeral file storage
-# Data persists within a session but resets on page refresh
+# === USAGE TRACKING (Parquet persistent storage) ===
+# Data persists in Parquet files - survives page refresh and restarts
+import pandas as pd
+
+def get_history_path():
+    """Get path to classification history Parquet file."""
+    return Path(__file__).parent / "data" / "classification_history.parquet"
+
+
+def get_processed_keys_path():
+    """Get path to processed werkbon keys file."""
+    return Path(__file__).parent / "data" / "processed_werkbon_keys.parquet"
+
 
 def get_usage_count() -> int:
-    """Get total number of classifications from session state."""
-    if "usage_count" not in st.session_state:
-        st.session_state.usage_count = 0
-    return st.session_state.usage_count
+    """Get total number of classifications from Parquet file."""
+    history_path = get_history_path()
+    if history_path.exists():
+        try:
+            df = pd.read_parquet(history_path)
+            return len(df)
+        except Exception:
+            return 0
+    return 0
 
 
 def increment_usage(count: int = 1):
-    """Increment the classification counter in session state."""
-    if "usage_count" not in st.session_state:
-        st.session_state.usage_count = 0
-    st.session_state.usage_count += count
+    """Usage tracking is now automatic via history file."""
+    pass  # No longer needed - count is derived from history length
 
 
 def load_history() -> list:
-    """Load classification history from session state."""
-    if "classification_history" not in st.session_state:
-        st.session_state.classification_history = []
-    return st.session_state.classification_history
+    """Load classification history from Parquet file."""
+    history_path = get_history_path()
+    if history_path.exists():
+        try:
+            df = pd.read_parquet(history_path)
+            return df.to_dict('records')
+        except Exception:
+            return []
+    return []
 
 
 def save_to_history(results: list):
-    """Save classification results to session state history."""
+    """Save classification results to Parquet file (persistent storage)."""
     from datetime import datetime
 
-    if "classification_history" not in st.session_state:
-        st.session_state.classification_history = []
+    history_path = get_history_path()
 
+    # Load existing history
+    existing_records = []
+    if history_path.exists():
+        try:
+            df_existing = pd.read_parquet(history_path)
+            existing_records = df_existing.to_dict('records')
+        except Exception:
+            pass
+
+    # Add new records
     timestamp = datetime.now().isoformat()
     for r in results:
         history_entry = {
@@ -108,7 +140,40 @@ def save_to_history(results: list):
             "contract_referentie": r.get("contract_referentie", ""),
             "totaal_kosten": r.get("totaal_kosten", 0),
         }
-        st.session_state.classification_history.append(history_entry)
+        existing_records.append(history_entry)
+
+    # Save to Parquet
+    df = pd.DataFrame(existing_records)
+    df.to_parquet(history_path, index=False)
+
+
+def load_processed_werkbon_keys() -> set:
+    """Load set of already processed werkbon keys from Parquet."""
+    keys_path = get_processed_keys_path()
+    if keys_path.exists():
+        try:
+            df = pd.read_parquet(keys_path)
+            return set(df["werkbon_key"].tolist())
+        except Exception:
+            return set()
+    return set()
+
+
+def save_processed_werkbon_keys(keys: set):
+    """Save processed werkbon keys to Parquet file."""
+    keys_path = get_processed_keys_path()
+    df = pd.DataFrame({"werkbon_key": list(keys)})
+    df.to_parquet(keys_path, index=False)
+
+
+def clear_all_history():
+    """Clear all history and processed keys (for reset functionality)."""
+    history_path = get_history_path()
+    keys_path = get_processed_keys_path()
+    if history_path.exists():
+        history_path.unlink()
+    if keys_path.exists():
+        keys_path.unlink()
 
 
 # === PAGE CONFIG ===
@@ -166,6 +231,9 @@ if "werkbonnen_batch" not in st.session_state:
     st.session_state.werkbonnen_batch = None
 if "classificatie_resultaten" not in st.session_state:
     st.session_state.classificatie_resultaten = []
+if "processed_werkbon_keys" not in st.session_state:
+    # Load from persistent storage
+    st.session_state.processed_werkbon_keys = load_processed_werkbon_keys()
 
 # === SIDEBAR ===
 with st.sidebar:
@@ -218,7 +286,7 @@ with st.sidebar:
     st.divider()
     st.header("Demo Gebruik")
     st.metric("Geclassificeerd", f"{get_usage_count()} werkbonnen")
-    st.caption("Teller reset bij pagina refresh")
+    st.caption("✅ Persistente opslag - blijft bewaard")
 
 # === MAIN CONTENT ===
 
@@ -232,7 +300,7 @@ tab_classify, tab_history = st.tabs(["🚀 Classificeren", "📜 Geschiedenis"])
 # === HISTORY TAB ===
 with tab_history:
     st.header("Classificatie Geschiedenis")
-    st.caption("Sessie-gebaseerd: geschiedenis wordt gewist bij pagina refresh. Download CSV om te bewaren.")
+    st.caption("✅ Persistent opgeslagen in Parquet - blijft bewaard na refresh.")
 
     history = load_history()
 
@@ -312,10 +380,10 @@ with tab_history:
         )
 
         # Clear history button
-        if st.button("🗑️ Wis geschiedenis", type="secondary"):
-            st.session_state.classification_history = []
-            st.session_state.usage_count = 0
-            st.success("Geschiedenis gewist!")
+        if st.button("🗑️ Wis volledige geschiedenis", type="secondary"):
+            clear_all_history()
+            st.session_state.processed_werkbon_keys = set()
+            st.success("Geschiedenis en verwerkte werkbonnen gewist!")
             st.rerun()
 
 # === CLASSIFICATION TAB ===
@@ -434,12 +502,28 @@ with tab_classify:
     if st.session_state.last_filters != current_filters:
         st.session_state.werkbonnen_batch = None
         st.session_state.classificatie_resultaten = []
+        st.session_state.processed_werkbon_keys = set()  # Reset bij filter wijziging
         st.session_state.last_filters = current_filters
 
-    if st.button("🔄 Laad nieuwe batch", type="secondary"):
-        st.session_state.werkbonnen_batch = None
-        st.session_state.classificatie_resultaten = []
-        st.rerun()
+    col_btn1, col_btn2 = st.columns([1, 1])
+    with col_btn1:
+        if st.button("🔄 Laad nieuwe batch", type="secondary", use_container_width=True):
+            st.session_state.werkbonnen_batch = None
+            st.session_state.classificatie_resultaten = []
+            st.rerun()
+    with col_btn2:
+        if st.button("🗑️ Reset verwerkte bonnen", type="secondary", use_container_width=True,
+                     help="Wist de lijst van verwerkte werkbonnen zodat ze opnieuw kunnen worden geladen"):
+            st.session_state.processed_werkbon_keys = set()
+            save_processed_werkbon_keys(set())  # Clear persistent storage
+            st.session_state.werkbonnen_batch = None
+            st.session_state.classificatie_resultaten = []
+            st.success("Verwerkte werkbonnen gereset!")
+            st.rerun()
+
+    # Toon info over verwerkte werkbonnen
+    if st.session_state.processed_werkbon_keys:
+        st.caption(f"📊 {len(st.session_state.processed_werkbon_keys)} werkbonnen al verwerkt in deze sessie (worden overgeslagen)")
 
     # Load batch
     if st.session_state.werkbonnen_batch is None:
@@ -460,6 +544,10 @@ with tab_classify:
             if debiteur_codes:
                 mask = df["debiteur"].apply(lambda x: any(code in str(x) for code in debiteur_codes))
                 df = df[mask]
+
+            # Excludeer al verwerkte werkbonnen
+            if st.session_state.processed_werkbon_keys:
+                df = df[~df["werkbon_key"].isin(st.session_state.processed_werkbon_keys)]
 
             # Sorteer en limit
             df = df.sort_values("melddatum", ascending=False).head(BATCH_SIZE)
@@ -482,7 +570,10 @@ with tab_classify:
     werkbonnen = st.session_state.werkbonnen_batch
 
     if not werkbonnen:
-        st.info("Geen werkbonnen gevonden met de huidige filters")
+        if st.session_state.processed_werkbon_keys:
+            st.info(f"Alle {len(st.session_state.processed_werkbon_keys)} werkbonnen met de huidige filters zijn al verwerkt. Klik op 'Reset verwerkte bonnen' om opnieuw te beginnen.")
+        else:
+            st.info("Geen werkbonnen gevonden met de huidige filters")
         st.stop()
 
     st.success(f"{len(werkbonnen)} werkbonnen geladen")
@@ -676,8 +767,15 @@ Classificeer deze werkbon. Geef je antwoord in JSON formaat."""
         st.session_state.classificatie_resultaten = results
         st.session_state.werkbonnen_batch = None  # Clear for next batch
 
-        # Increment usage counter and save to history
-        increment_usage(len(results))
+        # Markeer werkbonnen als verwerkt zodat ze niet opnieuw geladen worden
+        for r in results:
+            if r.get("werkbon_key"):
+                st.session_state.processed_werkbon_keys.add(r["werkbon_key"])
+
+        # Save processed keys to persistent storage
+        save_processed_werkbon_keys(st.session_state.processed_werkbon_keys)
+
+        # Save to history (persistent Parquet storage)
         save_to_history(results)
 
         # Set flag to show success message after rerun
