@@ -508,6 +508,13 @@ with tab_classify:
     col_btn1, col_btn2 = st.columns([1, 1])
     with col_btn1:
         if st.button("🔄 Laad nieuwe batch", type="secondary", use_container_width=True):
+            # Markeer huidige batch als verwerkt zodat ze niet opnieuw geladen worden
+            if st.session_state.werkbonnen_batch:
+                for wb in st.session_state.werkbonnen_batch:
+                    if wb.get("werkbon_key"):
+                        st.session_state.processed_werkbon_keys.add(wb["werkbon_key"])
+                # Save to persistent storage
+                save_processed_werkbon_keys(st.session_state.processed_werkbon_keys)
             st.session_state.werkbonnen_batch = None
             st.session_state.classificatie_resultaten = []
             st.rerun()
