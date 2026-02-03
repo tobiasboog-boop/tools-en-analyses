@@ -10,4 +10,4 @@ enableXsrfProtection = true
 
 [browser]
 gatherUsageStats = false
-# Reboot trigger: ma  2 feb 2026 16:02:21
+# Reboot trigger: ma  3 feb 2026 17:30:00 - batch fix + persistent storage
