@@ -621,6 +621,42 @@ with tab_classify:
             key="debiteur_filter_v2"
         )
 
+    # === NIEUWE FILTERS: GARANTIE & CONTRACT ===
+    st.divider()
+
+    col3, col4 = st.columns(2)
+
+    with col3:
+        st.subheader("⏳ Garantie filter")
+        skip_garantie = st.checkbox(
+            "Skip werkbonnen binnen garantie",
+            help="Werkbonnen binnen garantietermijn worden overgeslagen (intern factureren aan installatie afdeling)",
+            key="skip_garantie_v2"
+        )
+        if skip_garantie:
+            garantie_maanden = st.number_input(
+                "Garantie termijn (maanden)",
+                min_value=1,
+                max_value=36,
+                value=12,
+                help="Werkbonnen jonger dan X maanden worden overgeslagen",
+                key="garantie_termijn_v2"
+            )
+        else:
+            garantie_maanden = 12  # default
+
+    with col4:
+        st.subheader("📋 Contract-type filter")
+        st.caption("⚠️ In ontwikkeling - koppeling met werkbonnen wordt verder uitgewerkt")
+        selected_contracts = st.multiselect(
+            "Filter op contract (optioneel)",
+            options=sorted([c["filename"] for c in contracts.values()]),
+            help="Selecteer specifieke contracten (bijv. alleen individuele woningen). Koppeling via debiteur-contract mapping wordt verder ontwikkeld.",
+            key="contract_filter_v2"
+        )
+        if selected_contracts:
+            st.info(f"ℹ️ Contract filter nog niet volledig geïmplementeerd. Vraag WVC om specificatie van contract-werkbon koppeling.")
+
     # Count werkbonnen
     def count_werkbonnen(start_date, end_date, debiteur_filter):
         df = data_service.df_werkbonnen.copy()
@@ -658,7 +694,10 @@ with tab_classify:
     current_filters = {
         "start": str(filter_start),
         "end": str(filter_end),
-        "debiteuren": tuple(sorted(selected_debiteuren)) if selected_debiteuren else ()
+        "debiteuren": tuple(sorted(selected_debiteuren)) if selected_debiteuren else (),
+        "skip_garantie": skip_garantie,
+        "garantie_maanden": garantie_maanden if skip_garantie else 0,
+        "contracts": tuple(sorted(selected_contracts)) if selected_contracts else ()
     }
     if "last_filters" not in st.session_state:
         st.session_state.last_filters = None
@@ -705,6 +744,19 @@ with tab_classify:
             if debiteur_codes:
                 mask = df["debiteur"].apply(lambda x: any(code in str(x) for code in debiteur_codes))
                 df = df[mask]
+
+            # Garantie filter
+            if skip_garantie:
+                from datetime import datetime, timedelta
+                cutoff_date = datetime.now() - timedelta(days=garantie_maanden*30)
+                cutoff_str = cutoff_date.strftime("%Y-%m-%d")
+                df = df[df["melddatum_str"] < cutoff_str]
+                st.caption(f"⏳ Garantie filter actief: Skip werkbonnen jonger dan {cutoff_str}")
+
+            # Contract filter (TODO: implementatie vereist contract-werkbon mapping)
+            if selected_contracts:
+                st.warning(f"⚠️ Contract filter geselecteerd maar nog niet volledig geïmplementeerd. Geselecteerd: {', '.join(selected_contracts)}")
+                # TODO: Filter df based on contract mapping when available
 
             if st.session_state.processed_werkbon_keys:
                 df = df[~df["werkbon_key"].isin(st.session_state.processed_werkbon_keys)]
