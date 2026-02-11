@@ -25,31 +25,30 @@ from src.services.parquet_data_service import ParquetDataService, WerkbonVerhaal
 BATCH_SIZE = 10
 
 
-def load_individuele_contracten() -> set:
-    """Laad lijst met individuele contracten uit bestand."""
-    contracts_file = Path(__file__).parent / "data" / "individuele_contracten.txt"
-    contracts = set()
+def load_collectieve_patronen() -> set:
+    """Laad patronen die collectieve systemen identificeren."""
+    patterns_file = Path(__file__).parent / "data" / "collectieve_patronen.txt"
+    patterns = set()
 
-    if contracts_file.exists():
-        with open(contracts_file, 'r', encoding='utf-8') as f:
+    if patterns_file.exists():
+        with open(patterns_file, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    contracts.add(line.lower())
+                    patterns.add(line.lower())
 
-    return contracts
+    return patterns
 
 
-def is_individueel_contract(paragraaf_naam: str, individuele_contracten: set) -> bool:
-    """Check of een paragraaf naam matched met een individueel contract."""
+def is_collectief_systeem(paragraaf_naam: str, collectieve_patronen: set) -> bool:
+    """Check of een paragraaf naam een collectief systeem is (centraal ketelhuis, HVC, etc.)."""
     if not paragraaf_naam:
         return False
 
     paragraaf_lower = paragraaf_naam.lower()
 
-    # Check voor partial match (elk individueel contract in de naam)
-    for contract in individuele_contracten:
-        if contract in paragraaf_lower:
+    for patroon in collectieve_patronen:
+        if patroon in paragraaf_lower:
             return True
 
     return False
@@ -657,20 +656,31 @@ with tab_classify:
 
     contract_type_filter = st.radio(
         "Toon werkbonnen voor:",
-        options=["Alle contracten", "Alleen individuele contracten", "Alleen collectieve contracten"],
+        options=["Alle contracten", "Alleen individuele installaties", "Alleen collectieve systemen"],
         index=0,
         horizontal=True,
-        help="Individuele contracten staan in 'Contractvoorwaarden diverse WBV.xlsx'. Rest is collectief.",
+        help="Individueel = eigen ketel/installatie. Collectief = centraal ketelhuis, HVC, stadsverwarming.",
         key="contract_type_filter_v2"
     )
 
-    # Load individuele contracten lijst
-    individuele_contracten = load_individuele_contracten()
+    # Load collectieve patronen (blacklist approach)
+    collectieve_patronen = load_collectieve_patronen()
 
-    if individuele_contracten:
-        st.caption(f"ℹ️ {len(individuele_contracten)} individuele contracten geladen")
+    if collectieve_patronen:
+        st.caption(f"ℹ️ Collectieve systemen herkend op: {', '.join(sorted(collectieve_patronen))}")
     else:
-        st.warning("⚠️ Geen individuele contracten lijst gevonden. Alle werkbonnen worden als 'onbekend' behandeld.")
+        st.warning("⚠️ Geen collectieve patronen gevonden in data/collectieve_patronen.txt")
+
+    # Build werkbon → collectief/individueel mapping (eenmalig)
+    def build_contract_type_mapping():
+        df_para = data_service.df_paragrafen.copy()
+        df_para["is_collectief"] = df_para["naam"].apply(
+            lambda x: is_collectief_systeem(x, collectieve_patronen)
+        )
+        # Als minstens 1 paragraaf collectief is → werkbon is collectief
+        return df_para.groupby("werkbon_key")["is_collectief"].max().to_dict()
+
+    werkbon_collectief_map = build_contract_type_mapping()
 
     # Count werkbonnen
     def count_werkbonnen(start_date, end_date, debiteur_filter, contract_filter):
@@ -685,18 +695,12 @@ with tab_classify:
         if debiteur_filter:
             df = df[df["debiteur"].isin(debiteur_filter)]
 
-        # Contract-type filter
+        # Contract-type filter (blacklist: collectief herkennen, rest = individueel)
         if contract_filter != "Alle contracten":
-            df_para = data_service.df_paragrafen.copy()
-            df_para["is_individueel"] = df_para["naam"].apply(
-                lambda x: is_individueel_contract(x, individuele_contracten)
-            )
-            werkbon_type = df_para.groupby("werkbon_key")["is_individueel"].max().to_dict()
-
-            if contract_filter == "Alleen individuele contracten":
-                df = df[df["werkbon_key"].apply(lambda x: werkbon_type.get(x, False) == True)]
-            elif contract_filter == "Alleen collectieve contracten":
-                df = df[df["werkbon_key"].apply(lambda x: werkbon_type.get(x, False) == False)]
+            if contract_filter == "Alleen individuele installaties":
+                df = df[df["werkbon_key"].apply(lambda x: not werkbon_collectief_map.get(x, False))]
+            elif contract_filter == "Alleen collectieve systemen":
+                df = df[df["werkbon_key"].apply(lambda x: werkbon_collectief_map.get(x, False))]
 
         return len(df)
 
@@ -776,26 +780,14 @@ with tab_classify:
                 mask = df["debiteur"].apply(lambda x: any(code in str(x) for code in debiteur_codes))
                 df = df[mask]
 
-            # Contract-type filter (individueel/collectief)
+            # Contract-type filter (blacklist: collectief herkennen, rest = individueel)
             if contract_type_filter != "Alle contracten":
-                # Join met werkbonparagrafen om contract type te bepalen
-                df_para = data_service.df_paragrafen.copy()
-
-                # Bepaal voor elke paragraaf of het individueel of collectief is
-                df_para["is_individueel"] = df_para["naam"].apply(
-                    lambda x: is_individueel_contract(x, individuele_contracten)
-                )
-
-                # Groepeer per werkbon: als minimaal 1 paragraaf individueel is, is werkbon individueel
-                werkbon_type = df_para.groupby("werkbon_key")["is_individueel"].max().to_dict()
-
-                # Filter werkbonnen
-                if contract_type_filter == "Alleen individuele contracten":
-                    df = df[df["werkbon_key"].apply(lambda x: werkbon_type.get(x, False) == True)]
-                    st.caption(f"📋 Filter actief: Alleen individuele contracten")
-                elif contract_type_filter == "Alleen collectieve contracten":
-                    df = df[df["werkbon_key"].apply(lambda x: werkbon_type.get(x, False) == False)]
-                    st.caption(f"📋 Filter actief: Alleen collectieve contracten")
+                if contract_type_filter == "Alleen individuele installaties":
+                    df = df[df["werkbon_key"].apply(lambda x: not werkbon_collectief_map.get(x, False))]
+                    st.caption("📋 Filter actief: Alleen individuele installaties (eigen ketel)")
+                elif contract_type_filter == "Alleen collectieve systemen":
+                    df = df[df["werkbon_key"].apply(lambda x: werkbon_collectief_map.get(x, False))]
+                    st.caption("📋 Filter actief: Alleen collectieve systemen (centraal ketelhuis/HVC)")
 
             if st.session_state.processed_werkbon_keys:
                 df = df[~df["werkbon_key"].isin(st.session_state.processed_werkbon_keys)]

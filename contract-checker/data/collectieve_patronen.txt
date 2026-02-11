@@ -1,0 +1,20 @@
+# Collectieve systemen - patronen
+# ================================
+#
+# LOGICA: Als werkbonparagraaf.naam een van deze patronen bevat → COLLECTIEF
+#         Alles wat NIET matcht → INDIVIDUEEL (eigen ketel/installatie)
+#
+# BRON: Analyse werkbonparagrafen data + feedback Gerrit (WVC)
+#       NVT bonnen in V2 steekproef hadden allemaal deze patronen
+#
+# FORMAT: Eén patroon per regel (case-insensitive partial match)
+#         Commentaar regels beginnen met #
+#
+# ================================
+
+# Centraal ketelhuis systemen
+centraal ketelhuis
+
+# HVC stadsverwarming systemen
+HVC
+stadsverwarming
