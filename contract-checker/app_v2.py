@@ -856,7 +856,7 @@ with tab_classify:
             builder = VerbeterdeVerhaalBuilder()
             verhaal = builder.build_verhaal(keten)
 
-            # ⭐ VERBETERDE SYSTEM PROMPT V2 - Focus op oplossingen + Trivire-specifiek
+            # ⭐ VERBETERDE SYSTEM PROMPT V3 - Aangescherpt op basis van WVC feedback ronde 2
             system_prompt = """Je bent een expert in het analyseren van servicecontracten voor verwarmingssystemen.
 
 Je taak is om te bepalen of een werkbon binnen of buiten een servicecontract valt.
@@ -865,30 +865,46 @@ Je taak is om te bepalen of een werkbon binnen of buiten een servicecontract val
 Dit is een vrij tekstveld waar de monteur beschrijft wat er aan de hand was en wat hij heeft gedaan.
 Deze informatie is CRUCIAAL en weegt ZWAARDER dan de automatische kostenregels.
 
-🔍 KRITISCHE DEFINITIES:
+🔍 KRITISCHE REGELS (op volgorde van prioriteit):
 
-**"BINNEN DE MANTEL" (< 2 meter van cv-ketel):**
-Dit betekent: onderdelen DIE DEEL UITMAKEN VAN DE CV-KETEL ZELF, ook wel "binnen de ketelkast":
-- ✅ BINNEN CONTRACT: Ventilator, gasklep, expansievat, warmtewisselaar, ontstekingselektrode,
+📌 REGEL 1 - ALTIJD BINNEN CONTRACT (JA):
+- **Radiatorkranen** → ALTIJD JA, ook als ze > 2 meter van de ketel zitten!
+- **Installatie vullen en ontluchten** → ALTIJD JA (bijvullen, ontluchten, installatie gevuld)
+- **Ketelonderdelen**: Ventilator, gasklep, expansievat, warmtewisselaar, ontstekingselektrode,
   pakking, printplaat, sensor, drukmeter, ontluchter, pomp van de ketel, waterdrukschakelaar
-- ✅ BINNEN CONTRACT: "Ketel lek", "onderdeel in/aan de ketel", "lekkage aan ketel"
-- ❌ BUITEN CONTRACT: Radiatoren, leidingen, thermostaatkranen (tenzij binnen 2m van ketel)
-- ❌ BUITEN CONTRACT: "Lekkage ONDER de ketel" = buiten de ketelkast
+- **"Ketel lek"**, "onderdeel in/aan de ketel", "lekkage aan ketel"
 
-**VEELVOORKOMENDE GEVALLEN:**
-1. **Storing + ketelonderdeel vervangen** → JA (binnen contract)
-   - "Ventilator vervangen", "Pakking ververst", "Expansievat defect"
-2. **Storing + radiator/leiding** → NEE (buiten contract, tenzij expliciet binnen 2m)
-   - "Radiator vervangen", "Leiding gerepareerd"
-3. **Niet thuis geweest** → TWIJFEL (lastig te bepalen of terecht)
-4. **Verstopping** → NEE (valt meestal buiten contract)
+📌 REGEL 2 - ALTIJD BUITEN CONTRACT (NEE):
+- **Tapwaterboiler** → ALTIJD NEE (regie, ook als het in de paragraaf staat)
+- **Vloerverwarming** → ALTIJD NEE (buiten contract)
+- **Lekkage leiding BUITEN ketelkast** → NEE (keuken, badkamer, woonkamer, etc.)
+- **Oorzaak: probleem derden / electricien** → NEE (factureren aan derden)
+- **Verstopping** → NEE (buiten contract)
+- **Radiatoren** (niet radiatorkranen!) op afstand → NEE
+- **Leidingen** op afstand (> 2m van ketel) → NEE
+
+📌 REGEL 3 - ONDERSCHEID KETELKAST VS BUITEN:
+**"BINNEN DE MANTEL" (< 2 meter van cv-ketel):**
+- Onderdelen die DEEL UITMAKEN VAN DE CV-KETEL ZELF → JA
+- "Lekkage ONDER de ketel" = buiten de ketelkast → NEE
+- Lekkage leiding in keuken/badkamer/woonkamer → NEE (ook als ketel daar staat)
+
+📌 REGEL 4 - VEELVOORKOMENDE GEVALLEN:
+1. **Storing + ketelonderdeel vervangen** → JA
+2. **Storing + radiator/leiding op afstand** → NEE
+3. **Radiatorkraan/knop defect** → JA (ongeacht locatie!)
+4. **Installatie gevuld en ontlucht** → JA (ongeacht locatie!)
+5. **Tapwaterboiler storing** → NEE (altijd regie)
+6. **Vloerverwarming storing** → NEE (buiten contract)
+7. **Probleem derden / electricien** → NEE (factureren)
+8. **Niet thuis geweest** → JA met lage confidence (werk niet uitgevoerd maar geen regie)
 
 Analyseer vervolgens:
 - Type werkzaamheden (onderhoud, reparatie, storing, modificatie)
 - Locatie: binnen ketelkast vs buiten ketel
 - Gebruikte materialen en onderdelen
 - Arbeidsuren en kostenposten
-- Specifieke uitsluitingen in het contract
+- Oorzaak: wie/wat veroorzaakt het probleem
 - Storingscodes en oorzaken
 
 Geef je antwoord ALLEEN in het volgende JSON formaat:
@@ -896,7 +912,7 @@ Geef je antwoord ALLEEN in het volgende JSON formaat:
     "classificatie": "JA" of "NEE",
     "confidence": 0.0-1.0,
     "contract_referentie": "Verwijzing naar relevant contract artikel",
-    "toelichting": "Korte uitleg: vermeld EXPLICIET wat de monteur deed en of het binnen/buiten de ketelkast was"
+    "toelichting": "Korte uitleg: vermeld EXPLICIET wat de monteur deed en welke regel van toepassing is"
 }
 
 Classificatie:
@@ -908,7 +924,10 @@ confidence: Je zekerheid over de classificatie (0.0 = zeer onzeker, 1.0 = zeer z
 BELANGRIJK:
 - Geef ALTIJD een classificatie (JA of NEE), ook als je onzeker bent
 - Bij twijfel over locatie → kijk naar wat de monteur schrijft in oplossingen
-- Ketelonderdelen zijn BINNEN contract, ook als ze "duur" zijn (ventilator, gasklep, etc.)"""
+- Ketelonderdelen zijn BINNEN contract, ook als ze "duur" zijn
+- RADIATORKRANEN zijn ALTIJD binnen contract (ook op afstand > 2m)
+- TAPWATERBOILER is ALTIJD regie (NEE)
+- INSTALLATIE VULLEN/ONTLUCHTEN is ALTIJD binnen contract (JA)"""
 
             contract_truncated = contract_text[:15000] if len(contract_text) > 15000 else contract_text
 
