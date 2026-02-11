@@ -25,6 +25,36 @@ from src.services.parquet_data_service import ParquetDataService, WerkbonVerhaal
 BATCH_SIZE = 10
 
 
+def load_individuele_contracten() -> set:
+    """Laad lijst met individuele contracten uit bestand."""
+    contracts_file = Path(__file__).parent / "data" / "individuele_contracten.txt"
+    contracts = set()
+
+    if contracts_file.exists():
+        with open(contracts_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    contracts.add(line.lower())
+
+    return contracts
+
+
+def is_individueel_contract(paragraaf_naam: str, individuele_contracten: set) -> bool:
+    """Check of een paragraaf naam matched met een individueel contract."""
+    if not paragraaf_naam:
+        return False
+
+    paragraaf_lower = paragraaf_naam.lower()
+
+    # Check voor partial match (elk individueel contract in de naam)
+    for contract in individuele_contracten:
+        if contract in paragraaf_lower:
+            return True
+
+    return False
+
+
 # === VERBETERDE VERHAAL BUILDER ===
 class VerbeterdeVerhaalBuilder(OriginalVerhaalBuilder):
     """Verbeterde builder die oplossingen prominenter toont."""
@@ -621,44 +651,29 @@ with tab_classify:
             key="debiteur_filter_v2"
         )
 
-    # === NIEUWE FILTERS: GARANTIE & CONTRACT ===
+    # === CONTRACT-TYPE FILTER (PHASE 2) ===
     st.divider()
+    st.subheader("📋 Contract-type filter")
 
-    col3, col4 = st.columns(2)
+    contract_type_filter = st.radio(
+        "Toon werkbonnen voor:",
+        options=["Alle contracten", "Alleen individuele contracten", "Alleen collectieve contracten"],
+        index=0,
+        horizontal=True,
+        help="Individuele contracten staan in 'Contractvoorwaarden diverse WBV.xlsx'. Rest is collectief.",
+        key="contract_type_filter_v2"
+    )
 
-    with col3:
-        st.subheader("⏳ Garantie filter")
-        skip_garantie = st.checkbox(
-            "Skip werkbonnen binnen garantie",
-            help="Werkbonnen binnen garantietermijn worden overgeslagen (intern factureren aan installatie afdeling)",
-            key="skip_garantie_v2"
-        )
-        if skip_garantie:
-            garantie_maanden = st.number_input(
-                "Garantie termijn (maanden)",
-                min_value=1,
-                max_value=36,
-                value=12,
-                help="Werkbonnen jonger dan X maanden worden overgeslagen",
-                key="garantie_termijn_v2"
-            )
-        else:
-            garantie_maanden = 12  # default
+    # Load individuele contracten lijst
+    individuele_contracten = load_individuele_contracten()
 
-    with col4:
-        st.subheader("📋 Contract-type filter")
-        st.caption("⚠️ In ontwikkeling - koppeling met werkbonnen wordt verder uitgewerkt")
-        selected_contracts = st.multiselect(
-            "Filter op contract (optioneel)",
-            options=sorted([c["filename"] for c in contracts.values()]),
-            help="Selecteer specifieke contracten (bijv. alleen individuele woningen). Koppeling via debiteur-contract mapping wordt verder ontwikkeld.",
-            key="contract_filter_v2"
-        )
-        if selected_contracts:
-            st.info(f"ℹ️ Contract filter nog niet volledig geïmplementeerd. Vraag WVC om specificatie van contract-werkbon koppeling.")
+    if individuele_contracten:
+        st.caption(f"ℹ️ {len(individuele_contracten)} individuele contracten geladen")
+    else:
+        st.warning("⚠️ Geen individuele contracten lijst gevonden. Alle werkbonnen worden als 'onbekend' behandeld.")
 
     # Count werkbonnen
-    def count_werkbonnen(start_date, end_date, debiteur_filter):
+    def count_werkbonnen(start_date, end_date, debiteur_filter, contract_filter):
         df = data_service.df_werkbonnen.copy()
         df = df[df["werkbon_key"] == df["hoofdwerkbon_key"]]
 
@@ -670,9 +685,27 @@ with tab_classify:
         if debiteur_filter:
             df = df[df["debiteur"].isin(debiteur_filter)]
 
+        # Contract-type filter
+        if contract_filter != "Alle contracten":
+            df_para = data_service.df_paragrafen.copy()
+            df_para["is_individueel"] = df_para["naam"].apply(
+                lambda x: is_individueel_contract(x, individuele_contracten)
+            )
+            werkbon_type = df_para.groupby("werkbon_key")["is_individueel"].max().to_dict()
+
+            if contract_filter == "Alleen individuele contracten":
+                df = df[df["werkbon_key"].apply(lambda x: werkbon_type.get(x, False) == True)]
+            elif contract_filter == "Alleen collectieve contracten":
+                df = df[df["werkbon_key"].apply(lambda x: werkbon_type.get(x, False) == False)]
+
         return len(df)
 
-    total = count_werkbonnen(filter_start, filter_end, selected_debiteuren if selected_debiteuren else None)
+    total = count_werkbonnen(
+        filter_start,
+        filter_end,
+        selected_debiteuren if selected_debiteuren else None,
+        contract_type_filter
+    )
     st.metric("Te classificeren werkbonnen", total)
 
     if total == 0:
@@ -695,9 +728,7 @@ with tab_classify:
         "start": str(filter_start),
         "end": str(filter_end),
         "debiteuren": tuple(sorted(selected_debiteuren)) if selected_debiteuren else (),
-        "skip_garantie": skip_garantie,
-        "garantie_maanden": garantie_maanden if skip_garantie else 0,
-        "contracts": tuple(sorted(selected_contracts)) if selected_contracts else ()
+        "contract_type": contract_type_filter
     }
     if "last_filters" not in st.session_state:
         st.session_state.last_filters = None
@@ -745,18 +776,26 @@ with tab_classify:
                 mask = df["debiteur"].apply(lambda x: any(code in str(x) for code in debiteur_codes))
                 df = df[mask]
 
-            # Garantie filter
-            if skip_garantie:
-                from datetime import datetime, timedelta
-                cutoff_date = datetime.now() - timedelta(days=garantie_maanden*30)
-                cutoff_str = cutoff_date.strftime("%Y-%m-%d")
-                df = df[df["melddatum_str"] < cutoff_str]
-                st.caption(f"⏳ Garantie filter actief: Skip werkbonnen jonger dan {cutoff_str}")
+            # Contract-type filter (individueel/collectief)
+            if contract_type_filter != "Alle contracten":
+                # Join met werkbonparagrafen om contract type te bepalen
+                df_para = data_service.df_paragrafen.copy()
 
-            # Contract filter (TODO: implementatie vereist contract-werkbon mapping)
-            if selected_contracts:
-                st.warning(f"⚠️ Contract filter geselecteerd maar nog niet volledig geïmplementeerd. Geselecteerd: {', '.join(selected_contracts)}")
-                # TODO: Filter df based on contract mapping when available
+                # Bepaal voor elke paragraaf of het individueel of collectief is
+                df_para["is_individueel"] = df_para["naam"].apply(
+                    lambda x: is_individueel_contract(x, individuele_contracten)
+                )
+
+                # Groepeer per werkbon: als minimaal 1 paragraaf individueel is, is werkbon individueel
+                werkbon_type = df_para.groupby("werkbon_key")["is_individueel"].max().to_dict()
+
+                # Filter werkbonnen
+                if contract_type_filter == "Alleen individuele contracten":
+                    df = df[df["werkbon_key"].apply(lambda x: werkbon_type.get(x, False) == True)]
+                    st.caption(f"📋 Filter actief: Alleen individuele contracten")
+                elif contract_type_filter == "Alleen collectieve contracten":
+                    df = df[df["werkbon_key"].apply(lambda x: werkbon_type.get(x, False) == False)]
+                    st.caption(f"📋 Filter actief: Alleen collectieve contracten")
 
             if st.session_state.processed_werkbon_keys:
                 df = df[~df["werkbon_key"].isin(st.session_state.processed_werkbon_keys)]

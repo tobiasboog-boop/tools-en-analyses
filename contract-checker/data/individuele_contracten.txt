@@ -1,0 +1,27 @@
+# Individuele contracten WVC
+# ==========================
+#
+# BRON: "Contractvoorwaarden diverse WBV.xlsx" (Gerrit, WVC)
+# LOGICA: Alle contracten die NIET in deze lijst staan = COLLECTIEF
+#          (inclusief Thuisvester en Bazalt)
+#
+# FORMAT: Eén contract naam per regel (geen komma's, geen quotes)
+#         Commentaar regels beginnen met #
+#
+# INSTRUCTIE VOOR WVC:
+# Voeg hieronder alle INDIVIDUELE contract namen toe uit jullie Excel.
+# De app matcht werkbonparagraaf namen tegen deze lijst (partial match).
+#
+# Voorbeeld: Als hier "OH contract" staat, dan matcht werkbon met paragraaf
+# "OH contract aanvulling 1/3/2023 Trivire" als INDIVIDUEEL.
+#
+# ==========================
+# LIJST INDIVIDUELE CONTRACTEN:
+# ==========================
+
+# TODO: Vul aan met volledige lijst uit Contractvoorwaarden diverse WBV.xlsx
+
+# Voorbeelden (placeholder - verwijder deze regels na invullen):
+Viessmann Vitodens 100 WB1C
+OH contract aanvulling
+Trivire individueel

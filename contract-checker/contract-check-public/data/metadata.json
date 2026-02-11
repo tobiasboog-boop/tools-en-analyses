@@ -1,0 +1,21 @@
+{
+  "export_timestamp": "2026-02-02T15:47:53.219968",
+  "aantal_hoofdwerkbonnen": 500,
+  "aantal_werkbonnen": 676,
+  "aantal_paragrafen": 676,
+  "aantal_kosten": 1862,
+  "aantal_opbrengsten": 306,
+  "aantal_oplossingen": 0,
+  "aantal_opvolgingen": 0,
+  "debiteur_codes": [
+    "005102",
+    "007453",
+    "177460"
+  ],
+  "status_filter": "Uitgevoerd + Historisch",
+  "bron_bestanden": [
+    "werkbonnen_005102_Trivire.json",
+    "werkbonnen_007453_Stichting_Bazalt_Won.json",
+    "werkbonnen_177460_Stichting_Thuisveste.json"
+  ]
+}

@@ -1,0 +1,19 @@
+WERKBON #123456
+Debiteur: 005102 - Trivire
+Datum: 2026-01-26
+Totaal kosten: €245.50
+
+=== PARAGRAAF 1: Storing ===
+Type: Storing
+Storing: Ketel geeft foutmelding
+Oorzaak: Ventilator defect
+Status: Uitgevoerd
+
+🔍 WAT HEEFT DE MONTEUR GEDAAN? (Oplossingen):
+- Ventilator vervangen
+  Toelichting: Ketel gaf foutmelding F28. Ventilator draaide niet meer. Nieuwe ventilator gemonteerd, ketel doet het weer.
+
+KOSTENREGELS (3 stuks, totaal €245.50):
+- Reistijd werkbon: €20.17 (0.28 uur arbeid)
+- Storing verhelpen: €115.33 (1.5 uur arbeid)
+- Ventilator: €110.00 (materiaal)
