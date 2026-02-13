@@ -1,27 +1,36 @@
-# Individuele contracten WVC
-# ==========================
+# Individuele contracten WVC - Trivire
+# ======================================
 #
 # BRON: "Contractvoorwaarden diverse WBV.xlsx" (Gerrit, WVC)
 # LOGICA: Alle contracten die NIET in deze lijst staan = COLLECTIEF
-#          (inclusief Thuisvester en Bazalt)
+#         (inclusief Thuisvester en Bazalt)
 #
-# FORMAT: Eén contract naam per regel (geen komma's, geen quotes)
-#         Commentaar regels beginnen met #
+# Matching: partial match op werkbonparagraaf.naam (case-insensitive)
 #
-# INSTRUCTIE VOOR WVC:
-# Voeg hieronder alle INDIVIDUELE contract namen toe uit jullie Excel.
-# De app matcht werkbonparagraaf namen tegen deze lijst (partial match).
-#
-# Voorbeeld: Als hier "OH contract" staat, dan matcht werkbon met paragraaf
-# "OH contract aanvulling 1/3/2023 Trivire" als INDIVIDUEEL.
-#
-# ==========================
-# LIJST INDIVIDUELE CONTRACTEN:
-# ==========================
+# ======================================
+# TRIVIRE INDIVIDUELE CONTRACTEN:
+# ======================================
 
-# TODO: Vul aan met volledige lijst uit Contractvoorwaarden diverse WBV.xlsx
+# STAND codes (individuele toestellen)
+STAND-27
+STAND-28
+STAND-30
+STAND-26
+STAND-90
+STAND-91
+Trivire gesloten toestel m.w.w.
+Trivire gesloten toestel z.w.w.
+Trivire open toestel z.w.w.
+Trivire open toestel
+Trivire gesloten toestel
+Trivire toestel in woonkamer of keuken
 
-# Voorbeelden (placeholder - verwijder deze regels na invullen):
-Viessmann Vitodens 100 WB1C
+# OHC codes (individuele onderhoudscontracten)
+OHC.TRIVIRE
+OHCTRIVIRE
+OH contract Trivire (individueel)
+Aanvulling individuele ketels Trivire
+Trivire aanvulling Geisers
+Aanvulling Trivire 2013 jaarlijks onderhoud
+Aanvulling Trivire 1/10/2022
 OH contract aanvulling
-Trivire individueel

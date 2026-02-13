@@ -848,78 +848,60 @@ with tab_classify:
             builder = VerbeterdeVerhaalBuilder()
             verhaal = builder.build_verhaal(keten)
 
-            # ⭐ VERBETERDE SYSTEM PROMPT V3 - Aangescherpt op basis van WVC feedback ronde 2
+            # ⭐ SYSTEM PROMPT V4 - Aangescherpt op basis van WVC feedback ronde 3
             system_prompt = """Je bent een expert in het analyseren van servicecontracten voor verwarmingssystemen.
 
 Je taak is om te bepalen of een werkbon binnen of buiten een servicecontract valt.
 
-⭐ BELANGRIJKSTE ANALYSE PUNT: Lees EERST de "WAT HEEFT DE MONTEUR GEDAAN? (Oplossingen)" sectie.
-Dit is een vrij tekstveld waar de monteur beschrijft wat er aan de hand was en wat hij heeft gedaan.
-Deze informatie is CRUCIAAL en weegt ZWAARDER dan de automatische kostenregels.
+⚠️ STAP 1 - LEES DE OPLOSSING! ⚠️
+Zoek EERST de "WAT HEEFT DE MONTEUR GEDAAN? (Oplossingen)" sectie.
+Dit is de LEIDENDE informatie. De oplossingsomschrijving van de monteur OVERSCHRIJFT alle andere info.
+Als de oplossing zegt "installatie gevuld en ontlucht" → dan is DAT wat er gebeurd is, ongeacht storingscode of kostenregels.
 
-🔍 KRITISCHE REGELS (op volgorde van prioriteit):
+📌 STAP 2 - PAS DEZE REGELS TOE (op volgorde van prioriteit):
 
-📌 REGEL 1 - ALTIJD BINNEN CONTRACT (JA):
-- **Radiatorkranen** → ALTIJD JA, ook als ze > 2 meter van de ketel zitten!
-- **Installatie vullen en ontluchten** → ALTIJD JA (bijvullen, ontluchten, installatie gevuld)
-- **Ketelonderdelen**: Ventilator, gasklep, expansievat, warmtewisselaar, ontstekingselektrode,
+🟢 ALTIJD BINNEN CONTRACT (JA):
+- **Radiatorkranen/radiatorknoppen** → ALTIJD JA, ongeacht afstand tot ketel
+- **Installatie gevuld en ontlucht** → ALTIJD JA (bijvullen, ontluchten, vullen)
+- **Lekkage ONDER de ketel** → JA (dit is < 2 meter, binnen de mantel!)
+- **Lekkage AAN de ketel** → JA
+- **Bewoner niet thuis** → JA (geen regie, binnen contract)
+- **Ketelonderdelen**: ventilator, gasklep, expansievat, warmtewisselaar, ontstekingselektrode,
   pakking, printplaat, sensor, drukmeter, ontluchter, pomp van de ketel, waterdrukschakelaar
-- **"Ketel lek"**, "onderdeel in/aan de ketel", "lekkage aan ketel"
 
-📌 REGEL 2 - ALTIJD BUITEN CONTRACT (NEE):
-- **Tapwaterboiler** → ALTIJD NEE (regie, ook als het in de paragraaf staat)
-- **Vloerverwarming** → ALTIJD NEE (buiten contract)
-- **Lekkage leiding BUITEN ketelkast** → NEE (keuken, badkamer, woonkamer, etc.)
+🔴 ALTIJD BUITEN CONTRACT (NEE):
+- **Tapwaterboiler / geiser / moederhaard** → ALTIJD NEE (regie)
+- **Vloerverwarming** → ALTIJD NEE
+- **Lekkage installatie** (keuken, slaapkamer, woonkamer, badkamer) → NEE
+- **Radiator vervangen** (LET OP: radiator ≠ radiatorkraan!) → NEE
+- **Radiator gedemonteerd/hergemonteerd ivm verstopping** → NEE
+- **Verstopping** → NEE
 - **Oorzaak: probleem derden / electricien** → NEE (factureren aan derden)
-- **Verstopping** → NEE (buiten contract)
-- **Radiatoren** (niet radiatorkranen!) op afstand → NEE
-- **Leidingen** op afstand (> 2m van ketel) → NEE
+- **Leidingen op afstand** (> 2m van ketel) → NEE
 
-📌 REGEL 3 - ONDERSCHEID KETELKAST VS BUITEN:
-**"BINNEN DE MANTEL" (< 2 meter van cv-ketel):**
-- Onderdelen die DEEL UITMAKEN VAN DE CV-KETEL ZELF → JA
-- "Lekkage ONDER de ketel" = buiten de ketelkast → NEE
-- Lekkage leiding in keuken/badkamer/woonkamer → NEE (ook als ketel daar staat)
+⚠️ CRUCIAAL ONDERSCHEID:
+- "Lekkage ONDER de ketel" = BINNEN contract (< 2m, onder het toestel)
+- "Lekkage installatie" (keuken/slk/wk/badkamer) = BUITEN contract
+- "Radiatorkraan defect" = BINNEN contract (altijd!)
+- "Radiator vervangen/gedemonteerd" = BUITEN contract
+- Lees de OPLOSSING: als daar iets anders staat dan de melding, geldt de OPLOSSING
 
-📌 REGEL 4 - VEELVOORKOMENDE GEVALLEN:
-1. **Storing + ketelonderdeel vervangen** → JA
-2. **Storing + radiator/leiding op afstand** → NEE
-3. **Radiatorkraan/knop defect** → JA (ongeacht locatie!)
-4. **Installatie gevuld en ontlucht** → JA (ongeacht locatie!)
-5. **Tapwaterboiler storing** → NEE (altijd regie)
-6. **Vloerverwarming storing** → NEE (buiten contract)
-7. **Probleem derden / electricien** → NEE (factureren)
-8. **Niet thuis geweest** → JA met lage confidence (werk niet uitgevoerd maar geen regie)
+📌 STAP 3 - GEEF JE ANTWOORD:
 
-Analyseer vervolgens:
-- Type werkzaamheden (onderhoud, reparatie, storing, modificatie)
-- Locatie: binnen ketelkast vs buiten ketel
-- Gebruikte materialen en onderdelen
-- Arbeidsuren en kostenposten
-- Oorzaak: wie/wat veroorzaakt het probleem
-- Storingscodes en oorzaken
-
-Geef je antwoord ALLEEN in het volgende JSON formaat:
+Geef je antwoord ALLEEN in dit JSON formaat (geen extra tekst):
 {
     "classificatie": "JA" of "NEE",
     "confidence": 0.0-1.0,
-    "contract_referentie": "Verwijzing naar relevant contract artikel",
-    "toelichting": "Korte uitleg: vermeld EXPLICIET wat de monteur deed en welke regel van toepassing is"
+    "contract_referentie": "Welke regel is van toepassing",
+    "toelichting": "Wat staat er in de OPLOSSING en waarom is het JA of NEE"
 }
 
-Classificatie:
-- JA: Werkzaamheden vallen volledig binnen het contract (niet factureren aan klant)
-- NEE: Werkzaamheden vallen buiten het contract (wel factureren aan klant)
+- JA = binnen contract (niet factureren)
+- NEE = buiten contract (wel factureren)
+- Geef ALTIJD JA of NEE, nooit iets anders
+- confidence: hoe zeker je bent (0.0-1.0)
 
-confidence: Je zekerheid over de classificatie (0.0 = zeer onzeker, 1.0 = zeer zeker)
-
-BELANGRIJK:
-- Geef ALTIJD een classificatie (JA of NEE), ook als je onzeker bent
-- Bij twijfel over locatie → kijk naar wat de monteur schrijft in oplossingen
-- Ketelonderdelen zijn BINNEN contract, ook als ze "duur" zijn
-- RADIATORKRANEN zijn ALTIJD binnen contract (ook op afstand > 2m)
-- TAPWATERBOILER is ALTIJD regie (NEE)
-- INSTALLATIE VULLEN/ONTLUCHTEN is ALTIJD binnen contract (JA)"""
+ONTHOUD: De OPLOSSING van de monteur is LEIDEND. Lees die EERST en baseer je classificatie daarop."""
 
             contract_truncated = contract_text[:15000] if len(contract_text) > 15000 else contract_text
 
@@ -953,7 +935,28 @@ Geef je antwoord in JSON formaat."""
                     elif "```" in text:
                         text = text.split("```")[1].split("```")[0]
 
-                    result = json.loads(text.strip())
+                    # Clean control characters die JSON parsing breken
+                    import re
+                    text_clean = re.sub(r'[\x00-\x1f\x7f]', ' ', text.strip())
+
+                    try:
+                        result = json.loads(text_clean)
+                    except json.JSONDecodeError:
+                        # Fallback: probeer classificatie en confidence via regex te extraheren
+                        class_match = re.search(r'"classificatie"\s*:\s*"(JA|NEE)"', text, re.IGNORECASE)
+                        conf_match = re.search(r'"confidence"\s*:\s*([\d.]+)', text)
+                        toel_match = re.search(r'"toelichting"\s*:\s*"([^"]*)"', text)
+                        ref_match = re.search(r'"contract_referentie"\s*:\s*"([^"]*)"', text)
+
+                        if class_match:
+                            result = {
+                                "classificatie": class_match.group(1).upper(),
+                                "confidence": float(conf_match.group(1)) if conf_match else 0.8,
+                                "toelichting": toel_match.group(1) if toel_match else "Geëxtraheerd via regex fallback",
+                                "contract_referentie": ref_match.group(1) if ref_match else ""
+                            }
+                        else:
+                            raise json.JSONDecodeError("Geen classificatie gevonden", text, 0)
 
                     confidence = float(result.get("confidence", 0.5))
                     base_classificatie = result.get("classificatie", "NEE").upper()
