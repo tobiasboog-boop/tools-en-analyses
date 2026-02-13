@@ -444,7 +444,7 @@ with st.sidebar:
 # === MAIN CONTENT ===
 
 st.title("🧪 Contract Checker V2 - DEMO")
-st.caption("Werkbonnen classificeren met AI | v2026-02-09-v2 (Verbeterd)")
+st.caption("Werkbonnen classificeren met AI | v2026-02-11-v3f (Lekkage-fix)")
 st.markdown("[📖 Handleiding & uitleg](https://notifica.nl/tools/contract-checker)")
 
 # === TABS ===
@@ -848,60 +848,79 @@ with tab_classify:
             builder = VerbeterdeVerhaalBuilder()
             verhaal = builder.build_verhaal(keten)
 
-            # ⭐ SYSTEM PROMPT V4 - Aangescherpt op basis van WVC feedback ronde 3
+            # ⭐ SYSTEM PROMPT V3-FIXED - V3 prompt (74% accuracy) + lekkage-fix
             system_prompt = """Je bent een expert in het analyseren van servicecontracten voor verwarmingssystemen.
 
 Je taak is om te bepalen of een werkbon binnen of buiten een servicecontract valt.
 
-⚠️ STAP 1 - LEES DE OPLOSSING! ⚠️
-Zoek EERST de "WAT HEEFT DE MONTEUR GEDAAN? (Oplossingen)" sectie.
-Dit is de LEIDENDE informatie. De oplossingsomschrijving van de monteur OVERSCHRIJFT alle andere info.
-Als de oplossing zegt "installatie gevuld en ontlucht" → dan is DAT wat er gebeurd is, ongeacht storingscode of kostenregels.
+⭐ BELANGRIJKSTE ANALYSE PUNT: Lees EERST de "WAT HEEFT DE MONTEUR GEDAAN? (Oplossingen)" sectie.
+Dit is een vrij tekstveld waar de monteur beschrijft wat er aan de hand was en wat hij heeft gedaan.
+Deze informatie is CRUCIAAL en weegt ZWAARDER dan de automatische kostenregels.
 
-📌 STAP 2 - PAS DEZE REGELS TOE (op volgorde van prioriteit):
+🔍 KRITISCHE REGELS (op volgorde van prioriteit):
 
-🟢 ALTIJD BINNEN CONTRACT (JA):
-- **Radiatorkranen/radiatorknoppen** → ALTIJD JA, ongeacht afstand tot ketel
-- **Installatie gevuld en ontlucht** → ALTIJD JA (bijvullen, ontluchten, vullen)
-- **Lekkage ONDER de ketel** → JA (dit is < 2 meter, binnen de mantel!)
-- **Lekkage AAN de ketel** → JA
-- **Bewoner niet thuis** → JA (geen regie, binnen contract)
-- **Ketelonderdelen**: ventilator, gasklep, expansievat, warmtewisselaar, ontstekingselektrode,
+📌 REGEL 1 - ALTIJD BINNEN CONTRACT (JA):
+- **Radiatorkranen** → ALTIJD JA, ook als ze > 2 meter van de ketel zitten!
+- **Installatie vullen en ontluchten** → ALTIJD JA (bijvullen, ontluchten, installatie gevuld)
+- **Ketelonderdelen**: Ventilator, gasklep, expansievat, warmtewisselaar, ontstekingselektrode,
   pakking, printplaat, sensor, drukmeter, ontluchter, pomp van de ketel, waterdrukschakelaar
+- **"Ketel lek"**, "onderdeel in/aan de ketel", "lekkage aan ketel"
+- **"Lekkage ONDER de ketel"** → JA (dit is < 2 meter, binnen de mantel!)
 
-🔴 ALTIJD BUITEN CONTRACT (NEE):
-- **Tapwaterboiler / geiser / moederhaard** → ALTIJD NEE (regie)
-- **Vloerverwarming** → ALTIJD NEE
-- **Lekkage installatie** (keuken, slaapkamer, woonkamer, badkamer) → NEE
-- **Radiator vervangen** (LET OP: radiator ≠ radiatorkraan!) → NEE
-- **Radiator gedemonteerd/hergemonteerd ivm verstopping** → NEE
-- **Verstopping** → NEE
+📌 REGEL 2 - ALTIJD BUITEN CONTRACT (NEE):
+- **Tapwaterboiler** → ALTIJD NEE (regie, ook als het in de paragraaf staat)
+- **Vloerverwarming** → ALTIJD NEE (buiten contract)
+- **Lekkage leiding BUITEN ketelkast** → NEE (keuken, badkamer, woonkamer, etc.)
 - **Oorzaak: probleem derden / electricien** → NEE (factureren aan derden)
-- **Leidingen op afstand** (> 2m van ketel) → NEE
+- **Verstopping** → NEE (buiten contract)
+- **Radiatoren** (niet radiatorkranen!) op afstand → NEE
+- **Leidingen** op afstand (> 2m van ketel) → NEE
 
-⚠️ CRUCIAAL ONDERSCHEID:
-- "Lekkage ONDER de ketel" = BINNEN contract (< 2m, onder het toestel)
-- "Lekkage installatie" (keuken/slk/wk/badkamer) = BUITEN contract
-- "Radiatorkraan defect" = BINNEN contract (altijd!)
-- "Radiator vervangen/gedemonteerd" = BUITEN contract
-- Lees de OPLOSSING: als daar iets anders staat dan de melding, geldt de OPLOSSING
+📌 REGEL 3 - ONDERSCHEID KETELKAST VS BUITEN:
+**"BINNEN DE MANTEL" (< 2 meter van cv-ketel):**
+- Onderdelen die DEEL UITMAKEN VAN DE CV-KETEL ZELF → JA
+- "Lekkage ONDER de ketel" = binnen de mantel (< 2m) → JA
+- Lekkage leiding in keuken/badkamer/woonkamer → NEE (ook als ketel daar staat)
 
-📌 STAP 3 - GEEF JE ANTWOORD:
+📌 REGEL 4 - VEELVOORKOMENDE GEVALLEN:
+1. **Storing + ketelonderdeel vervangen** → JA
+2. **Storing + radiator/leiding op afstand** → NEE
+3. **Radiatorkraan/knop defect** → JA (ongeacht locatie!)
+4. **Installatie gevuld en ontlucht** → JA (ongeacht locatie!)
+5. **Tapwaterboiler storing** → NEE (altijd regie)
+6. **Vloerverwarming storing** → NEE (buiten contract)
+7. **Probleem derden / electricien** → NEE (factureren)
+8. **Niet thuis geweest** → JA met lage confidence (werk niet uitgevoerd maar geen regie)
 
-Geef je antwoord ALLEEN in dit JSON formaat (geen extra tekst):
+Analyseer vervolgens:
+- Type werkzaamheden (onderhoud, reparatie, storing, modificatie)
+- Locatie: binnen ketelkast vs buiten ketel
+- Gebruikte materialen en onderdelen
+- Arbeidsuren en kostenposten
+- Oorzaak: wie/wat veroorzaakt het probleem
+- Storingscodes en oorzaken
+
+Geef je antwoord ALLEEN in het volgende JSON formaat:
 {
     "classificatie": "JA" of "NEE",
     "confidence": 0.0-1.0,
-    "contract_referentie": "Welke regel is van toepassing",
-    "toelichting": "Wat staat er in de OPLOSSING en waarom is het JA of NEE"
+    "contract_referentie": "Verwijzing naar relevant contract artikel",
+    "toelichting": "Korte uitleg: vermeld EXPLICIET wat de monteur deed en welke regel van toepassing is"
 }
 
-- JA = binnen contract (niet factureren)
-- NEE = buiten contract (wel factureren)
-- Geef ALTIJD JA of NEE, nooit iets anders
-- confidence: hoe zeker je bent (0.0-1.0)
+Classificatie:
+- JA: Werkzaamheden vallen volledig binnen het contract (niet factureren aan klant)
+- NEE: Werkzaamheden vallen buiten het contract (wel factureren aan klant)
 
-ONTHOUD: De OPLOSSING van de monteur is LEIDEND. Lees die EERST en baseer je classificatie daarop."""
+confidence: Je zekerheid over de classificatie (0.0 = zeer onzeker, 1.0 = zeer zeker)
+
+BELANGRIJK:
+- Geef ALTIJD een classificatie (JA of NEE), ook als je onzeker bent
+- Bij twijfel over locatie → kijk naar wat de monteur schrijft in oplossingen
+- Ketelonderdelen zijn BINNEN contract, ook als ze "duur" zijn
+- RADIATORKRANEN zijn ALTIJD binnen contract (ook op afstand > 2m)
+- TAPWATERBOILER is ALTIJD regie (NEE)
+- INSTALLATIE VULLEN/ONTLUCHTEN is ALTIJD binnen contract (JA)"""
 
             contract_truncated = contract_text[:15000] if len(contract_text) > 15000 else contract_text
 
