@@ -323,7 +323,7 @@ def clear_all_history():
 
 # === PAGE CONFIG ===
 st.set_page_config(
-    page_title="Contract Checker V2 - DEMO",
+    page_title="Contract Checker V3 - DEMO",
     page_icon="🧪",
     layout="wide"
 )
@@ -439,74 +439,22 @@ with st.sidebar:
 
     # Usage counter
     st.divider()
-    st.header("Demo Gebruik (V2)")
+    st.header("Demo Gebruik")
     st.metric("Geclassificeerd", f"{get_usage_count()} werkbonnen")
     st.caption("✅ Persistente opslag - blijft bewaard")
 
 # === MAIN CONTENT ===
 
-st.title("🧪 Contract Checker V2 - DEMO")
-st.caption("Werkbonnen classificeren met AI | v2026-02-11-v5 (89.7% backtest)")
+st.title("🧪 Contract Checker V3 - DEMO")
+st.caption("Werkbonnen classificeren met AI | v2026-02-11-v3 (90% backtest)")
 st.markdown("[📖 Handleiding & uitleg](https://notifica.nl/tools/contract-checker)")
 
 # === TABS ===
-tab_classify, tab_history, tab_vergelijk = st.tabs(["🚀 Classificeren", "📜 Geschiedenis", "⚖️ V1 vs V2"])
-
-# === COMPARISON TAB ===
-with tab_vergelijk:
-    st.header("Verschil tussen V1 en V2")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("🔵 V1 - Origineel")
-        st.markdown("""
-        **Hoe werkt het:**
-        - AI krijgt werkbongegevens in standaardvolgorde
-        - Oplossingen staan onderaan het verhaal
-        - Geen speciale nadruk op wat de monteur heeft gedaan
-
-        **Prompt focus:**
-        - Type werkzaamheden
-        - Materialen en onderdelen
-        - Arbeidsuren en kosten
-        - Contractvoorwaarden
-        """)
-
-    with col2:
-        st.subheader("🟢 V2 - Verbeterd")
-        st.markdown("""
-        **Hoe werkt het:**
-        - AI krijgt oplossingen **EERST** te zien (prominenter)
-        - Extra emoji marker: 🔍 "WAT HEEFT DE MONTEUR GEDAAN?"
-        - Prompt instrueert AI expliciet om oplossingen te analyseren
-
-        **Prompt focus:**
-        - ⭐ **EERST: Werkbon oplossingen (vrije tekst monteur)**
-        - Type werkzaamheden
-        - Materialen en onderdelen
-        - Arbeidsuren en kosten
-        - Contractvoorwaarden
-        """)
-
-    st.divider()
-
-    st.info("""
-    **💡 Advies voor A/B testing:**
-
-    1. Selecteer dezelfde periode en debiteur in beide versies
-    2. Classificeer bijvoorbeeld 50 werkbonnen in V1 en 50 in V2
-    3. Vergelijk de resultaten:
-       - Hoeveel JA/NEE/TWIJFEL in beide versies?
-       - Controleer handmatig een steekproef: welke is accurater?
-       - Let vooral op werkbonnen waar de oplossing cruciaal is
-
-    4. Export beide resultatensets naar CSV voor analyse
-    """)
+tab_classify, tab_history = st.tabs(["🚀 Classificeren", "📜 Geschiedenis"])
 
 # === HISTORY TAB ===
 with tab_history:
-    st.header("Classificatie Geschiedenis (V2)")
+    st.header("Classificatie Geschiedenis")
     st.caption("✅ Persistent opgeslagen in Parquet - blijft bewaard na refresh.")
 
     history = load_history()
