@@ -339,13 +339,14 @@ def get_logo_path():
 # === PASSWORD PROTECTION ===
 require_auth()
 
-# === V2 INFO BANNER ===
+# === V3 INFO BANNER ===
 st.markdown("""
 <div style="background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); padding: 15px 20px; border-radius: 8px; border-left: 4px solid #22c55e; margin-bottom: 20px;">
-    <strong style="color: #15803d;">✨ VERSIE 2 - Verbeterde AI Analyse</strong>
+    <strong style="color: #15803d;">✨ VERSIE 3 - 90% Nauwkeurigheid</strong>
     <p style="color: #166534; margin: 8px 0 0 0; font-size: 0.9rem;">
-        Deze versie legt meer nadruk op de <strong>werkbon oplossingen</strong> (vrije tekst van de monteur).
-        Test deze versie naast de originele om te zien welke nauwkeuriger classificeert.
+        Verbeterde classificatie met <strong>storingscode-differentiatie</strong> (006.1 vs 006.2),
+        prioriteitsregels voor probleem-derden, en deterministische AI-analyse.
+        Backtest: 35 van 39 bonnen correct geclassificeerd.
     </p>
 </div>
 """, unsafe_allow_html=True)
@@ -353,10 +354,11 @@ st.markdown("""
 # === DEMO DISCLAIMER ===
 st.markdown("""
 <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 15px 20px; border-radius: 8px; border-left: 4px solid #3b82f6; margin-bottom: 20px;">
-    <strong style="color: #1e40af;">📊 DEMO VERSIE - Historische Data</strong>
+    <strong style="color: #1e40af;">📊 DEMO - Historische Data</strong>
     <p style="color: #1e3a8a; margin: 8px 0 0 0; font-size: 0.9rem;">
-        Deze tool werkt met een historische dataset voor demonstratie- en validatiedoeleinden.
-        Aan de resultaten kunnen geen rechten worden ontleend. Handmatige controle blijft vereist.
+        Deze tool werkt met een historische dataset van WVC-werkbonnen voor validatie.
+        De AI classificeert op basis van storingscodes, contracttype en beschikbare werkbondata.
+        Handmatige controle blijft vereist — aan de resultaten kunnen geen rechten worden ontleend.
     </p>
 </div>
 """, unsafe_allow_html=True)
