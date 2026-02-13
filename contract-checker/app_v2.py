@@ -444,7 +444,7 @@ with st.sidebar:
 # === MAIN CONTENT ===
 
 st.title("🧪 Contract Checker V2 - DEMO")
-st.caption("Werkbonnen classificeren met AI | v2026-02-11-v3f (Lekkage-fix)")
+st.caption("Werkbonnen classificeren met AI | v2026-02-11-v5 (89.7% backtest)")
 st.markdown("[📖 Handleiding & uitleg](https://notifica.nl/tools/contract-checker)")
 
 # === TABS ===
@@ -848,7 +848,7 @@ with tab_classify:
             builder = VerbeterdeVerhaalBuilder()
             verhaal = builder.build_verhaal(keten)
 
-            # ⭐ SYSTEM PROMPT V3-FIXED - V3 prompt (74% accuracy) + lekkage-fix
+            # ⭐ SYSTEM PROMPT V5 - 89.7% accuracy in backtest
             system_prompt = """Je bent een expert in het analyseren van servicecontracten voor verwarmingssystemen.
 
 Je taak is om te bepalen of een werkbon binnen of buiten een servicecontract valt.
@@ -859,28 +859,34 @@ Deze informatie is CRUCIAAL en weegt ZWAARDER dan de automatische kostenregels.
 
 🔍 KRITISCHE REGELS (op volgorde van prioriteit):
 
+📌 REGEL 0 - HOOGSTE PRIORITEIT (ALTIJD NEE, ongeacht andere regels):
+- **Oorzaakcode 900 / "Probleem door derde"** → ALTIJD NEE (factureren aan derden)
+  Dit geldt OOK als de storingscode iets anders suggereert (bijv. lekkage onder ketel + probleem derden = NEE)
+- **Tapwaterboiler / geiser / moederhaard** → ALTIJD NEE (regie)
+- **Vloerverwarming** → ALTIJD NEE (buiten contract)
+
 📌 REGEL 1 - ALTIJD BINNEN CONTRACT (JA):
 - **Radiatorkranen** → ALTIJD JA, ook als ze > 2 meter van de ketel zitten!
 - **Installatie vullen en ontluchten** → ALTIJD JA (bijvullen, ontluchten, installatie gevuld)
 - **Ketelonderdelen**: Ventilator, gasklep, expansievat, warmtewisselaar, ontstekingselektrode,
   pakking, printplaat, sensor, drukmeter, ontluchter, pomp van de ketel, waterdrukschakelaar
 - **"Ketel lek"**, "onderdeel in/aan de ketel", "lekkage aan ketel"
-- **"Lekkage ONDER de ketel"** → JA (dit is < 2 meter, binnen de mantel!)
+- **Storingscode 006.1 "Lekkage ONDER de ketel"** → JA (dit is < 2 meter, binnen de mantel!)
 
 📌 REGEL 2 - ALTIJD BUITEN CONTRACT (NEE):
-- **Tapwaterboiler** → ALTIJD NEE (regie, ook als het in de paragraaf staat)
-- **Vloerverwarming** → ALTIJD NEE (buiten contract)
-- **Lekkage leiding BUITEN ketelkast** → NEE (keuken, badkamer, woonkamer, etc.)
-- **Oorzaak: probleem derden / electricien** → NEE (factureren aan derden)
+- **Storingscode 006.2 "Lekkage aan de installatie"** → NEE (dit is lekkage op AFSTAND van de ketel!)
+  LET OP: 006.1 (onder ketel) ≠ 006.2 (aan installatie). 006.2 = ALTIJD NEE.
+- **Lekkage in slaapkamer (slk), woonkamer (wk), badkamer, keuken** → NEE
 - **Verstopping** → NEE (buiten contract)
-- **Radiatoren** (niet radiatorkranen!) op afstand → NEE
+- **Radiatoren** vervangen/demonteren (niet radiatorkranen!) → NEE
 - **Leidingen** op afstand (> 2m van ketel) → NEE
 
 📌 REGEL 3 - ONDERSCHEID KETELKAST VS BUITEN:
 **"BINNEN DE MANTEL" (< 2 meter van cv-ketel):**
 - Onderdelen die DEEL UITMAKEN VAN DE CV-KETEL ZELF → JA
-- "Lekkage ONDER de ketel" = binnen de mantel (< 2m) → JA
-- Lekkage leiding in keuken/badkamer/woonkamer → NEE (ook als ketel daar staat)
+- Storingscode 006.1 "Lekkage ONDER de ketel" = binnen de mantel (< 2m) → JA
+- Storingscode 006.2 "Lekkage aan de installatie" = BUITEN de mantel → NEE
+- Lekkage leiding in keuken/badkamer/slaapkamer/woonkamer → NEE
 
 📌 REGEL 4 - VEELVOORKOMENDE GEVALLEN:
 1. **Storing + ketelonderdeel vervangen** → JA
@@ -920,7 +926,8 @@ BELANGRIJK:
 - Ketelonderdelen zijn BINNEN contract, ook als ze "duur" zijn
 - RADIATORKRANEN zijn ALTIJD binnen contract (ook op afstand > 2m)
 - TAPWATERBOILER is ALTIJD regie (NEE)
-- INSTALLATIE VULLEN/ONTLUCHTEN is ALTIJD binnen contract (JA)"""
+- INSTALLATIE VULLEN/ONTLUCHTEN is ALTIJD binnen contract (JA)
+- OORZAAK "PROBLEEM DOOR DERDE" → ALTIJD NEE, ook bij lekkage onder ketel"""
 
             contract_truncated = contract_text[:15000] if len(contract_text) > 15000 else contract_text
 
@@ -940,6 +947,7 @@ Geef je antwoord in JSON formaat."""
                 response = client.messages.create(
                     model="claude-3-haiku-20240307",
                     max_tokens=1024,
+                    temperature=0,
                     system=system_prompt,
                     messages=[{"role": "user", "content": user_message}]
                 )
