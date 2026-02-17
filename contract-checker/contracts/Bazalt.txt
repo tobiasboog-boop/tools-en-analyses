@@ -1,87 +1,83 @@
-# Contract: Bazalt
+# Contract: Bazalt (Stichting Bazalt Wonen)
+# Source: Contractvoorwaarden diverse WBV.xlsx
+# Verrijkt: 2026-02-17 met praktische interpretatie (bron: Gerrit Smits, WVC)
 
-## Samenvatting
-Dit contract voor klant BAZ specificeert uitsluitend de werkzaamheden die **NIET** onder het onderhoudscontract vallen. Het is een uitsluitingslijst voor diverse WBV (Woning Brandstof Voorziening) werkzaamheden.
+---
 
-## Dekking (wat valt WEL onder contract)
-[ONDUIDELIJK: Het originele document bevat alleen uitsluitingen. De dekking moet worden afgeleid uit wat NIET wordt uitgesloten]
+## BASISPRINCIPE
+Grotendeels hetzelfde als Trivire. Het contract is opgebouwd als een uitsluitingslijst:
+alles wat NIET op de uitsluitingslijst staat, valt WEL onder het contract.
+De basisregel is dezelfde als Trivire: werkzaamheden aan de cv-ketel zelf en directe onderdelen zijn in contract.
 
-## Uitsluitingen (wat valt NIET onder contract)
+## BELANGRIJKE UITZONDERINGEN EN VERSCHILLEN
+- Kamerthermostaat: in contract. Klokthermostaat/slimme thermostaat: BUITEN contract
+- RGA beugelen: BUITEN contract
+- Radiatoren vervangen: alleen bij LEKKAGE in contract. Bij vervanging om andere reden: BUITEN contract. Bij twijfel: classificeer als NEE (medewerker kan dit beter beoordelen)
+- Verstopping: BUITEN contract
+- CV-leiding niet in het zicht (reparatie): classificeer als NEE (moeilijk te beoordelen door AI)
+- Voorrijkosten: worden NIET berekend (gratis)
+- MV-unit vervanging: wordt NIET berekend
+- Zonnecollectoren: arbeid wordt NIET vergoed, materiaal WEL
+- RGA-beugeling: afhankelijk van installatiedatum (ouder dan 2015 = buiten contract, jonger = checken)
+- Hoogwerker bij RGA: meerprijs doorberekenen
+
+---
+
+## UITSLUITINGSLIJST (wat valt NIET onder contract)
 
 ### Reparatie/Vervanging/Ontstopping
-- **Rookgasafvoerleidingdelen** - alle reparaties, vervangingen en ontstoppingen
-- **Luchttoevoerleidingen** - alle reparaties, vervangingen en ontstoppingen  
-- **Installatieleidingdelen** - specifiek die welke niet in het zicht zijn aangebracht
-- **Riolering** - werkzaamheden na de rioolsifon
+- Rookgasafvoerleidingdelen - alle reparaties, vervangingen en ontstoppingen
+- Luchttoevoerleidingen - alle reparaties, vervangingen en ontstoppingen
+- Installatieleidingdelen - specifiek die welke niet in het zicht zijn aangebracht
+- Riolering - werkzaamheden na de rioolsifon
 
 ### Normering en Beugeling
-- **RGA-beugeling volgens norm** - alleen wanneer installatiedatum ouder is dan 2015
-  - *Uitzondering*: Als installatiedatum jonger is dan 2015 EN WVI heeft ketel niet geplaatst (te controleren via installaties waarbij veld "geplaatst door" niet is gevuld)
+- RGA-beugeling volgens norm - alleen wanneer installatiedatum ouder is dan 2015
+  - Uitzondering: Als installatiedatum jonger is dan 2015 EN WVI heeft ketel niet geplaatst
 
 ### Apparatuur Reparaties
-- **Zonnecollectoren** - arbeid wordt niet vergoed, materiaal wel
-- **Warmtepompen/luchtwarmtepompen** - alle reparaties
-- **Boilers** - zowel gas als elektrische uitvoering
-- **Radiator vervanging** - wanneer het geen lekkage betreft
+- Zonnecollectoren - arbeid wordt niet vergoed, materiaal wel
+- Warmtepompen/luchtwarmtepompen - alle reparaties
+- Boilers - zowel gas als elektrische uitvoering
+- Radiator vervanging - wanneer het geen lekkage betreft
 
 ### Bouwkundige Werkzaamheden
-- **Alle bouwkundige werkzaamheden** zoals:
+- Alle bouwkundige werkzaamheden zoals:
   - Hak-, boor-, frees-, sloop- en breekwerk
   - Schilderwerk aan leidingdelen
 
 ### Aanpassingen en Wijzigingen
-- **Alle aanpassingen** vanwege:
+- Alle aanpassingen vanwege:
   - Gewijzigde voorschriften
   - Nieuwe wetgeving
   - Aangepaste fabrikantrichtlijnen
 
 ### Externe Oorzaken
-- **Leveringsonderbrekingen** van:
-  - Gas
-  - Water  
-  - Elektriciteit
-- **Externe schade** door:
-  - Bevriezing e.d.
-  - Blikseminslag e.d.
-  - Bewonersgedrag e.d.
+- Leveringsonderbrekingen van gas, water, elektriciteit
+- Externe schade door bevriezing, blikseminslag, bewonersgedrag
 
 ### Bestaande Installatie Issues
-- **Oplossen van onvolkomenheden** aan bestaande installatie
+- Oplossen van onvolkomenheden aan bestaande installatie
 
 ### Gevaarlijke Stoffen
-- **Asbest** - alle werkzaamheden aan of verwijdering van asbest of asbesthoudende delen
+- Asbest - alle werkzaamheden aan of verwijdering van asbest of asbesthoudende delen
 
-### Apparatuur Vervanging
-- **CV-toestellen** - volledige vervanging
-- **Zonneboiler** - volledige vervanging
-- **Zonnecollector** - volledige vervanging
-- **Warmtepomp** - volledige vervanging
-- **Warmwaterbereider** - volledige vervanging
-- **WTW-unit** - volledige vervanging
-- **Ventilatoren** van WTW (doorberekenen van MV niet)
-- **MV-installatie onderdelen**:
-  - Gecombineerde LTV en ventilatierosters (met eventuele regeling)
+### Apparatuur Vervanging (volledige vervanging)
+- CV-toestellen
+- Zonneboiler
+- Zonnecollector
+- Warmtepomp
+- Warmwaterbereider
+- WTW-unit
+- Ventilatoren van WTW (doorberekenen van MV niet)
+- MV-installatie onderdelen: gecombineerde LTV en ventilatierosters (met eventuele regeling)
 
 ### Speciale Werkzaamheden
-- **Hoogwerker inzet** bij RGA-werkzaamheden (meerprijs berekenen voor huur en arbeid)
-- **MV-unit vervanging** (doorgeven aan Mieke i.v.m. toestelwijziging)
+- Hoogwerker inzet bij RGA-werkzaamheden (meerprijs berekenen)
+- MV-unit vervanging (doorgeven aan Mieke i.v.m. toestelwijziging)
 
-## Tarieven & Voorwaarden
-
-### Geen Kosten
-- **Voorrijkosten** - worden niet berekend
-- **MV-unit vervanging** - wordt niet berekend (ook afstandsbediening niet)
-
-### Wel Doorberekenen
-- **Hoogwerker bij RGA** - huur en arbeid als meerprijs
-- **Zonnecollector reparaties** - alleen materiaal, arbeid niet
-
-## Specifieke Bepalingen
-
-### Administratieve Vereisten
-- Bij MV-unit vervanging: doorgeven aan Mieke vanwege toestelwijziging
-- Controle installatiedatum en plaatsing voor RGA-beugeling bepalingen
-
-### Uitzonderingsregels
-- Radiatorvervanging alleen uitgesloten als het geen lekkage betreft
-- RGA-beugeling afhankelijk van installatiedatum en oorspronkelijke installateur
+## Tarieven
+- Voorrijkosten: worden NIET berekend
+- MV-unit vervanging: wordt NIET berekend (ook afstandsbediening niet)
+- Hoogwerker bij RGA: huur en arbeid als meerprijs
+- Zonnecollector reparaties: alleen materiaal, arbeid niet

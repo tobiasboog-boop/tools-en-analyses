@@ -446,7 +446,7 @@ with st.sidebar:
 # === MAIN CONTENT ===
 
 st.title("🧪 Contract Checker V3 - DEMO")
-st.caption("Werkbonnen classificeren met AI | v2026-02-11-v3 (90% backtest)")
+st.caption("Werkbonnen classificeren met AI | v2026-02-17-v6 (generiek, contracttekst-gestuurd)")
 st.markdown("[📖 Handleiding & uitleg](https://notifica.nl/tools/contract-checker)")
 
 # === TABS ===
@@ -798,59 +798,51 @@ with tab_classify:
             builder = VerbeterdeVerhaalBuilder()
             verhaal = builder.build_verhaal(keten)
 
-            # ⭐ SYSTEM PROMPT V5 - 89.7% accuracy in backtest
+            # ⭐ SYSTEM PROMPT V6 - Generiek (contracttekst-gestuurd)
             system_prompt = """Je bent een expert in het analyseren van servicecontracten voor verwarmingssystemen.
 
 Je taak is om te bepalen of een werkbon binnen of buiten een servicecontract valt.
+Het CONTRACT dat je meekrijgt bevat het BASISPRINCIPE en de BELANGRIJKE UITZONDERINGEN voor deze specifieke woningbouwvereniging. Lees dit EERST en volg de contractregels nauwkeurig.
 
-⭐ BELANGRIJKSTE ANALYSE PUNT: Lees EERST de "WAT HEEFT DE MONTEUR GEDAAN? (Oplossingen)" sectie.
+⭐ BELANGRIJKSTE ANALYSE PUNT: Lees daarna de "WAT HEEFT DE MONTEUR GEDAAN? (Oplossingen)" sectie.
 Dit is een vrij tekstveld waar de monteur beschrijft wat er aan de hand was en wat hij heeft gedaan.
-Deze informatie is CRUCIAAL en weegt ZWAARDER dan de automatische kostenregels.
+Deze informatie is CRUCIAAL en weegt ZWAARDER dan storingscodes of kostenregels.
 
-🔍 KRITISCHE REGELS (op volgorde van prioriteit):
+🔍 UNIVERSELE REGELS (gelden voor ALLE contracten, op volgorde van prioriteit):
 
 📌 REGEL 0 - HOOGSTE PRIORITEIT (ALTIJD NEE, ongeacht andere regels):
 - **Oorzaakcode 900 / "Probleem door derde"** → ALTIJD NEE (factureren aan derden)
   Dit geldt OOK als de storingscode iets anders suggereert (bijv. lekkage onder ketel + probleem derden = NEE)
 - **Tapwaterboiler / geiser / moederhaard** → ALTIJD NEE (regie)
-- **Vloerverwarming** → ALTIJD NEE (buiten contract)
+- **Vloerverwarming (verdelers, pompen, regelingen)** → ALTIJD NEE (buiten contract)
+- **Verstopping** → ALTIJD NEE (buiten contract)
 
-📌 REGEL 1 - ALTIJD BINNEN CONTRACT (JA):
-- **Radiatorkranen** → ALTIJD JA, ook als ze > 2 meter van de ketel zitten!
-- **Installatie vullen en ontluchten** → ALTIJD JA (bijvullen, ontluchten, installatie gevuld)
-- **Ketelonderdelen**: Ventilator, gasklep, expansievat, warmtewisselaar, ontstekingselektrode,
-  pakking, printplaat, sensor, drukmeter, ontluchter, pomp van de ketel, waterdrukschakelaar
-- **"Ketel lek"**, "onderdeel in/aan de ketel", "lekkage aan ketel"
-- **Storingscode 006.1 "Lekkage ONDER de ketel"** → JA (dit is < 2 meter, binnen de mantel!)
+📌 REGEL 1 - OPLOSSING GAAT VOOR OP STORINGSCODE:
+- Als de OPLOSSING van de monteur is "installatie gevuld en ontlucht" / "bijgevuld" / "ontlucht" → ALTIJD JA
+  Dit geldt OOK als de storingscode iets anders suggereert (bijv. "GEEN CV en WW" + oplossing gevuld/ontlucht = JA)
+- Als de OPLOSSING een ander verhaal vertelt dan de storingscode, volg dan de OPLOSSING
 
-📌 REGEL 2 - ALTIJD BUITEN CONTRACT (NEE):
-- **Storingscode 006.2 "Lekkage aan de installatie"** → NEE (dit is lekkage op AFSTAND van de ketel!)
-  LET OP: 006.1 (onder ketel) ≠ 006.2 (aan installatie). 006.2 = ALTIJD NEE.
-- **Lekkage in slaapkamer (slk), woonkamer (wk), badkamer, keuken** → NEE
-- **Verstopping** → NEE (buiten contract)
-- **Radiatoren** vervangen/demonteren (niet radiatorkranen!) → NEE
-- **Leidingen** op afstand (> 2m van ketel) → NEE
+📌 REGEL 2 - CONTRACTTEKST IS LEIDEND:
+Volg het CONTRACT voor contractspecifieke regels over:
+- Welke onderdelen/locaties wel of niet gedekt zijn
+- Of er een afstandsgrens geldt (bijv. "2 meter van de ketel")
+- Hoe radiatoren, radiatorkranen, WTW-units, RGA/LTV behandeld worden
+- Deze regels VERSCHILLEN per woningbouwvereniging — lees het contract!
 
-📌 REGEL 3 - ONDERSCHEID KETELKAST VS BUITEN:
-**"BINNEN DE MANTEL" (< 2 meter van cv-ketel):**
-- Onderdelen die DEEL UITMAKEN VAN DE CV-KETEL ZELF → JA
-- Storingscode 006.1 "Lekkage ONDER de ketel" = binnen de mantel (< 2m) → JA
-- Storingscode 006.2 "Lekkage aan de installatie" = BUITEN de mantel → NEE
-- Lekkage leiding in keuken/badkamer/slaapkamer/woonkamer → NEE
+📌 REGEL 3 - STORINGSCODES (universeel, Syntess-systeemcodes):
+- **Storingscode 006.1 "Lekkage ONDER de ketel"** = lekkage dichtbij/onder de ketel (binnen de mantel)
+- **Storingscode 006.2 "Lekkage aan de installatie"** = lekkage op AFSTAND van de ketel (buiten de mantel) → NEE
+  LET OP: 006.1 ≠ 006.2! Dit is een CRUCIAAL onderscheid.
+  006.2 betekent dat de lekkage NIET aan de ketel zelf zit maar aan de installatie op afstand → classificeer als NEE.
 
-📌 REGEL 4 - VEELVOORKOMENDE GEVALLEN:
-1. **Storing + ketelonderdeel vervangen** → JA
-2. **Storing + radiator/leiding op afstand** → NEE
-3. **Radiatorkraan/knop defect** → JA (ongeacht locatie!)
-4. **Installatie gevuld en ontlucht** → JA (ongeacht locatie!)
-5. **Tapwaterboiler storing** → NEE (altijd regie)
-6. **Vloerverwarming storing** → NEE (buiten contract)
-7. **Probleem derden / electricien** → NEE (factureren)
-8. **Niet thuis geweest** → JA met lage confidence (werk niet uitgevoerd maar geen regie)
+📌 REGEL 4 - BIJ TWIJFEL:
+- **Radiatoren vervangen** → classificeer als NEE (medewerker kan dit beter beoordelen dan AI)
+- **CV-leiding niet in het zicht (reparatie)** → classificeer als NEE (moeilijk te beoordelen door AI)
+- **Niet thuis geweest** → JA met lage confidence (werk niet uitgevoerd maar geen regie)
 
 Analyseer vervolgens:
 - Type werkzaamheden (onderhoud, reparatie, storing, modificatie)
-- Locatie: binnen ketelkast vs buiten ketel
+- Locatie: binnen ketelkast/mantel vs buiten ketel
 - Gebruikte materialen en onderdelen
 - Arbeidsuren en kostenposten
 - Oorzaak: wie/wat veroorzaakt het probleem
@@ -860,8 +852,8 @@ Geef je antwoord ALLEEN in het volgende JSON formaat:
 {
     "classificatie": "JA" of "NEE",
     "confidence": 0.0-1.0,
-    "contract_referentie": "Verwijzing naar relevant contract artikel",
-    "toelichting": "Korte uitleg: vermeld EXPLICIET wat de monteur deed en welke regel van toepassing is"
+    "contract_referentie": "Verwijzing naar relevant contract artikel of -regel",
+    "toelichting": "Korte uitleg: vermeld EXPLICIET wat de monteur deed en welke contractregel van toepassing is"
 }
 
 Classificatie:
@@ -873,11 +865,10 @@ confidence: Je zekerheid over de classificatie (0.0 = zeer onzeker, 1.0 = zeer z
 BELANGRIJK:
 - Geef ALTIJD een classificatie (JA of NEE), ook als je onzeker bent
 - Bij twijfel over locatie → kijk naar wat de monteur schrijft in oplossingen
-- Ketelonderdelen zijn BINNEN contract, ook als ze "duur" zijn
-- RADIATORKRANEN zijn ALTIJD binnen contract (ook op afstand > 2m)
-- TAPWATERBOILER is ALTIJD regie (NEE)
-- INSTALLATIE VULLEN/ONTLUCHTEN is ALTIJD binnen contract (JA)
-- OORZAAK "PROBLEEM DOOR DERDE" → ALTIJD NEE, ook bij lekkage onder ketel"""
+- Ketelonderdelen (binnen de mantel) zijn BINNEN contract, ook als ze "duur" zijn
+- OORZAAK "PROBLEEM DOOR DERDE" → ALTIJD NEE, ook bij lekkage onder ketel
+- OPLOSSING "gevuld en ontlucht" → ALTIJD JA, ook als storingscode iets anders suggereert
+- Volg het CONTRACT voor contractspecifieke regels over radiatorkranen, WTW-units, afstandsgrenzen etc."""
 
             contract_truncated = contract_text[:15000] if len(contract_text) > 15000 else contract_text
 

@@ -1,8 +1,31 @@
 # Contract: Trivire Tablis rhiant
 # Source: Contractvoorwaarden diverse WBV.xlsx (sheet: Trivire Tablis rhiant)
 # Extracted: 2026-01-23 15:30
+# Verrijkt: 2026-02-17 met praktische interpretatie (bron: Gerrit Smits, WVC)
 
 ---
+
+## BASISPRINCIPE
+Alles binnen 2 meter van de cv-ketel ("binnen de mantel") valt onder het contract.
+Alles verder dan 2 meter van de ketel is buiten contract (factureren).
+
+## BELANGRIJKE UITZONDERINGEN
+- Radiatorkranen en appendages: ALTIJD in contract, ook als ze > 2 meter van de ketel zitten
+- Installatie vullen en ontluchten: ALTIJD in contract, ongeacht locatie
+- Kamerthermostaat: in contract. Klokthermostaat/slimme thermostaat: BUITEN contract
+- WTW-units: alle storingen FACTUREREN (niet in contract!)
+- Storingscode 006.1 "Lekkage ONDER de ketel" = BINNEN contract (< 2m, binnen de mantel)
+- Storingscode 006.2 "Lekkage aan de installatie" = BUITEN contract (op afstand van ketel)
+- CV-leiding 22mm: in contract. CV-leiding 15mm: buiten contract
+- CV-leidingen niet in het zicht: BUITEN contract (factureren)
+- RGA/LTV > 2 meter na de ketel: buiten contract
+- RGA beugelen: BUITEN contract
+- Radiatoren vervangen: BUITEN contract (factureren, ook bij lekkage)
+- Verstopping: BUITEN contract
+
+---
+
+## CONTRACTTABEL
 
 |  | Contract individuele installaties Trivire: |  |  |  |  |
 | Tarief syntess | Item: | in contract | berekenen | vaste bedragen vanaf 1/7/2025 | Rhiant (Alles binnen < 2 m van de ketel binnen contract) |

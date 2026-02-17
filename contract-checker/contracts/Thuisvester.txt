@@ -1,8 +1,32 @@
 # Contract: Thuisvester
 # Source: Contractvoorwaarden diverse WBV.xlsx (sheet: Thuisvester)
 # Extracted: 2026-01-23 15:30
+# Verrijkt: 2026-02-17 met praktische interpretatie (bron: Gerrit Smits, WVC)
 
 ---
+
+## BASISPRINCIPE
+Grotendeels hetzelfde als Trivire. Alles binnen de mantel van de cv-ketel of unit valt onder het contract.
+Belangrijkste verschil: bij Thuisvester geen expliciete 2-meter grens, maar "binnen de mantel".
+
+## BELANGRIJKE UITZONDERINGEN EN VERSCHILLEN
+- WTW-unit: alles binnen de mantel van de unit is IN CONTRACT (bij Trivire juist factureren!)
+- Kamerthermostaat: in contract (1 stuks per cv-ketel). Klokthermostaat/slimme thermostaat: BUITEN contract (factureren minus eenheidsprijs standaard thermostaat)
+- CV-leidingen en koppelingen bij lekkage of defect: IN CONTRACT (breder dan Trivire!)
+- CV-leidingen, luchtkanalen, RGA en LTV weggewerkt in schachten, in of onder vloeren of buitendaks: BUITEN contract (alle reparaties factureren)
+- RGA/LTV in de woning in het zicht bij lekkage of defect: IN CONTRACT
+- RGA/LTV niet in het zicht: ALTIJD BUITEN contract (factureren)
+- RGA beugelen: BUITEN contract (aanvullend factureren)
+- Radiatoren: alleen bij LEKKAGE in contract. Bij vervanging om andere reden: BUITEN contract. Bij twijfel: classificeer als NEE (medewerker kan dit beter beoordelen)
+- Condensafvoer: tot en met de eerste sifon onder de ketel = IN CONTRACT
+- Vloerverwarmingsverdelers, pompen, regelingen: BUITEN contract (alle reparaties factureren)
+- Kamerthermostaten en zonekleppen voor naregelingen: BUITEN contract
+- Verstopping: BUITEN contract
+- CV-leiding niet in het zicht (reparatie): classificeer als NEE (moeilijk te beoordelen door AI, medewerker controleert handmatig)
+
+---
+
+## CONTRACTTABEL
 
 | Contract Thuisvester |  |  |
 | Onderdeel cv- / ww installatie | Omschrijving | In contract of factureren |
