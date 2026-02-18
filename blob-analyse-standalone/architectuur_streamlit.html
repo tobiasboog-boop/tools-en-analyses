@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notifica Streamlit Architectuur - IP & Firewall</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f2f5;
+            padding: 40px;
+            color: #1a1a2e;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 48px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+        }
+        h1 {
+            text-align: center;
+            font-size: 24px;
+            color: #16136F;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 40px;
+        }
+        .diagram {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0;
+        }
+
+        /* Blocks */
+        .block {
+            width: 100%;
+            max-width: 760px;
+            border-radius: 12px;
+            padding: 28px 32px;
+            position: relative;
+        }
+        .block-title {
+            font-weight: 700;
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+        .block-subtitle {
+            font-size: 13px;
+            opacity: 0.7;
+            margin-bottom: 16px;
+        }
+
+        /* User block */
+        .block-user {
+            background: linear-gradient(135deg, #e8eaf6 0%, #c5cae9 100%);
+            border: 2px solid #7986cb;
+        }
+        .block-user .block-title { color: #283593; }
+        .block-user .icon { color: #3949ab; }
+
+        /* Streamlit block */
+        .block-streamlit {
+            background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+            border: 2px solid #ffb74d;
+        }
+        .block-streamlit .block-title { color: #e65100; }
+
+        /* Firewall block */
+        .block-firewall {
+            background: linear-gradient(135deg, #fce4ec 0%, #f8bbd0 100%);
+            border: 3px dashed #e53935;
+            padding: 20px 32px;
+        }
+        .block-firewall .block-title { color: #c62828; }
+
+        /* Database block */
+        .block-database {
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            border: 2px solid #66bb6a;
+        }
+        .block-database .block-title { color: #2e7d32; }
+
+        /* Arrow connectors */
+        .arrow {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 0;
+            position: relative;
+        }
+        .arrow-line {
+            width: 3px;
+            height: 32px;
+            background: #16136F;
+        }
+        .arrow-head {
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 12px solid #16136F;
+        }
+        .arrow-label {
+            position: absolute;
+            right: calc(50% + 24px);
+            top: 50%;
+            transform: translateY(-50%);
+            background: #16136F;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .arrow-label-right {
+            left: calc(50% + 24px);
+            right: auto;
+        }
+
+        /* IP grid */
+        .ip-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-top: 12px;
+        }
+        .ip-item {
+            background: rgba(255,255,255,0.6);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            text-align: center;
+            color: #bf360c;
+        }
+
+        /* Schema list */
+        .schema-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            margin-top: 12px;
+        }
+        .schema-item {
+            background: rgba(255,255,255,0.6);
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 11px;
+            color: #1b5e20;
+        }
+
+        /* Apps list */
+        .apps {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .app-badge {
+            background: rgba(255,255,255,0.6);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+        .app-badge strong { color: #e65100; }
+
+        /* Info row */
+        .info-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-top: 8px;
+            font-size: 13px;
+        }
+        .info-tag {
+            background: rgba(255,255,255,0.5);
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* Firewall rule */
+        .fw-rule {
+            background: rgba(255,255,255,0.5);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 12px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #b71c1c;
+        }
+
+        /* Knip label */
+        .knip-label {
+            position: absolute;
+            right: -60px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: #c62828;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        /* Header with icon */
+        .block-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .block-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .block-user .block-icon { background: rgba(57,73,171,0.15); }
+        .block-streamlit .block-icon { background: rgba(230,81,0,0.15); }
+        .block-firewall .block-icon { background: rgba(229,57,53,0.15); }
+        .block-database .block-icon { background: rgba(46,125,50,0.15); }
+
+        /* Legend */
+        .legend {
+            margin-top: 32px;
+            padding: 20px 24px;
+            background: #f5f5f5;
+            border-radius: 10px;
+            max-width: 760px;
+            width: 100%;
+        }
+        .legend h3 {
+            font-size: 14px;
+            color: #444;
+            margin-bottom: 12px;
+        }
+        .legend-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 32px;
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Notifica Streamlit Cloud Architectuur</h1>
+        <p class="subtitle">IP & Firewall overzicht &mdash; Generiek voor alle Streamlit apps</p>
+
+        <div class="diagram">
+
+            <!-- GEBRUIKER -->
+            <div class="block block-user">
+                <div class="block-header">
+                    <div class="block-icon">&#128100;</div>
+                    <div>
+                        <div class="block-title">Gebruiker (Browser)</div>
+                        <div class="block-subtitle">Willekeurig IP-adres &bull; Geen configuratie nodig</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ARROW 1 -->
+            <div class="arrow">
+                <div class="arrow-line"></div>
+                <div class="arrow-head"></div>
+                <div class="arrow-label">HTTPS :443</div>
+                <div class="arrow-label arrow-label-right" style="background: #546e7a;">TLS 1.2+</div>
+            </div>
+
+            <!-- STREAMLIT CLOUD -->
+            <div class="block block-streamlit">
+                <div class="block-header">
+                    <div class="block-icon">&#9729;&#65039;</div>
+                    <div>
+                        <div class="block-title">Streamlit Community Cloud</div>
+                        <div class="block-subtitle">Google Cloud Platform &bull; US regio &bull; Python runtime</div>
+                    </div>
+                </div>
+
+                <div class="apps">
+                    <div class="app-badge"><strong>App 1:</strong> blob-analyse</div>
+                    <div class="app-badge"><strong>App 2:</strong> tools-en-analyses</div>
+                </div>
+
+                <div class="info-row">
+                    <span class="info-tag" style="background: #fff8e1; color: #e65100;">Secrets</span>
+                    <span>APP_PASSWORD + [database] credentials</span>
+                </div>
+
+                <div style="margin-top: 16px;">
+                    <div style="font-weight: 600; font-size: 13px; color: #bf360c; margin-bottom: 6px;">
+                        18 vaste uitgaande IP-adressen:
+                    </div>
+                    <div class="ip-grid">
+                        <div class="ip-item">35.230.127.150</div>
+                        <div class="ip-item">35.203.151.101</div>
+                        <div class="ip-item">34.19.100.134</div>
+                        <div class="ip-item">34.83.176.217</div>
+                        <div class="ip-item">35.230.58.211</div>
+                        <div class="ip-item">35.203.187.165</div>
+                        <div class="ip-item">35.185.209.55</div>
+                        <div class="ip-item">34.127.88.74</div>
+                        <div class="ip-item">34.127.0.121</div>
+                        <div class="ip-item">35.230.78.192</div>
+                        <div class="ip-item">35.247.110.67</div>
+                        <div class="ip-item">35.197.92.111</div>
+                        <div class="ip-item">34.168.247.159</div>
+                        <div class="ip-item">35.230.56.30</div>
+                        <div class="ip-item">34.127.33.101</div>
+                        <div class="ip-item">35.227.190.87</div>
+                        <div class="ip-item">35.199.156.97</div>
+                        <div class="ip-item">34.82.135.155</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ARROW 2 -->
+            <div class="arrow">
+                <div class="arrow-line"></div>
+                <div class="arrow-head"></div>
+                <div class="arrow-label">PostgreSQL :5432</div>
+                <div class="arrow-label arrow-label-right" style="background: #c62828;">TCP</div>
+            </div>
+
+            <!-- FIREWALL -->
+            <div class="block block-firewall" style="position: relative;">
+                <div class="block-header">
+                    <div class="block-icon">&#128737;&#65039;</div>
+                    <div>
+                        <div class="block-title">FIREWALL / IP WHITELIST</div>
+                        <div class="block-subtitle">Beheerd door Techniek &bull; Hier zit de knip</div>
+                    </div>
+                </div>
+                <div class="fw-rule">
+                    <strong>ALLOW</strong> INBOUND TCP<br>
+                    &nbsp;&nbsp;Source: <strong>18 Streamlit Cloud IP's</strong> (zie boven)<br>
+                    &nbsp;&nbsp;Dest: &nbsp;&nbsp;<strong>217.160.16.105:5432</strong><br>
+                    &nbsp;&nbsp;User: &nbsp;&nbsp;steamlit_1229 (read-only)
+                </div>
+                <div class="knip-label">&#9888; KNIP</div>
+            </div>
+
+            <!-- ARROW 3 -->
+            <div class="arrow">
+                <div class="arrow-line" style="background: #2e7d32;"></div>
+                <div class="arrow-head" style="border-top-color: #2e7d32;"></div>
+            </div>
+
+            <!-- DATABASE -->
+            <div class="block block-database">
+                <div class="block-header">
+                    <div class="block-icon">&#128451;</div>
+                    <div>
+                        <div class="block-title">PostgreSQL Database Server</div>
+                        <div class="block-subtitle">Host: 217.160.16.105 &bull; Port: 5432 &bull; Database: 1229</div>
+                    </div>
+                </div>
+
+                <div class="info-row">
+                    <span class="info-tag" style="background: #e8f5e9; color: #2e7d32;">User</span>
+                    <span>steamlit_1229 (read-only)</span>
+                </div>
+
+                <div style="margin-top: 16px; font-weight: 600; font-size: 13px; color: #1b5e20; margin-bottom: 6px;">
+                    Schema's &amp; tabellen:
+                </div>
+                <div class="schema-grid">
+                    <div class="schema-item">werkbonnen."Documenten"</div>
+                    <div class="schema-item">werkbonnen."Mobiele uitvoersessies"</div>
+                    <div class="schema-item">maatwerk.stg_AT_DOCUMENT_CLOBS</div>
+                    <div class="schema-item">maatwerk.stg_AT_UITVBEST_CLOBS</div>
+                    <div class="schema-item">maatwerk.stg_AT_WERK_CLOBS</div>
+                    <div class="schema-item">maatwerk.stg_AT_MWBSESS_CLOBS</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- LEGEND -->
+        <div class="legend" style="margin-left: auto; margin-right: auto;">
+            <h3>Legenda</h3>
+            <div class="legend-items">
+                <div class="legend-item">
+                    <div class="legend-dot" style="background: #7986cb;"></div>
+                    Gebruiker (geen actie nodig)
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background: #ffb74d;"></div>
+                    Streamlit Cloud (beheerd door Notifica)
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background: #e53935;"></div>
+                    Firewall (actie Techniek vereist)
+                </div>
+                <div class="legend-item">
+                    <div class="legend-dot" style="background: #66bb6a;"></div>
+                    Database (bestaande infra)
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Notifica &mdash; Streamlit Cloud Architectuur &mdash; Februari 2026<br>
+            IP-adressen laatst bevestigd: nov 2024 (Streamlit forum). Kunnen wijzigen zonder voorafgaande kennisgeving.
+        </div>
+    </div>
+</body>
+</html>
