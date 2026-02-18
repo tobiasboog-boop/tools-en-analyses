@@ -4,6 +4,13 @@ import pandas as pd
 from mailerlite_api_v2 import MailerLiteAPI
 from datetime import datetime
 
+# Try to import GA4 (optional)
+try:
+    from ga4_data_api import GA4DataAPI
+    GA4_AVAILABLE = True
+except Exception:
+    GA4_AVAILABLE = False
+
 # Page config
 st.set_page_config(
     page_title="🎯 Lead Action Dashboard",
@@ -211,6 +218,64 @@ try:
         st.dataframe(campaign_df, use_container_width=True)
 except Exception as e:
     st.warning(f"Kan campaign data niet laden: {e}")
+
+st.markdown("---")
+
+# GA4 WEBSITE ENGAGEMENT
+if GA4_AVAILABLE:
+    st.markdown("## 🌐 Website Engagement (GA4)")
+
+    try:
+        @st.cache_resource
+        def init_ga4():
+            return GA4DataAPI()
+
+        ga4 = init_ga4()
+
+        @st.cache_data(ttl=3600)
+        def load_ga4_high_intent():
+            """Load high-intent page views from GA4."""
+            return ga4.get_high_intent_pages(days=30)
+
+        with st.spinner("📊 Laden van GA4 website data..."):
+            high_intent_pages = load_ga4_high_intent()
+
+        if high_intent_pages:
+            # Summary metrics
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+                total_views = sum(p['page_views'] for p in high_intent_pages)
+                st.metric("High-Intent Page Views", f"{total_views:,}", "Laatste 30 dagen")
+
+            with col2:
+                pricing_views = sum(p['page_views'] for p in high_intent_pages if p['intent_type'] == 'pricing')
+                st.metric("Pricing/Tarief Views", f"{pricing_views:,}")
+
+            with col3:
+                contact_views = sum(p['page_views'] for p in high_intent_pages if p['intent_type'] == 'contact')
+                st.metric("Contact Views", f"{contact_views:,}")
+
+            # Top pages
+            st.markdown("**Top High-Intent Pages:**")
+            ga4_df = pd.DataFrame([{
+                'Pagina': p['page_path'][:60],
+                'Type': p['intent_type'].title(),
+                'Views': p['page_views'],
+                'Unieke Bezoekers': p['active_users']
+            } for p in high_intent_pages[:10]])
+
+            st.dataframe(ga4_df, use_container_width=True, height=300)
+
+            st.info("💡 **Tip**: User-ID tracking is actief - over 2-3 weken kunnen we leads koppelen aan website gedrag!")
+        else:
+            st.info("📊 GA4 data verzamelen... User-ID tracking is actief op notifica.nl. Data verschijnt over 2-3 weken.")
+
+    except Exception as e:
+        st.warning(f"GA4 data niet beschikbaar: {str(e)[:100]}")
+        st.info("ℹ️ GA4 tracking wordt binnenkort toegevoegd aan het dashboard.")
+else:
+    st.info("🌐 **Website Engagement**: GA4 integratie komt binnenkort!")
 
 st.markdown("---")
 
