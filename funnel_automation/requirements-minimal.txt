@@ -1,0 +1,4 @@
+# Minimal requirements voor Action Dashboard alleen
+streamlit==1.31.0
+pandas==2.2.0
+requests==2.32.0
