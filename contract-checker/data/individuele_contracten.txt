@@ -1,15 +1,15 @@
-# Individuele contracten WVC - Trivire
-# ======================================
+# Individuele contracten WVC - Alle woningbouwverenigingen
+# ========================================================
 #
-# BRON: "Contractvoorwaarden diverse WBV.xlsx" (Gerrit, WVC)
-# LOGICA: Alle contracten die NIET in deze lijst staan = COLLECTIEF
-#         (inclusief Thuisvester en Bazalt)
+# BRON: "Contractvoorwaarden diverse WBV.xlsx" tab "projecten contracten syntess" (Gerrit, WVC)
+# LOGICA: Alleen werkbonnen waarvan de paragraafnaam matcht met een regel hieronder
+#         worden beoordeeld door de AI. De rest wordt overgeslagen.
 #
 # Matching: partial match op werkbonparagraaf.naam (case-insensitive)
 #
-# ======================================
-# TRIVIRE INDIVIDUELE CONTRACTEN:
-# ======================================
+# ========================================================
+# TRIVIRE INDIVIDUELE CONTRACTEN (debiteur 005102):
+# ========================================================
 
 # STAND codes (individuele toestellen)
 STAND-27
@@ -34,3 +34,54 @@ Trivire aanvulling Geisers
 Aanvulling Trivire 2013 jaarlijks onderhoud
 Aanvulling Trivire 1/10/2022
 OH contract aanvulling
+
+# ========================================================
+# BAZALT INDIVIDUELE CONTRACTEN (debiteur 007453):
+# ========================================================
+
+# STAND codes
+STAND-48
+STAND-49
+STAND-50
+STAND-51
+Bazalt Meander open toestel
+Bazalt Meander gesloten toestel
+Bazalt MV en WTW
+Bazalt (individueel) Warmtepomp
+
+# Woonlinie contracten
+WOONLINIEOPEN
+WOONLINIEGESLOTEN
+Woonlinie open toestel
+Woonlinie gesloten toestel
+OHC.WOONLINIE
+Bazalt Woonlinie (individueel)
+Bazalt Woonlinie open toestel
+Bazalt Woonlinie gesloten toestel
+
+# OHC codes
+OHC.BAZALT
+Bazalt (individueel)
+
+# Bekende paragraafnamen uit data
+CV installatie Bazalt (GK)
+Oh contract Meander
+Bazalt aanvulling MV
+Bazalt MV
+Bazalt zonneboiler
+
+# ========================================================
+# THUISVESTER INDIVIDUELE CONTRACTEN (debiteur 177460):
+# ========================================================
+
+# OHC/project codes
+C14-198
+C23-183
+OHcontract individuele installaties Thuisvester
+Aanvulling 19/9/2023 Thuisvester
+
+# ========================================================
+# RHIANT (debiteur 007868):
+# ========================================================
+C12-076
+OHC overeenkomst individueel Rhiant

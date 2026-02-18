@@ -1,0 +1,40 @@
+werkbon_code,werkbon_key,v3_classificatie,v3_bevinding,expected,v4_classificatie,v4_confidence,v4_correct,opmerking_gerrit
+W2548509,3010988,NEE,goed,NEE,NEE,0.9,True,
+W2548498,3010931,JA,goed,JA,JA,1.0,True,
+W2548457,3010648,JA,goed,JA,JA,1.0,True,
+W2548454,3010631,JA,goed,JA,JA,1.0,True,
+W2548428,3010455,JA,goed,JA,JA,0.9,True,
+W2548345,3009733,NEE,goed,NEE,NEE,0.9,True,
+W2548296,3009393,JA,goed,JA,JA,0.9,True,
+W2548293,3009366,JA,goed,JA,JA,0.9,True,
+W2548272,3009173,JA,goed,JA,JA,0.9,True,
+W2548268,3009146,NEE,fout,JA,JA,1.0,True,zit binnen 2 meter onder de ketel in het contract
+W2547890,3004600,JA,goed,JA,JA,0.9,True,
+W2547870,3004558,JA,fout,NEE,NEE,0.9,True,CV lekkage inst. Valt buiten het contract slaapkamer woonkamer (afgekort slk en wk)
+W2547729,3004200,JA,goed,JA,JA,0.9,True,
+W2547634,3004000,JA,goed,JA,JA,0.9,True,
+W2547480,3003676,JA,goed,JA,JA,0.9,True,
+W2547479,3003674,JA,goed,JA,JA,1.0,True,
+W2547475,3003433,JA,goed,JA,JA,1.0,True,
+W2547463,3003278,NEE,goed,NEE,NEE,0.9,True,
+W2547442,3003236,JA,goed,JA,JA,0.9,True,
+W2547436,3003226,NEE,goed,NEE,NEE,0.9,True,
+W2547289,3002328,TWIJFEL,goed,TWIJFEL,NEE,0.9,False,
+W2547281,3002257,TWIJFEL,fout,JA,JA,0.9,True,oplossing ketelonderdelen vervangen binnen contract geen twijfel geval
+W2547270,3002173,JA,goed,JA,JA,0.9,True,
+W2547240,3001811,JA,goed,JA,JA,0.9,True,
+W2547120,3000802,JA,goed,JA,JA,0.9,True,
+W2547085,3000490,TWIJFEL,goed,TWIJFEL,JA,0.9,False,
+W2547114,3000775,JA,goed,JA,JA,0.9,True,
+W2547118,3000791,NEE,fout,TWIJFEL,JA,0.9,False,oplossing niet goed gelezen moet TWIJFEL zijn
+W2547140,3001034,JA,goed,JA,JA,1.0,True,
+W2546622,2998023,TWIJFEL,fout,JA,JA,1.0,True,oplossing: gevuld en ontlucht binnen contract geen twijfel geval
+W2546524,2997868,TWIJFEL,fout,JA,JA,0.9,True,oplossing: gevuld en ontlucht binnen contract geen twijfel geval
+W2546520,2997853,NEE,fout,JA,JA,0.9,True,lekkage onder de ketel is < 2 meter valt binnen contract
+W2546472,2997749,JA,goed,JA,JA,1.0,True,
+W2546419,2997412,JA,goed,JA,JA,1.0,True,
+W2546415,2997407,JA,goed,JA,JA,0.9,True,
+W2546414,2997406,JA,fout,NEE,NEE,0.9,True,In de oplossing staat : Radiator gedemonteerd en hergemonteerd ivm verstopping
+W2546402,2997389,NEE,fout,JA,JA,0.9,True,installatie gevuld en ontlucht altijd in het contract
+W2546391,2997362,NEE,fout,JA,JA,0.9,True,oplossing niet gelezen bewoner niet thuis in contract
+W2546388,2997349,JA,goed,JA,JA,0.9,True,

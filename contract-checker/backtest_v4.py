@@ -67,6 +67,8 @@ class VerbeterdeVerhaalBuilder(WerkbonVerhaalBuilder):
                 lines.append("### Werkbonparagrafen")
                 for p in wb.paragrafen:
                     lines.append(f"\n**{p.naam}** ({p.type})")
+                    if p.factureerwijze:
+                        lines.append(f"- ⚠️ Factureerwijze: {p.factureerwijze}")
                     lines.append(f"- Uitvoeringstatus: {p.uitvoeringstatus}")
                     if p.plandatum:
                         lines.append(f"- Plandatum: {p.plandatum}")
@@ -127,6 +129,7 @@ Deze informatie is CRUCIAAL en weegt ZWAARDER dan storingscodes of kostenregels.
 🔍 UNIVERSELE REGELS (gelden voor ALLE contracten, op volgorde van prioriteit):
 
 📌 REGEL 0 - HOOGSTE PRIORITEIT (ALTIJD NEE, ongeacht andere regels):
+- **Factureerwijze "Regie (alles factureren)"** → ALTIJD NEE. Als de paragraaf op Regie staat, is het antwoord altijd NEE.
 - **Oorzaakcode 900 / "Probleem door derde"** → ALTIJD NEE (factureren aan derden)
   Dit geldt OOK als de storingscode iets anders suggereert (bijv. lekkage onder ketel + probleem derden = NEE)
 - **Tapwaterboiler / geiser / moederhaard** → ALTIJD NEE (regie)
