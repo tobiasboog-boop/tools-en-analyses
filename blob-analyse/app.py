@@ -291,7 +291,8 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             sessie_keys = sessies['MobieleuitvoersessieRegelKey'].tolist()
             sessie_keys_str = ','.join(str(k) for k in sessie_keys)
 
-            blob_raw = client.query(KLANTNUMMER, f'''
+            # BLOB tabel 1: stg_at_mwbsess_clobs (monteur notities)
+            blob1 = client.query(KLANTNUMMER, f'''
                 SELECT
                     m.gc_id AS "MobieleuitvoersessieRegelKey",
                     m.notitie
@@ -300,6 +301,29 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
                   AND m.notitie IS NOT NULL
             ''')
 
+            # BLOB tabel 2: stg_at_uitvbest_clobs (tekst)
+            blob2 = client.query(KLANTNUMMER, f'''
+                SELECT
+                    u.gc_id AS "MobieleuitvoersessieRegelKey",
+                    u.tekst as notitie
+                FROM maatwerk.stg_at_uitvbest_clobs u
+                WHERE u.gc_id IN ({sessie_keys_str})
+                  AND u.tekst IS NOT NULL
+            ''')
+
+            # BLOB tabel 3: stg_at_document_clobs (document notities)
+            blob3 = client.query(KLANTNUMMER, f'''
+                SELECT
+                    d.gc_id AS "MobieleuitvoersessieRegelKey",
+                    COALESCE(d.gc_notitie_extern, d.gc_informatie) as notitie
+                FROM maatwerk.stg_at_document_clobs d
+                WHERE d.gc_id IN ({sessie_keys_str})
+                  AND (d.gc_notitie_extern IS NOT NULL OR d.gc_informatie IS NOT NULL)
+            ''')
+
+            # Combineer alle BLOB bronnen
+            blob_raw = pd.concat([blob1, blob2, blob3], ignore_index=True)
+
             # Merge met sessies om WerkbonDocumentKey te krijgen
             if not blob_raw.empty:
                 blob_notities = sessies.merge(
@@ -307,6 +331,10 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
                     on='MobieleuitvoersessieRegelKey',
                     how='inner'
                 )
+                # Als er meerdere notities zijn voor dezelfde werkbon, combineer ze
+                blob_notities = blob_notities.groupby('WerkbonDocumentKey').agg({
+                    'notitie': lambda x: '\n\n'.join(x.dropna().astype(str))
+                }).reset_index()
 
         st.success(f"✓ {len(blob_notities)} BLOB notities gevonden")
 
