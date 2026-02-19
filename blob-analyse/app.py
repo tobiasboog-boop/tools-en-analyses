@@ -45,11 +45,36 @@ def strip_rtf(text):
     """Strip RTF formatting from BLOB text"""
     if not text or not isinstance(text, str):
         return ''
+
+    # Remove RTF header patterns
+    text = re.sub(r'\\rtf[0-9]+', '', text)
+    text = re.sub(r'\\ansi\\ansicpg[0-9]+', '', text)
+    text = re.sub(r'\\deff[0-9]+', '', text)
+
+    # Remove font table
+    text = re.sub(r'\{\\fonttbl[^}]*\}', '', text)
+    text = re.sub(r'\{\\colortbl[^}]*\}', '', text)
+
+    # Remove specific fonts and formatting
+    text = re.sub(r'Arial;?', '', text)
+    text = re.sub(r'Symbol;?', '', text)
+    text = re.sub(r'Riched20 [0-9\.]+', '', text)
+    text = re.sub(r'\\f[0-9]+', '', text)
+    text = re.sub(r'\\fs[0-9]+', '', text)
+
     # Remove RTF control words
     text = re.sub(r'\\[a-z]+[0-9]*\s?', ' ', text)
-    text = re.sub(r'[{}]', '', text)
+
+    # Remove braces and asterisks
+    text = re.sub(r'[{}*]', '', text)
+
+    # Replace \par with newline
     text = re.sub(r'\\par', '\n', text)
+
+    # Clean up whitespace
     text = re.sub(r'\s+', ' ', text)
+    text = re.sub(r'\s*;\s*', '', text)
+
     return text.strip()
 
 def map_priority(prio_raw):
@@ -79,15 +104,32 @@ def guess_location_type(location_name):
     """Heuristic to guess location type based on name"""
     if pd.isna(location_name):
         return ''
+
     name_lower = str(location_name).lower()
-    if 'winkel' in name_lower or 'store' in name_lower:
+
+    # Retail ketens met nummers (bijv. "Zeeman 1234 Amsterdam") = Store
+    retail_chains = ['zeeman', 'coolblue', 'hema', 'action', 'kruidvat', 'etos', 'ah', 'jumbo', 'aldi', 'lidl']
+    for chain in retail_chains:
+        if chain in name_lower:
+            # Check of het een nummer bevat (winkel nummer) → Store
+            if any(char.isdigit() for char in location_name):
+                return 'Store'
+
+    # Expliciete keywords
+    if 'winkel' in name_lower or 'store' in name_lower or 'shop' in name_lower:
         return 'Store'
-    elif 'dc' in name_lower or 'distributie' in name_lower:
+    elif 'dc' in name_lower or 'distributie' in name_lower or 'warehouse' in name_lower or 'magazijn' in name_lower:
         return 'Warehouse'
-    elif 'kantoor' in name_lower or 'office' in name_lower:
+    elif 'kantoor' in name_lower or 'office' in name_lower or 'hoofdkantoor' in name_lower:
         return 'Office'
-    else:
-        return ''
+    elif 'hoofdkantoor' in name_lower or 'hq' in name_lower:
+        return 'Office'
+
+    # Default voor retail met plaatsnaam → Store
+    if any(chain in name_lower for chain in retail_chains):
+        return 'Store'
+
+    return ''
 
 def extract_storing_omschrijving(notitie_text):
     """Extract storing description from BLOB notitie (first sentence)"""
