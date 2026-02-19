@@ -32,8 +32,8 @@ try:
 except ImportError:
     pass  # dotenv optioneel
 
-# SDK importeren (relatief pad in development)
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '_sdk'))
+# SDK importeren (relatief pad)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '_sdk'))
 
 from notifica_sdk import NotificaClient, NotificaError
 
