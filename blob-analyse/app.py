@@ -148,6 +148,20 @@ with st.sidebar:
     st.markdown("🔴 Rood = Niet in database (handmatig invullen)")
     st.markdown("🟡 Geel = Automatisch afgeleid (controleren)")
 
+# Klantfilter placeholder (wordt gevuld na data ophalen)
+klant_filter = None
+if 'klanten_lijst' in st.session_state:
+    with st.sidebar:
+        st.markdown("---")
+        klant_filter = st.multiselect(
+            "Filter op klant",
+            options=st.session_state.klanten_lijst,
+            default=st.session_state.get('selected_klanten', []),
+            help="Type om te zoeken (bijv. 'coolblue' toont alle Coolblue locaties)"
+        )
+        if klant_filter:
+            st.session_state.selected_klanten = klant_filter
+
 # Main button
 if st.button("📥 Data Ophalen & Exporteren", type="primary"):
     client = NotificaClient()
@@ -186,6 +200,19 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             st.stop()
 
         st.success(f"✓ {len(werkbonnen_basis)} werkbonnen gevonden")
+
+        # Sla unieke klanten op voor filter
+        unique_klanten = sorted(werkbonnen_basis['Klant'].dropna().unique().tolist())
+        st.session_state.klanten_lijst = unique_klanten
+
+        # Pas klantfilter toe indien ingesteld
+        if klant_filter:
+            werkbonnen_basis = werkbonnen_basis[werkbonnen_basis['Klant'].isin(klant_filter)]
+            st.info(f"📌 Gefilterd op {len(klant_filter)} klant(en) - {len(werkbonnen_basis)} werkbonnen")
+
+        if werkbonnen_basis.empty:
+            st.warning("Geen werkbonnen gevonden na filtering.")
+            st.stop()
 
         # ====================================================================
         # STAP 2: PARAGRAFEN & INSTALLATIES
@@ -362,17 +389,20 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
 
         # 23. aanmaak d+t - combineer datum + tijd
         result_df['aanmaak d+t'] = pd.to_datetime(
-            result_df['Datum aanmaak'].astype(str) + ' ' + result_df['Tijd aanmaak'].astype(str)
+            result_df['Datum aanmaak'].astype(str) + ' ' + result_df['Tijd aanmaak'].astype(str),
+            errors='coerce'
         )
 
         # 24. reactie d+t - combineer reactie datum + tijd
         result_df['reactie d+t'] = pd.to_datetime(
-            result_df['Reactie datum'].astype(str) + ' ' + result_df['Reactie tijd'].astype(str)
+            result_df['Reactie datum'].astype(str) + ' ' + result_df['Reactie tijd'].astype(str),
+            errors='coerce'
         )
 
         # 25. response d+t - combineer oplossing datum + tijd
         result_df['response d+t'] = pd.to_datetime(
-            result_df['Datum oplossing'].astype(str) + ' ' + result_df['Tijd oplossing'].astype(str)
+            result_df['Datum oplossing'].astype(str) + ' ' + result_df['Tijd oplossing'].astype(str),
+            errors='coerce'
         )
 
         # 26. reactietijd - verschil tussen reactie en aanmaak
