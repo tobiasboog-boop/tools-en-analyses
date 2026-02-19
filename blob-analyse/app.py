@@ -242,12 +242,36 @@ def categorize_response_time(hours):
 # STREAMLIT APP
 # ============================================================================
 
-st.title("📊 Zenith Werkbon Rapportage - Complete Export")
-st.markdown("**Status:** Alle 37 kolommen - Data ophalen en exporteren naar Excel met kleurcodering")
+st.title("📊 Werkbon Rapportage - Complete Export")
+st.markdown("**Alle 37 kolommen** - Data ophalen en exporteren naar Excel met kleurcodering")
 
 # Filters
 with st.sidebar:
     st.header("Filters")
+
+    # Klantnummer selector
+    st.subheader("🏢 Klantnummer")
+    klantnummer = st.number_input(
+        "Klantnummer",
+        min_value=1000,
+        max_value=9999,
+        value=KLANTNUMMER,
+        step=1,
+        help="Voer het klantnummer in (bijv. 1229 voor Zenith, 1132 voor andere klant)"
+    )
+
+    # Show selected customer
+    customer_names = {
+        1229: "Zenith",
+        1132: "Stresstest klant"
+    }
+    customer_name = customer_names.get(klantnummer, f"Klant {klantnummer}")
+    st.info(f"📊 Geselecteerd: **{customer_name}** (#{klantnummer})")
+
+    st.markdown("---")
+
+    # Datum filters
+    st.subheader("📅 Periode")
     default_start = datetime.now() - timedelta(days=30)
     default_end = datetime.now()
     start_date = st.date_input("Van", default_start)
@@ -260,7 +284,7 @@ with st.sidebar:
                 client = NotificaClient()
 
                 # Haal opdrachtgevers (debiteuren) op
-                opdrachtgevers_query = client.query(KLANTNUMMER, f'''
+                opdrachtgevers_query = client.query(klantnummer, f'''
                     SELECT DISTINCT wb."Debiteur"
                     FROM werkbonnen."Werkbonnen" wb
                     WHERE wb."MeldDatum" >= '{start_date}'
@@ -271,7 +295,7 @@ with st.sidebar:
                 st.session_state.opdrachtgevers_lijst = opdrachtgevers_query['Debiteur'].tolist()
 
                 # Haal klanten op
-                klanten_query = client.query(KLANTNUMMER, f'''
+                klanten_query = client.query(klantnummer, f'''
                     SELECT DISTINCT wb."Klant"
                     FROM werkbonnen."Werkbonnen" wb
                     WHERE wb."MeldDatum" >= '{start_date}'
@@ -351,7 +375,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # ====================================================================
         status_container.info("Stap 1/6: Basis werkbonnen ophalen...")
 
-        werkbonnen_basis = client.query(KLANTNUMMER, f'''
+        werkbonnen_basis = client.query(klantnummer, f'''
             SELECT
                 wb."WerkbonDocumentKey",
                 wb."Werkbon",
@@ -402,7 +426,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         wb_keys = werkbonnen_basis['WerkbonDocumentKey'].tolist()
         wb_keys_str = ','.join(str(k) for k in wb_keys)
 
-        paragrafen = client.query(KLANTNUMMER, f'''
+        paragrafen = client.query(klantnummer, f'''
             SELECT
                 para."WerkbonDocumentKey",
                 para."Uitgevoerd op" AS datum_oplossing,
@@ -422,7 +446,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # ====================================================================
         status_container.info("Stap 3/6: Reactie tijden ophalen...")
 
-        logboek = client.query(KLANTNUMMER, f'''
+        logboek = client.query(klantnummer, f'''
             SELECT
                 log."WerkbonDocumentKey",
                 MIN(log."Datum en tijd") AS reactie_datetime
@@ -440,7 +464,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         status_container.info("Stap 4/6: BLOB monteur notities ophalen...")
 
         # Eerst sessies ophalen
-        sessies = client.query(KLANTNUMMER, f'''
+        sessies = client.query(klantnummer, f'''
             SELECT
                 s."DocumentKey" AS "WerkbonDocumentKey",
                 s."MobieleuitvoersessieRegelKey"
@@ -454,7 +478,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             sessie_keys_str = ','.join(str(k) for k in sessie_keys)
 
             # BLOB tabel 1: stg_at_mwbsess_clobs (monteur notities)
-            blob1 = client.query(KLANTNUMMER, f'''
+            blob1 = client.query(klantnummer, f'''
                 SELECT
                     m.gc_id AS "MobieleuitvoersessieRegelKey",
                     m.notitie
@@ -464,7 +488,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             ''')
 
             # BLOB tabel 2: stg_at_uitvbest_clobs (tekst)
-            blob2 = client.query(KLANTNUMMER, f'''
+            blob2 = client.query(klantnummer, f'''
                 SELECT
                     u.gc_id AS "MobieleuitvoersessieRegelKey",
                     u.tekst as notitie
@@ -474,7 +498,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             ''')
 
             # BLOB tabel 3: stg_at_document_clobs (document notities)
-            blob3 = client.query(KLANTNUMMER, f'''
+            blob3 = client.query(klantnummer, f'''
                 SELECT
                     d.gc_id AS "MobieleuitvoersessieRegelKey",
                     COALESCE(d.gc_notitie_extern, d.gc_informatie) as notitie
