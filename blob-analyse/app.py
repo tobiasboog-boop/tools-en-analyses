@@ -560,8 +560,8 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # 2. Gerelateerde werkbon (fill met "-" als leeg)
         result_df['Gerelateerde werkbon'] = df['ParentWerkbonDocumentKey'].fillna('-').replace('', '-')
 
-        # 3. Datum aanmaak
-        result_df['Datum aanmaak'] = pd.to_datetime(df['MeldDatum'])
+        # 3. Datum aanmaak (alleen datum, geen tijd)
+        result_df['Datum aanmaak'] = pd.to_datetime(df['MeldDatum']).dt.date
 
         # 4. Tijd aanmaak - extract tijd uit datetime
         result_df['Tijd aanmaak'] = pd.to_datetime(df['MeldTijd']).dt.time
@@ -613,7 +613,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         result_df['Prio na overleg CB'] = result_df['Prio volgens SLA']
 
         # 17-18. Datum & tijd oplossing
-        result_df['Datum oplossing'] = pd.to_datetime(df['datum_oplossing'])
+        result_df['Datum oplossing'] = pd.to_datetime(df['datum_oplossing']).dt.date
         result_df['Tijd oplossing'] = pd.to_datetime(df['tijd_oplossing']).dt.time
 
         # 19. Geannuleerd?
@@ -631,8 +631,8 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # BEREKENDE VELDEN (22-37)
         # ====================================================================
 
-        # 22. Maand
-        result_df['Maand'] = result_df['Datum aanmaak'].dt.month
+        # 22. Maand (extract from date object)
+        result_df['Maand'] = pd.to_datetime(result_df['Datum aanmaak']).dt.month
 
         # 23. aanmaak d+t - combineer datum + tijd
         result_df['aanmaak d+t'] = pd.to_datetime(
@@ -694,7 +694,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         result_df['responsetijd range'] = result_df['reasponsetijd uren'].apply(categorize_response_time)
 
         # 36. Dag binnenkomst - weekday (1=Monday, 7=Sunday)
-        result_df['Dag binnenkomst'] = result_df['Datum aanmaak'].dt.dayofweek + 1
+        result_df['Dag binnenkomst'] = pd.to_datetime(result_df['Datum aanmaak']).dt.dayofweek + 1
 
         # 37. Toelichting bij Niet Behaald - fill met "-" als beide SLA's behaald zijn
         result_df['Toelichting bij Niet Behaald'] = result_df.apply(
@@ -721,11 +721,40 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             # Formaten
             red_format = workbook.add_format({'bg_color': '#FEE2E2'})  # Rood - niet in database
             yellow_format = workbook.add_format({'bg_color': '#FEF3C7'})  # Geel - automatisch afgeleid
+            date_format = workbook.add_format({'num_format': 'dd-mm-yyyy'})  # Datum formaat
+            time_format = workbook.add_format({'num_format': 'hh:mm:ss'})  # Tijd formaat
+            datetime_format = workbook.add_format({'num_format': 'dd-mm-yyyy hh:mm:ss'})  # Datetime formaat
 
             # Kolom indexen (0-based)
+            col_datum_aanmaak = 2  # Kolom C
+            col_tijd_aanmaak = 3  # Kolom D
             col_locatie_soort = 7  # Kolom H - Locatie soort
+            col_reactie_datum = 12  # Kolom M
+            col_reactie_tijd = 13  # Kolom N
             col_contact_cb = 14  # Kolom O - Contact CB
+            col_datum_oplossing = 16  # Kolom Q
+            col_tijd_oplossing = 17  # Kolom R
             col_ouderdom = 20  # Kolom U - Ouderdom systeem
+            col_aanmaak_dt = 22  # Kolom W
+            col_reactie_dt = 23  # Kolom X
+            col_response_dt = 24  # Kolom Y
+
+            # Datum/tijd opmaak toepassen op alle rijen
+            for row_num in range(1, len(result_df) + 1):
+                # Datum kolommen
+                worksheet.write(row_num, col_datum_aanmaak, result_df.iloc[row_num - 1]['Datum aanmaak'], date_format)
+                worksheet.write(row_num, col_reactie_datum, result_df.iloc[row_num - 1]['Reactie datum'], date_format)
+                worksheet.write(row_num, col_datum_oplossing, result_df.iloc[row_num - 1]['Datum oplossing'], date_format)
+
+                # Tijd kolommen
+                worksheet.write(row_num, col_tijd_aanmaak, result_df.iloc[row_num - 1]['Tijd aanmaak'], time_format)
+                worksheet.write(row_num, col_reactie_tijd, result_df.iloc[row_num - 1]['Reactie tijd'], time_format)
+                worksheet.write(row_num, col_tijd_oplossing, result_df.iloc[row_num - 1]['Tijd oplossing'], time_format)
+
+                # Datetime kolommen
+                worksheet.write(row_num, col_aanmaak_dt, result_df.iloc[row_num - 1]['aanmaak d+t'], datetime_format)
+                worksheet.write(row_num, col_reactie_dt, result_df.iloc[row_num - 1]['reactie d+t'], datetime_format)
+                worksheet.write(row_num, col_response_dt, result_df.iloc[row_num - 1]['response d+t'], datetime_format)
 
             # Kleurcodering toepassen
             for row_num in range(1, len(result_df) + 1):
