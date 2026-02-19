@@ -42,7 +42,7 @@ KLANTNUMMER = 1229
 # ============================================================================
 
 def strip_rtf(text):
-    """Strip RTF formatting from BLOB text"""
+    """Strip RTF formatting and escape sequences from BLOB text"""
     if not text or not isinstance(text, str):
         return ''
 
@@ -61,6 +61,33 @@ def strip_rtf(text):
     text = re.sub(r'Riched20 [0-9\.]+', '', text)
     text = re.sub(r'\\f[0-9]+', '', text)
     text = re.sub(r'\\fs[0-9]+', '', text)
+
+    # Convert common Unicode/RTF character escapes BEFORE removing control words
+    unicode_map = {
+        r"\'e9": "é",  # é
+        r"\'e8": "è",  # è
+        r"\'ea": "ê",  # ê
+        r"\'eb": "ë",  # ë
+        r"\'e0": "à",  # à
+        r"\'e1": "á",  # á
+        r"\'e2": "â",  # â
+        r"\'e4": "ä",  # ä
+        r"\'f3": "ó",  # ó
+        r"\'f4": "ô",  # ô
+        r"\'f6": "ö",  # ö
+        r"\'fc": "ü",  # ü
+        r"\'e7": "ç",  # ç
+        r"\'ef": "ï",  # ï
+        r"\'2019": "'",  # right single quote
+        r"\'2013": "–",  # en dash
+        r"\'2014": "—",  # em dash
+    }
+    for escape, char in unicode_map.items():
+        text = text.replace(escape, char)
+
+    # Remove escape backslashes before spaces and punctuation
+    text = re.sub(r'\\ ', ' ', text)
+    text = re.sub(r'\\([,;:.!?])', r'\1', text)
 
     # Remove RTF control words
     text = re.sub(r'\\[a-z]+[0-9]*\s?', ' ', text)
@@ -441,6 +468,14 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         df = werkbonnen_basis.copy()
         df = df.merge(paragrafen, on='WerkbonDocumentKey', how='left')
         df = df.merge(logboek, on='WerkbonDocumentKey', how='left')
+
+        # Filter: alleen werkbonnen met reactie data (= werkbonnen die zijn gestart)
+        # Dit voorkomt werkbonnen met 18+ lege velden (niet gestart)
+        before_filter = len(df)
+        df = df[df['reactie_datetime'].notna()]
+        after_filter = len(df)
+        if before_filter > after_filter:
+            status_container.info(f"ℹ️ {before_filter - after_filter} niet-gestarte werkbonnen uitgefilterd")
 
         # Merge BLOB notities alleen als er data is
         if not blob_notities.empty and 'notitie' in blob_notities.columns:
