@@ -85,11 +85,13 @@ def strip_rtf(text):
     for escape, char in unicode_map.items():
         text = text.replace(escape, char)
 
-    # Remove escape backslashes before spaces and punctuation
-    text = re.sub(r'\\ ', ' ', text)
-    text = re.sub(r'\\([,;:.!?])', r'\1', text)
+    # Remove ALL standalone backslashes (escape characters)
+    # This MUST happen BEFORE removing RTF control words (which also start with \)
+    # Handles: "\ Vervolg", "\ Jos", etc.
+    text = re.sub(r'\\\s', ' ', text)  # Backslash followed by any whitespace
+    text = re.sub(r'\\(?=[^\w])', '', text)  # Backslash before non-word char (except already handled)
 
-    # Remove RTF control words
+    # Remove RTF control words (backslash + letters/numbers)
     text = re.sub(r'\\[a-z]+[0-9]*\s?', ' ', text)
 
     # Remove braces and asterisks
@@ -469,13 +471,20 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         df = df.merge(paragrafen, on='WerkbonDocumentKey', how='left')
         df = df.merge(logboek, on='WerkbonDocumentKey', how='left')
 
-        # Filter: alleen werkbonnen met reactie data (= werkbonnen die zijn gestart)
-        # Dit voorkomt werkbonnen met 18+ lege velden (niet gestart)
+        # Filter 1: alleen werkbonnen met reactie data (= werkbonnen die zijn gestart)
         before_filter = len(df)
         df = df[df['reactie_datetime'].notna()]
         after_filter = len(df)
         if before_filter > after_filter:
             status_container.info(f"ℹ️ {before_filter - after_filter} niet-gestarte werkbonnen uitgefilterd")
+
+        # Filter 2: alleen werkbonnen met oplossing data (= werkbonnen die zijn afgerond)
+        # Dit voorkomt werkbonnen met 11-13 lege velden (wel gestart, niet afgerond)
+        before_filter2 = len(df)
+        df = df[df['datum_oplossing'].notna()]
+        after_filter2 = len(df)
+        if before_filter2 > after_filter2:
+            status_container.info(f"ℹ️ {before_filter2 - after_filter2} niet-afgeronde werkbonnen uitgefilterd")
 
         # Merge BLOB notities alleen als er data is
         if not blob_notities.empty and 'notitie' in blob_notities.columns:
