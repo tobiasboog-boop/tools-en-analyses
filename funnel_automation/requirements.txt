@@ -1,8 +1,12 @@
+# Minimal requirements for fast deployment - MailerLite dashboard only
 streamlit==1.31.0
 pandas==2.2.0
 requests==2.32.0
-google-analytics-data==0.18.0
-google-auth==2.27.0
-google-api-core==2.15.0
-proto-plus==1.23.0
-protobuf==4.25.1
+
+# GA4 packages temporarily disabled for faster deployment
+# Uncomment when needed:
+# google-analytics-data==0.18.0
+# google-auth==2.27.0
+# google-api-core==2.15.0
+# proto-plus==1.23.0
+# protobuf==4.25.1
