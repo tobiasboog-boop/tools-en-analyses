@@ -187,6 +187,26 @@ with st.sidebar:
     if opdrachtgever_filter:
         st.session_state.selected_opdrachtgevers = opdrachtgever_filter
 
+    # Bulk selectie voor klanten
+    if len(st.session_state.get('klanten_lijst', [])) > 0:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            bulk_search = st.text_input(
+                "🔍 Bulk selectie klanten",
+                placeholder="Type bijv. 'Zeeman' om alle filialen te selecteren",
+                help="Selecteert automatisch alle klanten die deze tekst bevatten"
+            )
+        with col2:
+            if st.button("➕ Selecteer", disabled=not bulk_search):
+                if bulk_search:
+                    klant_options = st.session_state.get('klanten_lijst', [])
+                    matches = [k for k in klant_options if bulk_search.lower() in k.lower()]
+                    current = st.session_state.get('selected_klanten', [])
+                    # Voeg matches toe aan huidige selectie (geen duplicaten)
+                    st.session_state.selected_klanten = list(set(current + matches))
+                    st.success(f"✓ {len(matches)} klanten toegevoegd")
+                    st.rerun()
+
     # Toon klantfilter (altijd zichtbaar)
     klant_options = st.session_state.get('klanten_lijst', [])
     klant_filter = st.multiselect(
