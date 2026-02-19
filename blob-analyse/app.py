@@ -175,32 +175,32 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"Fout bij ophalen filters: {e}")
 
-    # Toon opdrachtgever filter
-    opdrachtgever_filter = None
-    if 'opdrachtgevers_lijst' in st.session_state and st.session_state.opdrachtgevers_lijst:
-        opdrachtgever_filter = st.multiselect(
-            "Filter op opdrachtgever (debiteur)",
-            options=st.session_state.opdrachtgevers_lijst,
-            default=st.session_state.get('selected_opdrachtgevers', []),
-            help="Type om te zoeken op hoofdniveau (bijv. 'Coolblue B.V.')"
-        )
-        if opdrachtgever_filter:
-            st.session_state.selected_opdrachtgevers = opdrachtgever_filter
+    # Toon opdrachtgever filter (altijd zichtbaar)
+    opdrachtgever_options = st.session_state.get('opdrachtgevers_lijst', [])
+    opdrachtgever_filter = st.multiselect(
+        "Filter op opdrachtgever (debiteur)",
+        options=opdrachtgever_options,
+        default=st.session_state.get('selected_opdrachtgevers', []),
+        help="Type om te zoeken op hoofdniveau (bijv. 'Coolblue B.V.')",
+        disabled=len(opdrachtgever_options) == 0
+    )
+    if opdrachtgever_filter:
+        st.session_state.selected_opdrachtgevers = opdrachtgever_filter
 
-    # Toon klantfilter als lijst beschikbaar is
-    klant_filter = None
-    if 'klanten_lijst' in st.session_state and st.session_state.klanten_lijst:
-        klant_filter = st.multiselect(
-            "Filter op klant (locatie)",
-            options=st.session_state.klanten_lijst,
-            default=st.session_state.get('selected_klanten', []),
-            help="Type om te zoeken op locatieniveau (bijv. 'Coolblue Winkel Rotterdam')"
-        )
-        if klant_filter:
-            st.session_state.selected_klanten = klant_filter
+    # Toon klantfilter (altijd zichtbaar)
+    klant_options = st.session_state.get('klanten_lijst', [])
+    klant_filter = st.multiselect(
+        "Filter op klant (locatie)",
+        options=klant_options,
+        default=st.session_state.get('selected_klanten', []),
+        help="Type om te zoeken op locatieniveau (bijv. 'Coolblue Winkel Rotterdam')",
+        disabled=len(klant_options) == 0
+    )
+    if klant_filter:
+        st.session_state.selected_klanten = klant_filter
 
-    if 'klanten_lijst' not in st.session_state:
-        st.info("💡 Klik 'Ververs filters' om te filteren")
+    if len(opdrachtgever_options) == 0 and len(klant_options) == 0:
+        st.info("💡 Klik 'Ververs filters' om filters te laden")
 
     st.markdown("---")
     st.markdown("**Kleurcodering in Excel:**")
