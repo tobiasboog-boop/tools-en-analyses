@@ -346,10 +346,8 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # 3. Datum aanmaak
         result_df['Datum aanmaak'] = pd.to_datetime(df['MeldDatum'])
 
-        # 4. Tijd aanmaak - GEBRUIK LOGBOEK REACTIE TIJD!
-        # (Uit mapping: eerste logboek entry is eigenlijk tijd aanmaak)
-        # Voor nu gebruiken we MeldTijd, maar dit zou eigenlijk eerste logboek entry moeten zijn
-        result_df['Tijd aanmaak'] = df['MeldTijd']
+        # 4. Tijd aanmaak - extract tijd uit datetime
+        result_df['Tijd aanmaak'] = pd.to_datetime(df['MeldTijd']).dt.time
 
         # 5. Locatie naam - extract na ' - '
         result_df['Locatie naam'] = df['Klant'].apply(
@@ -391,7 +389,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
 
         # 17-18. Datum & tijd oplossing
         result_df['Datum oplossing'] = pd.to_datetime(df['datum_oplossing'])
-        result_df['Tijd oplossing'] = df['tijd_oplossing']
+        result_df['Tijd oplossing'] = pd.to_datetime(df['tijd_oplossing']).dt.time
 
         # 19. Geannuleerd?
         result_df['Geannuleerd?'] = df['Status'].apply(
