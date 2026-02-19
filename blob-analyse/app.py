@@ -884,7 +884,7 @@ with st.sidebar:
     if pd.notna(min_date) and pd.notna(max_date):
         date_range = st.date_input(
             "Periode",
-            value=(max_date - timedelta(days=90), max_date),
+            value=(max_date - timedelta(days=30), max_date),
             min_value=min_date,
             max_value=max_date,
         )
