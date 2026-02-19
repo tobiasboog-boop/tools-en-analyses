@@ -81,17 +81,33 @@ def calculate_engagement_score(subscriber):
         score += 4
 
     # Website visits scoring (0-10 punten) - uit Pipedrive Web Visitors
-    visits = subscriber.get('website_visits', 0)
-    if visits >= 10:
-        score += 10
-    elif visits >= 5:
-        score += 8
-    elif visits >= 3:
-        score += 6
-    elif visits >= 1:
-        score += 3
+    # Score komt direct uit web_visitors_mapping (gebaseerd op recentheid)
+    website_score = subscriber.get('website_visits_score', 0)
+    score += website_score
 
     return score
+
+# ==================== WEB VISITORS DATA ====================
+
+@st.cache_data(ttl=3600)
+def load_web_visitors_mapping():
+    """Laad Web Visitors scores uit CSV."""
+    try:
+        import os
+        csv_path = os.path.join(os.path.dirname(__file__), 'web_visitors_mapping.csv')
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path, encoding='utf-8-sig')
+            # Create dict: company_name -> website_score
+            mapping = {}
+            for _, row in df.iterrows():
+                company = str(row['company_name']).strip().lower()
+                score = int(row['website_score'])
+                mapping[company] = score
+            return mapping
+        return {}
+    except Exception as e:
+        st.warning(f"Web Visitors data niet geladen: {e}")
+        return {}
 
 # ==================== PIPEDRIVE API ====================
 
@@ -165,8 +181,8 @@ def extract_phone(phone_data):
         return phone_data[0].get('value')
     return None
 
-def enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data=None):
-    """Match MailerLite subscribers with Pipedrive persons and add phone numbers + GA4 website visits."""
+def enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data=None, web_visitors_mapping=None):
+    """Match MailerLite subscribers with Pipedrive persons and add phone numbers + website visit scores."""
     # Create email lookup dict
     pipedrive_by_email = {}
     for person in pipedrive_persons:
@@ -186,12 +202,23 @@ def enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data=None):
             sub['phone'] = pd_data['phone']
             sub['pipedrive_name'] = pd_data['name']
             sub['company'] = pd_data['org_name']
+
+            # Match website visits from Web Visitors export (by company name)
+            if web_visitors_mapping and pd_data['org_name']:
+                company_key = str(pd_data['org_name']).strip().lower()
+                if company_key in web_visitors_mapping:
+                    sub['website_visits_score'] = web_visitors_mapping[company_key]
+                else:
+                    sub['website_visits_score'] = 0
+            else:
+                sub['website_visits_score'] = 0
         else:
             sub['phone'] = None
             sub['pipedrive_name'] = None
             sub['company'] = None
+            sub['website_visits_score'] = 0
 
-        # Match website visits from GA4 User-ID tracking (by email)
+        # Legacy GA4 User-ID tracking (disabled for now)
         if ga4_user_data and email in ga4_user_data:
             sub['website_visits'] = ga4_user_data[email]['visits']
         else:
@@ -343,9 +370,10 @@ try:
         st.warning("Geen subscribers gevonden!")
         st.stop()
 
-    # Calculate engagement scores
-    for sub in subscribers:
-        sub['engagement_score'] = calculate_engagement_score(sub)
+    # Load Web Visitors mapping (Pipedrive Web Visitors export)
+    web_visitors_mapping = load_web_visitors_mapping()
+    if web_visitors_mapping:
+        st.sidebar.success(f"🌐 Web Visitors: {len(web_visitors_mapping)} bedrijven")
 
     # Get GA4 User-ID engagement data (if available)
     ga4_user_data = {}
@@ -357,32 +385,38 @@ try:
         except Exception as e:
             st.sidebar.info("ℹ️ GA4 User-ID: Nog geen data (property is nieuw)")
 
-    # Enrich with Pipedrive data (if available)
+    # Enrich with Pipedrive data FIRST (to get company names for Web Visitors matching)
     if pipedrive_enabled:
         try:
             pipedrive_persons = get_pipedrive_persons(pipedrive_token)
-            subscribers = enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data)
+            subscribers = enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data, web_visitors_mapping)
 
-            # Count website visitors (from GA4)
-            total_visits = sum(s.get('website_visits', 0) for s in subscribers)
-            with_visits = len([s for s in subscribers if s.get('website_visits', 0) > 0])
+            # Count website visitors (from Web Visitors mapping)
+            total_web_score = sum(s.get('website_visits_score', 0) for s in subscribers)
+            with_web_visits = len([s for s in subscribers if s.get('website_visits_score', 0) > 0])
 
             st.sidebar.success(f"✅ Pipedrive CRM: {len(pipedrive_persons)} personen")
-            if with_visits > 0:
-                st.sidebar.info(f"🌐 {with_visits} leads met website bezoeken ({total_visits} sessions)")
+            if with_web_visits > 0:
+                st.sidebar.info(f"🌐 {with_web_visits} leads met website bezoeken (totaal score: {total_web_score})")
         except Exception as e:
             st.sidebar.warning(f"⚠️ Pipedrive niet beschikbaar: {str(e)[:50]}")
             pipedrive_enabled = False
-    else:
-        # Still enrich with GA4 data even if Pipedrive is disabled
-        if ga4_user_data:
+            # Initialize empty fields if Pipedrive fails
             for sub in subscribers:
-                email = sub.get('email', '').lower()
-                if email in ga4_user_data:
-                    sub['website_visits'] = ga4_user_data[email]['visits']
-                else:
-                    sub['website_visits'] = 0
+                sub['phone'] = None
+                sub['company'] = None
+                sub['website_visits_score'] = 0
+    else:
         st.sidebar.info("ℹ️ Pipedrive integratie uitgeschakeld")
+        # Initialize empty fields
+        for sub in subscribers:
+            sub['phone'] = None
+            sub['company'] = None
+            sub['website_visits_score'] = 0
+
+    # Calculate engagement scores AFTER enrichment (so website scores are included)
+    for sub in subscribers:
+        sub['engagement_score'] = calculate_engagement_score(sub)
 
     # Load GA4 data (if available)
     ga4_data = []
@@ -448,7 +482,7 @@ try:
                 'Clicks': s.get('clicked', 0)
             })
             if pipedrive_enabled:
-                row['Website'] = s.get('website_visits', 0)
+                row['Website'] = s.get('website_visits_score', 0)
             hot_data.append(row)
 
         hot_df = pd.DataFrame(hot_data)
@@ -489,7 +523,7 @@ try:
                     'Clicks': s.get('clicked', 0)
                 }
                 if pipedrive_enabled:
-                    row['Website'] = s.get('website_visits', 0)
+                    row['Website'] = s.get('website_visits_score', 0)
                 warm_data.append(row)
 
             warm_df = pd.DataFrame(warm_data)

@@ -1,0 +1,12 @@
+{
+  "total_rows": 1079,
+  "columns": [
+    "Kremer BV 's Heerenberg"
+  ],
+  "dtypes": {
+    "Kremer BV 's Heerenberg": "object"
+  },
+  "sample_row": {
+    "Kremer BV 's Heerenberg": "'s-Heerenberg, Netherlands | IT Services and IT Consulting"
+  }
+}
