@@ -161,17 +161,56 @@ def guess_location_type(location_name):
     return ''
 
 def extract_storing_omschrijving(notitie_text):
-    """Extract storing description from BLOB notitie (first sentence)"""
+    """Extract storing description from BLOB notitie - intelligente extractie"""
     if not notitie_text:
         return ''
+
     # Strip RTF first
     clean = strip_rtf(notitie_text)
-    # Take first line or text before ':'
-    if ':' in clean:
-        return clean.split(':')[0].strip()
-    else:
-        # Take first 100 chars
-        return clean[:100].strip()
+
+    # Split in zinnen (op . ! ? of newlines)
+    sentences = []
+    for line in clean.replace('!', '.').replace('?', '.').split('.'):
+        line = line.strip()
+        if line:
+            sentences.append(line)
+
+    # Filter: skip metadata zinnen (namen + datums, vervolg op, etc.)
+    metadata_patterns = [
+        r'^\w+\s+\w+\s+\d{2}-\d{2}-\d{4}',  # "Patrick Dutour Geerling 16-07-2024"
+        r'^Vervolg op:?\s*\[',               # "Vervolg op: [werkbon://..."
+        r'^\[werkbon://',                    # "[werkbon://WB123]"
+        r'^(Jos[eé] van der Pool|Patrick Dutour|Werner|Roy Post)',  # Specifieke namen
+        r'^(Remote|Code gemaild|Opvolging|LET OP)',  # Metadata keywords
+    ]
+
+    meaningful_sentences = []
+    for sentence in sentences:
+        # Skip if matches metadata pattern
+        is_metadata = False
+        for pattern in metadata_patterns:
+            if re.search(pattern, sentence, re.IGNORECASE):
+                is_metadata = True
+                break
+
+        # Skip very short sentences (< 20 chars)
+        if len(sentence) < 20:
+            is_metadata = True
+
+        if not is_metadata:
+            meaningful_sentences.append(sentence)
+
+    # Return first meaningful sentence, max 200 chars
+    if meaningful_sentences:
+        description = meaningful_sentences[0]
+        if len(description) > 200:
+            return description[:197] + "..."
+        return description
+
+    # Fallback: return first 200 chars if no meaningful sentence found
+    if len(clean) > 200:
+        return clean[:197] + "..."
+    return clean
 
 def calculate_kpi_hours(prio):
     """Get KPI hours for priority"""
@@ -672,7 +711,8 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
 
         output = BytesIO()
 
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        # Ensure proper UTF-8 encoding for special characters (é, ç, etc.)
+        with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'strings_to_urls': False}}) as writer:
             result_df.to_excel(writer, sheet_name='Werkbonnen', index=False)
 
             workbook = writer.book
