@@ -231,12 +231,15 @@ with st.sidebar:
 if st.button("📥 Data Ophalen & Exporteren", type="primary"):
     client = NotificaClient()
 
+    # Compacte status indicator (update in plaats van nieuwe messages)
+    status_container = st.empty()
+
     with st.spinner("Data ophalen uit DWH..."):
 
         # ====================================================================
         # STAP 1: BASIS WERKBONNEN OPHALEN
         # ====================================================================
-        st.info("Stap 1/6: Basis werkbonnen ophalen...")
+        status_container.info("Stap 1/6: Basis werkbonnen ophalen...")
 
         werkbonnen_basis = client.query(KLANTNUMMER, f'''
             SELECT
@@ -265,7 +268,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             st.warning("Geen werkbonnen gevonden in deze periode.")
             st.stop()
 
-        st.success(f"✓ {len(werkbonnen_basis)} werkbonnen gevonden")
+        status_container.success(f"✓ {len(werkbonnen_basis)} werkbonnen gevonden")
 
         # Pas opdrachtgever filter toe indien ingesteld
         if opdrachtgever_filter:
@@ -284,7 +287,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # ====================================================================
         # STAP 2: PARAGRAFEN & INSTALLATIES
         # ====================================================================
-        st.info("Stap 2/6: Paragrafen en installaties ophalen...")
+        status_container.info("Stap 2/6: Paragrafen en installaties ophalen...")
 
         wb_keys = werkbonnen_basis['WerkbonDocumentKey'].tolist()
         wb_keys_str = ','.join(str(k) for k in wb_keys)
@@ -302,12 +305,12 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             WHERE para."WerkbonDocumentKey" IN ({wb_keys_str})
         ''')
 
-        st.success(f"✓ {len(paragrafen)} paragrafen gevonden")
+        status_container.success(f"✓ {len(paragrafen)} paragrafen gevonden")
 
         # ====================================================================
         # STAP 3: REACTIE TIJDEN (LOGBOEK)
         # ====================================================================
-        st.info("Stap 3/6: Reactie tijden ophalen...")
+        status_container.info("Stap 3/6: Reactie tijden ophalen...")
 
         logboek = client.query(KLANTNUMMER, f'''
             SELECT
@@ -319,12 +322,12 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             GROUP BY log."WerkbonDocumentKey"
         ''')
 
-        st.success(f"✓ {len(logboek)} reactie tijden gevonden")
+        status_container.success(f"✓ {len(logboek)} reactie tijden gevonden")
 
         # ====================================================================
         # STAP 4: BLOB NOTITIES
         # ====================================================================
-        st.info("Stap 4/6: BLOB monteur notities ophalen...")
+        status_container.info("Stap 4/6: BLOB monteur notities ophalen...")
 
         # Eerst sessies ophalen
         sessies = client.query(KLANTNUMMER, f'''
@@ -385,12 +388,12 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
                     'notitie': lambda x: '\n\n'.join(x.dropna().astype(str))
                 }).reset_index()
 
-        st.success(f"✓ {len(blob_notities)} BLOB notities gevonden")
+        status_container.success(f"✓ {len(blob_notities)} BLOB notities gevonden")
 
         # ====================================================================
         # STAP 5: DATA COMBINEREN
         # ====================================================================
-        st.info("Stap 5/6: Data samenvoegen en transformeren...")
+        status_container.info("Stap 5/6: Data samenvoegen en transformeren...")
 
         # Merge alles
         df = werkbonnen_basis.copy()
@@ -551,12 +554,12 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # 37. Toelichting bij Niet Behaald - leeg voor nu
         result_df['Toelichting bij Niet Behaald'] = ''
 
-        st.success(f"✓ Data getransformeerd - {len(result_df)} werkbonnen klaar")
+        status_container.success(f"✓ Data getransformeerd - {len(result_df)} werkbonnen klaar")
 
         # ====================================================================
         # EXCEL EXPORT MET KLEURCODERING
         # ====================================================================
-        st.info("Excel bestand maken met kleurcodering...")
+        status_container.info("Stap 6/6: Excel bestand maken met kleurcodering...")
 
         output = BytesIO()
 
@@ -612,7 +615,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # PREVIEW & DOWNLOAD
         # ====================================================================
 
-        st.success("✅ Export klaar!")
+        status_container.success("✅ Export klaar!")
 
         # Preview eerste 10 rijen
         st.subheader("Preview (eerste 10 werkbonnen)")
