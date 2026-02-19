@@ -35,7 +35,7 @@ st.set_page_config(
     layout="wide"
 )
 
-KLANTNUMMER = 1229
+KLANTNUMMER = 1132  # Stresstest - andere klant
 
 # ============================================================================
 # HELPER FUNCTIONS
