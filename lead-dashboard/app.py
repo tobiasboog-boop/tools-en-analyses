@@ -138,29 +138,8 @@ def get_pipedrive_persons(token):
 
     return all_persons
 
-@st.cache_data(ttl=3600)  # Cache voor 1 uur
-def get_pipedrive_visitors(token):
-    """Haal Web Visitors data op uit Pipedrive."""
-    try:
-        url = f"https://{PIPEDRIVE_DOMAIN}.pipedrive.com/v1/visitors"
-        params = {'api_token': token}
-
-        response = requests.get(url, params=params, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-
-        if data.get('success') and data.get('data'):
-            visitors = data['data']
-            # Return dict: company_name -> visit_count
-            return {
-                v.get('organisation_name', '').lower(): v.get('visits_count', 0)
-                for v in visitors
-                if v.get('organisation_name')
-            }
-        return {}
-    except Exception as e:
-        st.sidebar.warning(f"⚠️ Pipedrive Visitors API: {str(e)[:50]}")
-        return {}
+# NOTE: Pipedrive Web Visitors heeft geen publieke API
+# We gebruiken GA4 User-ID tracking als alternatief (zie get_ga4_user_engagement)
 
 def extract_email(email_data):
     """Extract primary email from Pipedrive email array."""
@@ -186,8 +165,8 @@ def extract_phone(phone_data):
         return phone_data[0].get('value')
     return None
 
-def enrich_with_pipedrive(subscribers, pipedrive_persons, visitor_data=None):
-    """Match MailerLite subscribers with Pipedrive persons and add phone numbers + website visits."""
+def enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data=None):
+    """Match MailerLite subscribers with Pipedrive persons and add phone numbers + GA4 website visits."""
     # Create email lookup dict
     pipedrive_by_email = {}
     for person in pipedrive_persons:
@@ -207,22 +186,69 @@ def enrich_with_pipedrive(subscribers, pipedrive_persons, visitor_data=None):
             sub['phone'] = pd_data['phone']
             sub['pipedrive_name'] = pd_data['name']
             sub['company'] = pd_data['org_name']
-
-            # Match website visits by company name
-            if visitor_data and pd_data['org_name']:
-                company_key = pd_data['org_name'].lower()
-                sub['website_visits'] = visitor_data.get(company_key, 0)
-            else:
-                sub['website_visits'] = 0
         else:
             sub['phone'] = None
             sub['pipedrive_name'] = None
             sub['company'] = None
+
+        # Match website visits from GA4 User-ID tracking (by email)
+        if ga4_user_data and email in ga4_user_data:
+            sub['website_visits'] = ga4_user_data[email]['visits']
+        else:
             sub['website_visits'] = 0
 
     return subscribers
 
 # ==================== GA4 API ====================
+
+def get_ga4_user_engagement(property_id, credentials_json):
+    """Get website engagement per user (via User-ID = email)."""
+    try:
+        import json
+        from google.analytics.data_v1beta import BetaAnalyticsDataClient
+        from google.analytics.data_v1beta.types import RunReportRequest, Dimension, Metric, DateRange
+        from google.oauth2 import service_account
+
+        # Parse credentials
+        credentials_info = json.loads(credentials_json)
+        credentials = service_account.Credentials.from_service_account_info(
+            credentials_info,
+            scopes=['https://www.googleapis.com/auth/analytics.readonly']
+        )
+
+        client = BetaAnalyticsDataClient(credentials=credentials)
+
+        # Query: User-ID (email) met engagement metrics
+        request = RunReportRequest(
+            property=f"properties/{property_id}",
+            dimensions=[Dimension(name="userId")],  # User-ID = email
+            metrics=[
+                Metric(name="sessions"),
+                Metric(name="screenPageViews"),
+                Metric(name="engagementRate")
+            ],
+            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
+        )
+
+        response = client.run_report(request)
+
+        # Build dict: email -> engagement data
+        user_data = {}
+        for row in response.rows:
+            user_id = row.dimension_values[0].value
+            if user_id and user_id != '(not set)' and '@' in user_id:
+                email = user_id.lower()
+                user_data[email] = {
+                    'visits': int(row.metric_values[0].value),  # sessions
+                    'page_views': int(row.metric_values[1].value),
+                    'engagement_rate': float(row.metric_values[2].value)
+                }
+
+        return user_data
+
+    except Exception as e:
+        st.sidebar.warning(f"GA4 User-ID tracking: {str(e)[:80]}")
+        return {}
 
 def get_ga4_high_intent_visitors(property_id, credentials_json):
     """Get visitors who viewed high-intent pages (pricing, contact, demo)."""
@@ -310,24 +336,41 @@ try:
     for sub in subscribers:
         sub['engagement_score'] = calculate_engagement_score(sub)
 
+    # Get GA4 User-ID engagement data (if available)
+    ga4_user_data = {}
+    if ga4_enabled:
+        try:
+            ga4_user_data = get_ga4_user_engagement(ga4_property_id, ga4_credentials)
+            if ga4_user_data:
+                st.sidebar.success(f"✅ GA4 User-ID: {len(ga4_user_data)} matched subscribers")
+        except Exception as e:
+            st.sidebar.info("ℹ️ GA4 User-ID: Nog geen data (property is nieuw)")
+
     # Enrich with Pipedrive data (if available)
     if pipedrive_enabled:
         try:
             pipedrive_persons = get_pipedrive_persons(pipedrive_token)
-            visitor_data = get_pipedrive_visitors(pipedrive_token)
-            subscribers = enrich_with_pipedrive(subscribers, pipedrive_persons, visitor_data)
+            subscribers = enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data)
 
-            # Count website visitors
+            # Count website visitors (from GA4)
             total_visits = sum(s.get('website_visits', 0) for s in subscribers)
             with_visits = len([s for s in subscribers if s.get('website_visits', 0) > 0])
 
-            st.sidebar.success(f"✅ Pipedrive: {len(pipedrive_persons)} personen, {len(visitor_data)} bedrijven op website")
+            st.sidebar.success(f"✅ Pipedrive CRM: {len(pipedrive_persons)} personen")
             if with_visits > 0:
-                st.sidebar.info(f"🌐 {with_visits} leads met website bezoeken ({total_visits} totaal)")
+                st.sidebar.info(f"🌐 {with_visits} leads met website bezoeken ({total_visits} sessions)")
         except Exception as e:
             st.sidebar.warning(f"⚠️ Pipedrive niet beschikbaar: {str(e)[:50]}")
             pipedrive_enabled = False
     else:
+        # Still enrich with GA4 data even if Pipedrive is disabled
+        if ga4_user_data:
+            for sub in subscribers:
+                email = sub.get('email', '').lower()
+                if email in ga4_user_data:
+                    sub['website_visits'] = ga4_user_data[email]['visits']
+                else:
+                    sub['website_visits'] = 0
         st.sidebar.info("ℹ️ Pipedrive integratie uitgeschakeld")
 
     # Load GA4 data (if available)
@@ -373,9 +416,9 @@ try:
     if hot_leads:
         st.markdown("## 🔥 HOT LEADS - Email of bel deze mensen vandaag!")
         if pipedrive_enabled:
-            st.info("💡 Deze leads hebben hoge engagement (score ≥25: opens + clicks + website bezoeken) • 📞 Telefoonnummers uit Pipedrive CRM")
+            st.info("💡 Deze leads hebben hoge engagement (score ≥25: opens + clicks + website sessions via GA4 User-ID) • 📞 Telefoonnummers uit Pipedrive CRM")
         else:
-            st.info("💡 Deze leads hebben hoge engagement (score ≥25 punten)")
+            st.info("💡 Deze leads hebben hoge engagement (score ≥25 punten: opens + clicks + website sessions)")
 
         # Build dataframe with conditional columns
         hot_data = []
@@ -536,8 +579,13 @@ try:
         ### 📊 Scoring:
         - **Opens**: 0-15 punten (10+ = 15 pts, 5-9 = 12 pts, 3-4 = 8 pts, 1-2 = 4 pts)
         - **Clicks**: 0-15 punten (10+ = 15 pts, 5-9 = 12 pts, 3-4 = 8 pts, 1-2 = 4 pts)
-        - **Website visits**: 0-10 punten (10+ = 10 pts, 5-9 = 8 pts, 3-4 = 6 pts, 1-2 = 3 pts)
+        - **Website sessions**: 0-10 punten (10+ = 10 pts, 5-9 = 8 pts, 3-4 = 6 pts, 1-2 = 3 pts)
         - **Totaal**: 0-40 punten mogelijk
+
+        ### 🌐 Website tracking:
+        - Via GA4 User-ID tracking (email wordt gekoppeld bij form submit)
+        - Telt alleen mee als de lead hun email heeft gedeeld op de website
+        - Pas volledig actief over 2-3 weken (nieuwe GA4 property opgebouwd)
 
         ### 🔄 Data refresh:
         Dashboard gebruikt caching (1 uur). Wil je nieuwe data? Refresh de pagina!
