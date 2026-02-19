@@ -825,20 +825,28 @@ Deze informatie is CRUCIAAL en weegt ZWAARDER dan storingscodes of kostenregels.
   Dit geldt OOK als de storingscode iets anders suggereert (bijv. "GEEN CV en WW" + oplossing gevuld/ontlucht = JA)
 - Als de OPLOSSING een ander verhaal vertelt dan de storingscode, volg dan de OPLOSSING
 
-📌 REGEL 2 - CONTRACTTEKST IS LEIDEND:
+📌 REGEL 2 - KETELONDERDELEN = BINNEN DE MANTEL (ALTIJD JA):
+De volgende onderdelen zitten fysiek IN de cv-ketel (binnen de mantel) en vallen ALTIJD binnen contract:
+- Hydroblok, driewegklep, manometer, automatisch vulsysteem, vulset
+- Expansievat, warmtewisselaar, branderunit, gasblok, ventilator
+- Printplaat, ontstekingselektrode, ionisatie-electrode
+- Pompje (cv-pomp in de ketel), overloopbeveiliging, veiligheidsklep
+Als de werkbon (of een vervolgbon/meenemen-bon) deze onderdelen noemt → JA.
+
+📌 REGEL 3 - CONTRACTTEKST IS LEIDEND:
 Volg het CONTRACT voor contractspecifieke regels over:
 - Welke onderdelen/locaties wel of niet gedekt zijn
 - Of er een afstandsgrens geldt (bijv. "2 meter van de ketel")
 - Hoe radiatoren, radiatorkranen, WTW-units, RGA/LTV behandeld worden
 - Deze regels VERSCHILLEN per woningbouwvereniging — lees het contract!
 
-📌 REGEL 3 - STORINGSCODES (universeel, Syntess-systeemcodes):
+📌 REGEL 4 - STORINGSCODES (universeel, Syntess-systeemcodes):
 - **Storingscode 006.1 "Lekkage ONDER de ketel"** = lekkage dichtbij/onder de ketel (binnen de mantel)
 - **Storingscode 006.2 "Lekkage aan de installatie"** = lekkage op AFSTAND van de ketel (buiten de mantel) → NEE
   LET OP: 006.1 ≠ 006.2! Dit is een CRUCIAAL onderscheid.
   006.2 betekent dat de lekkage NIET aan de ketel zelf zit maar aan de installatie op afstand → classificeer als NEE.
 
-📌 REGEL 4 - BIJ TWIJFEL:
+📌 REGEL 5 - BIJ TWIJFEL:
 - **Radiatoren vervangen** → classificeer als NEE (medewerker kan dit beter beoordelen dan AI)
 - **CV-leiding niet in het zicht (reparatie)** → classificeer als NEE (moeilijk te beoordelen door AI)
 - **Niet thuis geweest** → JA met lage confidence (werk niet uitgevoerd maar geen regie)
