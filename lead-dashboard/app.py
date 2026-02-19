@@ -10,9 +10,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# ==================== MAILERLITE API ====================
+# ==================== CONFIG ====================
 
-MAIN_GROUP_ID = 177296943307818341  # Actieve inschrijvingen
+MAIN_GROUP_ID = 177296943307818341  # MailerLite actieve inschrijvingen
+PIPEDRIVE_DOMAIN = "notifica"
+
+# ==================== MAILERLITE API ====================
 
 @st.cache_data(ttl=3600)  # Cache voor 1 uur
 def get_subscribers(token):
@@ -78,21 +81,122 @@ def calculate_engagement_score(subscriber):
 
     return score
 
+# ==================== PIPEDRIVE API ====================
+
+@st.cache_data(ttl=3600)  # Cache voor 1 uur
+def get_pipedrive_persons(token):
+    """Haal alle Pipedrive persons op."""
+    all_persons = []
+    start = 0
+    limit = 500
+
+    with st.spinner("📞 Laden van Pipedrive CRM data..."):
+        while True:
+            url = f"https://{PIPEDRIVE_DOMAIN}.pipedrive.com/v1/persons"
+            params = {
+                'api_token': token,
+                'start': start,
+                'limit': limit
+            }
+
+            try:
+                response = requests.get(url, params=params, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+
+                if not data.get('data'):
+                    break
+
+                all_persons.extend(data['data'])
+
+                # Check if there are more pages
+                more_items = data.get('additional_data', {}).get('pagination', {}).get('more_items_in_collection', False)
+                if not more_items:
+                    break
+
+                start += limit
+
+                # Safety limit
+                if len(all_persons) >= 2000:
+                    break
+
+            except Exception as e:
+                st.warning(f"Pipedrive API warning: {e}")
+                break
+
+    return all_persons
+
+def extract_email(email_data):
+    """Extract primary email from Pipedrive email array."""
+    if not email_data:
+        return None
+    if isinstance(email_data, list) and len(email_data) > 0:
+        # Find primary email or take first
+        for item in email_data:
+            if item.get('primary'):
+                return item.get('value', '').lower()
+        return email_data[0].get('value', '').lower()
+    return None
+
+def extract_phone(phone_data):
+    """Extract primary phone from Pipedrive phone array."""
+    if not phone_data:
+        return None
+    if isinstance(phone_data, list) and len(phone_data) > 0:
+        # Find primary phone or take first
+        for item in phone_data:
+            if item.get('primary'):
+                return item.get('value')
+        return phone_data[0].get('value')
+    return None
+
+def enrich_with_pipedrive(subscribers, pipedrive_persons):
+    """Match MailerLite subscribers with Pipedrive persons and add phone numbers."""
+    # Create email lookup dict
+    pipedrive_by_email = {}
+    for person in pipedrive_persons:
+        email = extract_email(person.get('email'))
+        if email:
+            pipedrive_by_email[email] = {
+                'phone': extract_phone(person.get('phone')),
+                'name': person.get('name'),
+                'org_name': person.get('org_name')
+            }
+
+    # Enrich subscribers
+    for sub in subscribers:
+        email = sub.get('email', '').lower()
+        if email in pipedrive_by_email:
+            pd_data = pipedrive_by_email[email]
+            sub['phone'] = pd_data['phone']
+            sub['pipedrive_name'] = pd_data['name']
+            sub['company'] = pd_data['org_name']
+        else:
+            sub['phone'] = None
+            sub['pipedrive_name'] = None
+            sub['company'] = None
+
+    return subscribers
+
 # ==================== MAIN APP ====================
 
 st.title("🎯 Lead Action Dashboard")
 st.caption("Wie moet je vandaag emailen?")
 
-# Get API token
+# Get API tokens
 try:
-    token = st.secrets["MAILERLITE_API_TOKEN"]
+    mailerlite_token = st.secrets["MAILERLITE_API_TOKEN"]
 except (KeyError, FileNotFoundError):
     st.error("❌ MAILERLITE_API_TOKEN niet gevonden in secrets!")
     st.stop()
 
+# Pipedrive is optional
+pipedrive_token = st.secrets.get("PIPEDRIVE_API_TOKEN")
+pipedrive_enabled = bool(pipedrive_token)
+
 # Load subscribers
 try:
-    subscribers = get_subscribers(token)
+    subscribers = get_subscribers(mailerlite_token)
 
     if not subscribers:
         st.warning("Geen subscribers gevonden!")
@@ -101,6 +205,18 @@ try:
     # Calculate engagement scores
     for sub in subscribers:
         sub['engagement_score'] = calculate_engagement_score(sub)
+
+    # Enrich with Pipedrive data (if available)
+    if pipedrive_enabled:
+        try:
+            pipedrive_persons = get_pipedrive_persons(pipedrive_token)
+            subscribers = enrich_with_pipedrive(subscribers, pipedrive_persons)
+            st.sidebar.success(f"✅ Pipedrive: {len(pipedrive_persons)} personen geladen")
+        except Exception as e:
+            st.sidebar.warning(f"⚠️ Pipedrive niet beschikbaar: {str(e)[:50]}")
+            pipedrive_enabled = False
+    else:
+        st.sidebar.info("ℹ️ Pipedrive integratie uitgeschakeld")
 
     # Segment leads
     hot_leads = [s for s in subscribers if s['engagement_score'] >= 20]
@@ -126,18 +242,31 @@ try:
 
     # ==================== HOT LEADS ====================
     if hot_leads:
-        st.markdown("## 🔥 HOT LEADS - Email deze mensen vandaag!")
-        st.info("💡 Deze leads hebben hoge engagement (80%+ open rate of 10+ clicks)")
+        st.markdown("## 🔥 HOT LEADS - Email of bel deze mensen vandaag!")
+        if pipedrive_enabled:
+            st.info("💡 Deze leads hebben hoge engagement (80%+ open rate of 10+ clicks) • 📞 Telefoonnummers uit Pipedrive CRM")
+        else:
+            st.info("💡 Deze leads hebben hoge engagement (80%+ open rate of 10+ clicks)")
 
-        hot_df = pd.DataFrame([{
-            '#': i+1,
-            'Naam': s.get('name', 'Onbekend'),
-            'Email': s.get('email', ''),
-            'Score': s['engagement_score'],
-            'Open Rate': f"{s.get('open_rate', 0):.0f}%",
-            'Clicks': s.get('clicked', 0),
-            'Opens': s.get('opened', 0)
-        } for i, s in enumerate(hot_leads[:50])])
+        # Build dataframe with conditional columns
+        hot_data = []
+        for i, s in enumerate(hot_leads[:50]):
+            row = {
+                '#': i+1,
+                'Naam': s.get('name', 'Onbekend'),
+                'Email': s.get('email', ''),
+            }
+            if pipedrive_enabled:
+                row['Telefoon'] = s.get('phone', '-')
+                row['Bedrijf'] = s.get('company', '-')
+            row.update({
+                'Score': s['engagement_score'],
+                'Open Rate': f"{s.get('open_rate', 0):.0f}%",
+                'Clicks': s.get('clicked', 0)
+            })
+            hot_data.append(row)
+
+        hot_df = pd.DataFrame(hot_data)
 
         st.dataframe(
             hot_df,
