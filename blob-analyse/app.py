@@ -143,11 +143,24 @@ with st.sidebar:
     start_date = st.date_input("Van", default_start)
     end_date = st.date_input("Tot", default_end)
 
-    # Haal klantlijst op voor filter (lightweight query)
-    if st.button("🔄 Ververs klantlijst", help="Haal beschikbare klanten op voor deze periode"):
-        with st.spinner("Klanten ophalen..."):
+    # Haal opdrachtgever/klant lijsten op voor filters
+    if st.button("🔄 Ververs filters", help="Haal beschikbare opdrachtgevers en klanten op"):
+        with st.spinner("Opdrachtgevers en klanten ophalen..."):
             try:
                 client = NotificaClient()
+
+                # Haal opdrachtgevers (debiteuren) op
+                opdrachtgevers_query = client.query(KLANTNUMMER, f'''
+                    SELECT DISTINCT wb."Debiteur"
+                    FROM werkbonnen."Werkbonnen" wb
+                    WHERE wb."MeldDatum" >= '{start_date}'
+                      AND wb."MeldDatum" <= '{end_date}'
+                      AND wb."Debiteur" IS NOT NULL
+                    ORDER BY wb."Debiteur"
+                ''')
+                st.session_state.opdrachtgevers_lijst = opdrachtgevers_query['Debiteur'].tolist()
+
+                # Haal klanten op
                 klanten_query = client.query(KLANTNUMMER, f'''
                     SELECT DISTINCT wb."Klant"
                     FROM werkbonnen."Werkbonnen" wb
@@ -157,23 +170,37 @@ with st.sidebar:
                     ORDER BY wb."Klant"
                 ''')
                 st.session_state.klanten_lijst = klanten_query['Klant'].tolist()
-                st.success(f"✓ {len(st.session_state.klanten_lijst)} klanten gevonden")
+
+                st.success(f"✓ {len(st.session_state.opdrachtgevers_lijst)} opdrachtgevers en {len(st.session_state.klanten_lijst)} klanten gevonden")
             except Exception as e:
-                st.error(f"Fout bij ophalen klanten: {e}")
+                st.error(f"Fout bij ophalen filters: {e}")
+
+    # Toon opdrachtgever filter
+    opdrachtgever_filter = None
+    if 'opdrachtgevers_lijst' in st.session_state and st.session_state.opdrachtgevers_lijst:
+        opdrachtgever_filter = st.multiselect(
+            "Filter op opdrachtgever (debiteur)",
+            options=st.session_state.opdrachtgevers_lijst,
+            default=st.session_state.get('selected_opdrachtgevers', []),
+            help="Type om te zoeken op hoofdniveau (bijv. 'Coolblue B.V.')"
+        )
+        if opdrachtgever_filter:
+            st.session_state.selected_opdrachtgevers = opdrachtgever_filter
 
     # Toon klantfilter als lijst beschikbaar is
     klant_filter = None
     if 'klanten_lijst' in st.session_state and st.session_state.klanten_lijst:
         klant_filter = st.multiselect(
-            "Filter op klant",
+            "Filter op klant (locatie)",
             options=st.session_state.klanten_lijst,
             default=st.session_state.get('selected_klanten', []),
-            help="Type om te zoeken (bijv. 'coolblue' toont alle Coolblue locaties)"
+            help="Type om te zoeken op locatieniveau (bijv. 'Coolblue Winkel Rotterdam')"
         )
         if klant_filter:
             st.session_state.selected_klanten = klant_filter
-    else:
-        st.info("💡 Klik 'Ververs klantlijst' om te filteren op klant")
+
+    if 'klanten_lijst' not in st.session_state:
+        st.info("💡 Klik 'Ververs filters' om te filteren")
 
     st.markdown("---")
     st.markdown("**Kleurcodering in Excel:**")
@@ -195,6 +222,7 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             SELECT
                 wb."WerkbonDocumentKey",
                 wb."Werkbon",
+                wb."Debiteur",
                 wb."Klant",
                 wb."MeldDatum",
                 wb."MeldTijd",
@@ -219,9 +247,10 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
 
         st.success(f"✓ {len(werkbonnen_basis)} werkbonnen gevonden")
 
-        # Sla unieke klanten op voor filter
-        unique_klanten = sorted(werkbonnen_basis['Klant'].dropna().unique().tolist())
-        st.session_state.klanten_lijst = unique_klanten
+        # Pas opdrachtgever filter toe indien ingesteld
+        if opdrachtgever_filter:
+            werkbonnen_basis = werkbonnen_basis[werkbonnen_basis['Debiteur'].isin(opdrachtgever_filter)]
+            st.info(f"📌 Gefilterd op {len(opdrachtgever_filter)} opdrachtgever(s) - {len(werkbonnen_basis)} werkbonnen")
 
         # Pas klantfilter toe indien ingesteld
         if klant_filter:
