@@ -54,7 +54,7 @@ def get_subscribers(token):
     return all_subscribers
 
 def calculate_engagement_score(subscriber):
-    """Bereken engagement score (0-30 punten)."""
+    """Bereken engagement score (0-40 punten)."""
     score = 0
 
     # Open count scoring (0-15 punten)
@@ -79,6 +79,17 @@ def calculate_engagement_score(subscriber):
         score += 8
     elif clicked >= 1:
         score += 4
+
+    # Website visits scoring (0-10 punten) - uit Pipedrive Web Visitors
+    visits = subscriber.get('website_visits', 0)
+    if visits >= 10:
+        score += 10
+    elif visits >= 5:
+        score += 8
+    elif visits >= 3:
+        score += 6
+    elif visits >= 1:
+        score += 3
 
     return score
 
@@ -127,6 +138,30 @@ def get_pipedrive_persons(token):
 
     return all_persons
 
+@st.cache_data(ttl=3600)  # Cache voor 1 uur
+def get_pipedrive_visitors(token):
+    """Haal Web Visitors data op uit Pipedrive."""
+    try:
+        url = f"https://{PIPEDRIVE_DOMAIN}.pipedrive.com/v1/visitors"
+        params = {'api_token': token}
+
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get('success') and data.get('data'):
+            visitors = data['data']
+            # Return dict: company_name -> visit_count
+            return {
+                v.get('organisation_name', '').lower(): v.get('visits_count', 0)
+                for v in visitors
+                if v.get('organisation_name')
+            }
+        return {}
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ Pipedrive Visitors API: {str(e)[:50]}")
+        return {}
+
 def extract_email(email_data):
     """Extract primary email from Pipedrive email array."""
     if not email_data:
@@ -151,8 +186,8 @@ def extract_phone(phone_data):
         return phone_data[0].get('value')
     return None
 
-def enrich_with_pipedrive(subscribers, pipedrive_persons):
-    """Match MailerLite subscribers with Pipedrive persons and add phone numbers."""
+def enrich_with_pipedrive(subscribers, pipedrive_persons, visitor_data=None):
+    """Match MailerLite subscribers with Pipedrive persons and add phone numbers + website visits."""
     # Create email lookup dict
     pipedrive_by_email = {}
     for person in pipedrive_persons:
@@ -172,10 +207,18 @@ def enrich_with_pipedrive(subscribers, pipedrive_persons):
             sub['phone'] = pd_data['phone']
             sub['pipedrive_name'] = pd_data['name']
             sub['company'] = pd_data['org_name']
+
+            # Match website visits by company name
+            if visitor_data and pd_data['org_name']:
+                company_key = pd_data['org_name'].lower()
+                sub['website_visits'] = visitor_data.get(company_key, 0)
+            else:
+                sub['website_visits'] = 0
         else:
             sub['phone'] = None
             sub['pipedrive_name'] = None
             sub['company'] = None
+            sub['website_visits'] = 0
 
     return subscribers
 
@@ -271,8 +314,16 @@ try:
     if pipedrive_enabled:
         try:
             pipedrive_persons = get_pipedrive_persons(pipedrive_token)
-            subscribers = enrich_with_pipedrive(subscribers, pipedrive_persons)
-            st.sidebar.success(f"✅ Pipedrive: {len(pipedrive_persons)} personen geladen")
+            visitor_data = get_pipedrive_visitors(pipedrive_token)
+            subscribers = enrich_with_pipedrive(subscribers, pipedrive_persons, visitor_data)
+
+            # Count website visitors
+            total_visits = sum(s.get('website_visits', 0) for s in subscribers)
+            with_visits = len([s for s in subscribers if s.get('website_visits', 0) > 0])
+
+            st.sidebar.success(f"✅ Pipedrive: {len(pipedrive_persons)} personen, {len(visitor_data)} bedrijven op website")
+            if with_visits > 0:
+                st.sidebar.info(f"🌐 {with_visits} leads met website bezoeken ({total_visits} totaal)")
         except Exception as e:
             st.sidebar.warning(f"⚠️ Pipedrive niet beschikbaar: {str(e)[:50]}")
             pipedrive_enabled = False
@@ -296,10 +347,10 @@ try:
     else:
         st.sidebar.info("ℹ️ GA4 integratie uitgeschakeld")
 
-    # Segment leads
-    hot_leads = [s for s in subscribers if s['engagement_score'] >= 20]
-    warm_leads = [s for s in subscribers if 10 <= s['engagement_score'] < 20]
-    cold_leads = [s for s in subscribers if s['engagement_score'] < 10]
+    # Segment leads (nieuwe thresholds voor 0-40 score range)
+    hot_leads = [s for s in subscribers if s['engagement_score'] >= 25]
+    warm_leads = [s for s in subscribers if 12 <= s['engagement_score'] < 25]
+    cold_leads = [s for s in subscribers if s['engagement_score'] < 12]
 
     # ==================== METRICS ====================
     col1, col2, col3, col4 = st.columns(4)
@@ -322,9 +373,9 @@ try:
     if hot_leads:
         st.markdown("## 🔥 HOT LEADS - Email of bel deze mensen vandaag!")
         if pipedrive_enabled:
-            st.info("💡 Deze leads hebben hoge engagement (10+ opens of 5+ clicks) • 📞 Telefoonnummers uit Pipedrive CRM")
+            st.info("💡 Deze leads hebben hoge engagement (score ≥25: opens + clicks + website bezoeken) • 📞 Telefoonnummers uit Pipedrive CRM")
         else:
-            st.info("💡 Deze leads hebben hoge engagement (10+ opens of 5+ clicks)")
+            st.info("💡 Deze leads hebben hoge engagement (score ≥25 punten)")
 
         # Build dataframe with conditional columns
         hot_data = []
@@ -342,6 +393,8 @@ try:
                 'Opens': s.get('opened', 0),
                 'Clicks': s.get('clicked', 0)
             })
+            if pipedrive_enabled:
+                row['Website'] = s.get('website_visits', 0)
             hot_data.append(row)
 
         hot_df = pd.DataFrame(hot_data)
@@ -372,13 +425,20 @@ try:
         st.caption("Goede engagement maar nog niet super actief - ideaal voor targeted follow-up")
 
         if warm_leads:
-            warm_df = pd.DataFrame([{
-                'Naam': s.get('name', 'Onbekend'),
-                'Email': s.get('email', ''),
-                'Score': s['engagement_score'],
-                'Opens': s.get('opened', 0),
-                'Clicks': s.get('clicked', 0)
-            } for s in warm_leads[:100]])
+            warm_data = []
+            for s in warm_leads[:100]:
+                row = {
+                    'Naam': s.get('name', 'Onbekend'),
+                    'Email': s.get('email', ''),
+                    'Score': s['engagement_score'],
+                    'Opens': s.get('opened', 0),
+                    'Clicks': s.get('clicked', 0)
+                }
+                if pipedrive_enabled:
+                    row['Website'] = s.get('website_visits', 0)
+                warm_data.append(row)
+
+            warm_df = pd.DataFrame(warm_data)
 
             st.dataframe(warm_df, use_container_width=True, hide_index=True)
 
@@ -458,17 +518,17 @@ try:
         st.markdown("""
         ### 🎯 Actieplan:
 
-        **1. HOT Leads (🔥 score ≥20)**
+        **1. HOT Leads (🔥 score ≥25)**
         - **Email deze mensen vandaag** (hoogste prioriteit!)
-        - Zeer hoge engagement (10+ opens of 10+ clicks)
+        - Zeer hoge engagement: veel opens/clicks + website bezoeken
         - Download CSV en importeer in je email tool
 
-        **2. Warm Leads (🟡 score 10-19)**
+        **2. Warm Leads (🟡 score 12-24)**
         - Goede engagement maar nog niet super actief
         - Stuur targeted follow-up emails
         - Ideaal voor persoonlijke benadering
 
-        **3. Cold Leads (🧊 score <10)**
+        **3. Cold Leads (🧊 score <12)**
         - Lage engagement
         - Automatische nurture campagne via MailerLite
         - Geen directe sales actie nodig
@@ -476,7 +536,8 @@ try:
         ### 📊 Scoring:
         - **Opens**: 0-15 punten (10+ = 15 pts, 5-9 = 12 pts, 3-4 = 8 pts, 1-2 = 4 pts)
         - **Clicks**: 0-15 punten (10+ = 15 pts, 5-9 = 12 pts, 3-4 = 8 pts, 1-2 = 4 pts)
-        - **Totaal**: 0-30 punten mogelijk
+        - **Website visits**: 0-10 punten (10+ = 10 pts, 5-9 = 8 pts, 3-4 = 6 pts, 1-2 = 3 pts)
+        - **Totaal**: 0-40 punten mogelijk
 
         ### 🔄 Data refresh:
         Dashboard gebruikt caching (1 uur). Wil je nieuwe data? Refresh de pagina!
