@@ -273,12 +273,19 @@ def load_sessie_koppeling(werkbon_keys):
 def _load_clob_table(_table_name, _id_col, _text_col, keys_str):
     """Interne helper: laad CLOB data uit één tabel."""
     client = get_client()
+    if not _text_col or not _id_col:
+        return pd.DataFrame()
+
     try:
+        # Quote kolommen met spaties of special characters
+        id_quoted = f'"{_id_col}"' if ' ' in _id_col or _id_col != _id_col.lower() else _id_col
+        text_quoted = f'"{_text_col}"' if ' ' in _text_col or _text_col != _text_col.lower() else _text_col
+
         # BLOB tabellen zijn lowercase, gc_id is lowercase
         return client.query(KLANTNUMMER, f"""
-            SELECT {_id_col}, {_text_col}
+            SELECT {id_quoted}, {text_quoted}
             FROM maatwerk.{_table_name}
-            WHERE {_id_col} IN ({keys_str})
+            WHERE {id_quoted} IN ({keys_str})
         """)
     except NotificaError:
         return pd.DataFrame()
@@ -319,6 +326,10 @@ def load_all_blobvelden(werkbon_keys):
 
         clob_df = _load_clob_table(info["table"], info["id_col"], text_col, keys_str)
         if clob_df.empty:
+            continue
+
+        # Check of de verwachte kolommen daadwerkelijk bestaan
+        if info["id_col"] not in clob_df.columns or text_col not in clob_df.columns:
             continue
 
         clob_df = clob_df.rename(columns={
