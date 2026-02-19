@@ -319,11 +319,17 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         df = werkbonnen_basis.copy()
         df = df.merge(paragrafen, on='WerkbonDocumentKey', how='left')
         df = df.merge(logboek, on='WerkbonDocumentKey', how='left')
-        df = df.merge(
-            blob_notities[['WerkbonDocumentKey', 'notitie']].drop_duplicates(subset=['WerkbonDocumentKey']),
-            on='WerkbonDocumentKey',
-            how='left'
-        )
+
+        # Merge BLOB notities alleen als er data is
+        if not blob_notities.empty and 'notitie' in blob_notities.columns:
+            df = df.merge(
+                blob_notities[['WerkbonDocumentKey', 'notitie']].drop_duplicates(subset=['WerkbonDocumentKey']),
+                on='WerkbonDocumentKey',
+                how='left'
+            )
+        else:
+            # Voeg lege notitie kolom toe
+            df['notitie'] = None
 
         # ====================================================================
         # STAP 6: KOLOMMEN TRANSFORMEREN (1-21)
