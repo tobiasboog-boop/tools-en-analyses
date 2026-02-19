@@ -497,6 +497,18 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             # Voeg lege notitie kolom toe
             df['notitie'] = None
 
+        # Filter 3: alleen werkbonnen met BLOB notities (voor >95% data kwaliteit)
+        # Dit voorkomt werkbonnen met lege Storing omschrijving en Toelichting
+        before_filter3 = len(df)
+        df = df[df['notitie'].notna() & (df['notitie'] != '')]
+        after_filter3 = len(df)
+        if before_filter3 > after_filter3:
+            status_container.info(f"ℹ️ {before_filter3 - after_filter3} werkbonnen zonder BLOB notities uitgefilterd")
+
+        if df.empty:
+            st.warning("Geen werkbonnen over na filtering. Verlaag de filters.")
+            st.stop()
+
         # ====================================================================
         # STAP 6: KOLOMMEN TRANSFORMEREN (1-21)
         # ====================================================================
@@ -506,8 +518,8 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # 1. Werkbon nummer
         result_df['Werkbon nummer'] = df['Werkboncode']
 
-        # 2. Gerelateerde werkbon
-        result_df['Gerelateerde werkbon'] = df['ParentWerkbonDocumentKey']
+        # 2. Gerelateerde werkbon (fill met "-" als leeg)
+        result_df['Gerelateerde werkbon'] = df['ParentWerkbonDocumentKey'].fillna('-').replace('', '-')
 
         # 3. Datum aanmaak
         result_df['Datum aanmaak'] = pd.to_datetime(df['MeldDatum'])
@@ -535,9 +547,17 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # 10. Onderaannemer
         result_df['Onderaannemer'] = df['Betreft onderaannemer']
 
-        # 11. Welke onderaannemer? - filter Zenith
-        result_df['Welke onderaannemer? (indien bekend)'] = df['Onderaannemer'].apply(
-            lambda x: '' if pd.isna(x) or '000000 - Zenith' in str(x) else x
+        # 11. Welke onderaannemer? - filter Zenith, fill met "Niet van toepassing" als leeg
+        def fill_onderaannemer(onderaannemer, betreft_onderaannemer):
+            if pd.isna(onderaannemer) or onderaannemer == '' or '000000 - Zenith' in str(onderaannemer):
+                # Check of het wel een onderaannemer betreft
+                if pd.notna(betreft_onderaannemer) and str(betreft_onderaannemer).lower() == 'nee':
+                    return 'Niet van toepassing'
+                return ''
+            return onderaannemer
+
+        result_df['Welke onderaannemer? (indien bekend)'] = df.apply(
+            lambda row: fill_onderaannemer(row['Onderaannemer'], row['Betreft onderaannemer']), axis=1
         )
 
         # 12. Prio volgens SLA - mapping
@@ -637,8 +657,11 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # 36. Dag binnenkomst - weekday (1=Monday, 7=Sunday)
         result_df['Dag binnenkomst'] = result_df['Datum aanmaak'].dt.dayofweek + 1
 
-        # 37. Toelichting bij Niet Behaald - leeg voor nu
-        result_df['Toelichting bij Niet Behaald'] = ''
+        # 37. Toelichting bij Niet Behaald - fill met "-" als beide SLA's behaald zijn
+        result_df['Toelichting bij Niet Behaald'] = result_df.apply(
+            lambda row: '-' if row['SLA response'] == 'Behaald' and row['SLA restore'] == 'Behaald' else '',
+            axis=1
+        )
 
         status_container.success(f"✓ Data getransformeerd - {len(result_df)} werkbonnen klaar")
 
