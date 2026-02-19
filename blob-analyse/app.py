@@ -143,16 +143,27 @@ with st.sidebar:
     start_date = st.date_input("Van", default_start)
     end_date = st.date_input("Tot", default_end)
 
-    st.markdown("---")
-    st.markdown("**Kleurcodering in Excel:**")
-    st.markdown("🔴 Rood = Niet in database (handmatig invullen)")
-    st.markdown("🟡 Geel = Automatisch afgeleid (controleren)")
+    # Haal klantlijst op voor filter (lightweight query)
+    if st.button("🔄 Ververs klantlijst", help="Haal beschikbare klanten op voor deze periode"):
+        with st.spinner("Klanten ophalen..."):
+            try:
+                client = NotificaClient()
+                klanten_query = client.query(KLANTNUMMER, f'''
+                    SELECT DISTINCT wb."Klant"
+                    FROM werkbonnen."Werkbonnen" wb
+                    WHERE wb."MeldDatum" >= '{start_date}'
+                      AND wb."MeldDatum" <= '{end_date}'
+                      AND wb."Klant" IS NOT NULL
+                    ORDER BY wb."Klant"
+                ''')
+                st.session_state.klanten_lijst = klanten_query['Klant'].tolist()
+                st.success(f"✓ {len(st.session_state.klanten_lijst)} klanten gevonden")
+            except Exception as e:
+                st.error(f"Fout bij ophalen klanten: {e}")
 
-# Klantfilter placeholder (wordt gevuld na data ophalen)
-klant_filter = None
-if 'klanten_lijst' in st.session_state:
-    with st.sidebar:
-        st.markdown("---")
+    # Toon klantfilter als lijst beschikbaar is
+    klant_filter = None
+    if 'klanten_lijst' in st.session_state and st.session_state.klanten_lijst:
         klant_filter = st.multiselect(
             "Filter op klant",
             options=st.session_state.klanten_lijst,
@@ -161,6 +172,13 @@ if 'klanten_lijst' in st.session_state:
         )
         if klant_filter:
             st.session_state.selected_klanten = klant_filter
+    else:
+        st.info("💡 Klik 'Ververs klantlijst' om te filteren op klant")
+
+    st.markdown("---")
+    st.markdown("**Kleurcodering in Excel:**")
+    st.markdown("🔴 Rood = Niet in database (handmatig invullen)")
+    st.markdown("🟡 Geel = Automatisch afgeleid (controleren)")
 
 # Main button
 if st.button("📥 Data Ophalen & Exporteren", type="primary"):
