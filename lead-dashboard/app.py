@@ -57,15 +57,16 @@ def calculate_engagement_score(subscriber):
     """Bereken engagement score (0-30 punten)."""
     score = 0
 
-    # Open rate scoring (0-15 punten)
-    open_rate = subscriber.get('open_rate', 0)
-    if open_rate >= 80:
+    # Open count scoring (0-15 punten)
+    # Gebaseerd op aantal keer dat emails zijn geopend
+    opened = subscriber.get('opened', 0)
+    if opened >= 10:
         score += 15
-    elif open_rate >= 60:
+    elif opened >= 5:
         score += 12
-    elif open_rate >= 40:
+    elif opened >= 3:
         score += 8
-    elif open_rate >= 20:
+    elif opened >= 1:
         score += 4
 
     # Click scoring (0-15 punten)
@@ -321,9 +322,9 @@ try:
     if hot_leads:
         st.markdown("## 🔥 HOT LEADS - Email of bel deze mensen vandaag!")
         if pipedrive_enabled:
-            st.info("💡 Deze leads hebben hoge engagement (80%+ open rate of 10+ clicks) • 📞 Telefoonnummers uit Pipedrive CRM")
+            st.info("💡 Deze leads hebben hoge engagement (10+ opens of 5+ clicks) • 📞 Telefoonnummers uit Pipedrive CRM")
         else:
-            st.info("💡 Deze leads hebben hoge engagement (80%+ open rate of 10+ clicks)")
+            st.info("💡 Deze leads hebben hoge engagement (10+ opens of 5+ clicks)")
 
         # Build dataframe with conditional columns
         hot_data = []
@@ -338,7 +339,7 @@ try:
                 row['Bedrijf'] = s.get('company', '-')
             row.update({
                 'Score': s['engagement_score'],
-                'Open Rate': f"{s.get('open_rate', 0):.0f}%",
+                'Opens': s.get('opened', 0),
                 'Clicks': s.get('clicked', 0)
             })
             hot_data.append(row)
@@ -375,7 +376,7 @@ try:
                 'Naam': s.get('name', 'Onbekend'),
                 'Email': s.get('email', ''),
                 'Score': s['engagement_score'],
-                'Open Rate': f"{s.get('open_rate', 0):.0f}%",
+                'Opens': s.get('opened', 0),
                 'Clicks': s.get('clicked', 0)
             } for s in warm_leads[:100]])
 
@@ -436,8 +437,8 @@ try:
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        avg_open = sum(s.get('open_rate', 0) for s in subscribers) / len(subscribers)
-        st.metric("Gem. Open Rate", f"{avg_open:.1f}%")
+        avg_opens = sum(s.get('opened', 0) for s in subscribers) / len(subscribers)
+        st.metric("Gem. Opens per Lead", f"{avg_opens:.1f}")
 
     with col2:
         total_opens = sum(s.get('opened', 0) for s in subscribers)
@@ -459,7 +460,7 @@ try:
 
         **1. HOT Leads (🔥 score ≥20)**
         - **Email deze mensen vandaag** (hoogste prioriteit!)
-        - Zeer hoge engagement (80%+ open rate of 10+ clicks)
+        - Zeer hoge engagement (10+ opens of 10+ clicks)
         - Download CSV en importeer in je email tool
 
         **2. Warm Leads (🟡 score 10-19)**
@@ -473,8 +474,8 @@ try:
         - Geen directe sales actie nodig
 
         ### 📊 Scoring:
-        - **Open Rate**: 0-15 punten (80%+ = 15 pts, 60-79% = 12 pts, etc.)
-        - **Clicks**: 0-15 punten (10+ = 15 pts, 5-9 = 12 pts, etc.)
+        - **Opens**: 0-15 punten (10+ = 15 pts, 5-9 = 12 pts, 3-4 = 8 pts, 1-2 = 4 pts)
+        - **Clicks**: 0-15 punten (10+ = 15 pts, 5-9 = 12 pts, 3-4 = 8 pts, 1-2 = 4 pts)
         - **Totaal**: 0-30 punten mogelijk
 
         ### 🔄 Data refresh:
