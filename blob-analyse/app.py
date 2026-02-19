@@ -38,6 +38,51 @@ st.set_page_config(
 KLANTNUMMER = 1229  # Zenith
 
 # ============================================================================
+# PASSWORD AUTHENTICATION
+# ============================================================================
+
+def check_password():
+    """Returns True if the user had the correct password."""
+
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        if st.session_state["password"] == st.secrets["APP_PASSWORD"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    # First run, show input for password
+    if "password_correct" not in st.session_state:
+        st.text_input(
+            "🔒 Wachtwoord",
+            type="password",
+            on_change=password_entered,
+            key="password",
+            help="Voer het wachtwoord in om toegang te krijgen"
+        )
+        st.info("ℹ️ Deze applicatie is beveiligd. Voer het wachtwoord in om verder te gaan.")
+        return False
+    # Password incorrect, show input + error
+    elif not st.session_state["password_correct"]:
+        st.text_input(
+            "🔒 Wachtwoord",
+            type="password",
+            on_change=password_entered,
+            key="password",
+            help="Voer het wachtwoord in om toegang te krijgen"
+        )
+        st.error("❌ Incorrect wachtwoord. Probeer opnieuw.")
+        return False
+    # Password correct
+    else:
+        return True
+
+# Check authentication before showing app
+if not check_password():
+    st.stop()  # Stop here if not authenticated
+
+# ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
