@@ -202,53 +202,64 @@ def enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data=None):
 # ==================== GA4 API ====================
 
 def get_ga4_user_engagement(property_id, credentials_json):
-    """Get website engagement per user (via User-ID = email)."""
-    try:
-        import json
-        from google.analytics.data_v1beta import BetaAnalyticsDataClient
-        from google.analytics.data_v1beta.types import RunReportRequest, Dimension, Metric, DateRange
-        from google.oauth2 import service_account
+    """Get website engagement per user (via User-ID = email).
 
-        # Parse credentials
-        credentials_info = json.loads(credentials_json)
-        credentials = service_account.Credentials.from_service_account_info(
-            credentials_info,
-            scopes=['https://www.googleapis.com/auth/analytics.readonly']
-        )
+    NOTE: User-ID dimension werkt pas nadat:
+    1. Custom dimension is aangemaakt in GA4 UI (Admin -> Custom Definitions)
+    2. Er genoeg data is verzameld (minimaal 24-48 uur)
 
-        client = BetaAnalyticsDataClient(credentials=credentials)
+    Voor nu returnen we lege dict - User-ID tracking volgt later.
+    """
+    # TODO: User-ID tracking vereist custom dimension setup in GA4
+    # Temporarily disabled until property has data and custom dimension is configured
+    return {}
 
-        # Query: User-ID (email) met engagement metrics
-        request = RunReportRequest(
-            property=f"properties/{property_id}",
-            dimensions=[Dimension(name="userId")],  # User-ID = email
-            metrics=[
-                Metric(name="sessions"),
-                Metric(name="screenPageViews"),
-                Metric(name="engagementRate")
-            ],
-            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
-        )
-
-        response = client.run_report(request)
-
-        # Build dict: email -> engagement data
-        user_data = {}
-        for row in response.rows:
-            user_id = row.dimension_values[0].value
-            if user_id and user_id != '(not set)' and '@' in user_id:
-                email = user_id.lower()
-                user_data[email] = {
-                    'visits': int(row.metric_values[0].value),  # sessions
-                    'page_views': int(row.metric_values[1].value),
-                    'engagement_rate': float(row.metric_values[2].value)
-                }
-
-        return user_data
-
-    except Exception as e:
-        st.sidebar.warning(f"GA4 User-ID tracking: {str(e)[:80]}")
-        return {}
+    # Original code commented out - werkt niet zonder custom dimension
+    # try:
+    #     import json
+    #     from google.analytics.data_v1beta import BetaAnalyticsDataClient
+    #     from google.analytics.data_v1beta.types import RunReportRequest, Dimension, Metric, DateRange
+    #     from google.oauth2 import service_account
+    #
+    #     credentials_info = json.loads(credentials_json)
+    #     credentials = service_account.Credentials.from_service_account_info(
+    #         credentials_info,
+    #         scopes=['https://www.googleapis.com/auth/analytics.readonly']
+    #     )
+    #
+    #     client = BetaAnalyticsDataClient(credentials=credentials)
+    #
+    #     # NOTE: userId is not a valid dimension in GA4 Data API
+    #     # We need to create a custom dimension for user_id first
+    #     request = RunReportRequest(
+    #         property=f"properties/{property_id}",
+    #         dimensions=[Dimension(name="customUser:user_id")],  # Requires custom dimension
+    #         metrics=[
+    #             Metric(name="sessions"),
+    #             Metric(name="screenPageViews"),
+    #             Metric(name="engagementRate")
+    #         ],
+    #         date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
+    #     )
+    #
+    #     response = client.run_report(request)
+    #
+    #     user_data = {}
+    #     for row in response.rows:
+    #         user_id = row.dimension_values[0].value
+    #         if user_id and user_id != '(not set)' and '@' in user_id:
+    #             email = user_id.lower()
+    #             user_data[email] = {
+    #                 'visits': int(row.metric_values[0].value),
+    #                 'page_views': int(row.metric_values[1].value),
+    #                 'engagement_rate': float(row.metric_values[2].value)
+    #             }
+    #
+    #     return user_data
+    #
+    # except Exception as e:
+    #     st.sidebar.info(f"ℹ️ GA4 User-ID: {str(e)[:60]}")
+    #     return {}
 
 def get_ga4_high_intent_visitors(property_id, credentials_json):
     """Get visitors who viewed high-intent pages (pricing, contact, demo)."""
