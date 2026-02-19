@@ -178,6 +178,61 @@ def enrich_with_pipedrive(subscribers, pipedrive_persons):
 
     return subscribers
 
+# ==================== GA4 API ====================
+
+def get_ga4_high_intent_visitors(property_id, credentials_json):
+    """Get visitors who viewed high-intent pages (pricing, contact, demo)."""
+    try:
+        import json
+        from google.analytics.data_v1beta import BetaAnalyticsDataClient
+        from google.analytics.data_v1beta.types import RunReportRequest, Dimension, Metric, DateRange
+        from google.oauth2 import service_account
+
+        # Parse credentials
+        credentials_info = json.loads(credentials_json)
+        credentials = service_account.Credentials.from_service_account_info(
+            credentials_info,
+            scopes=['https://www.googleapis.com/auth/analytics.readonly']
+        )
+
+        client = BetaAnalyticsDataClient(credentials=credentials)
+
+        # High-intent pages
+        high_intent_patterns = ['/tarieven', '/prijs', '/demo', '/contact', '/afspraak', '/bel-me']
+
+        request = RunReportRequest(
+            property=f"properties/{property_id}",
+            dimensions=[
+                Dimension(name="pagePath"),
+                Dimension(name="city")
+            ],
+            metrics=[
+                Metric(name="screenPageViews"),
+                Metric(name="activeUsers")
+            ],
+            date_ranges=[DateRange(start_date="30daysAgo", end_date="today")],
+        )
+
+        response = client.run_report(request)
+
+        # Filter for high-intent pages
+        high_intent_data = []
+        for row in response.rows:
+            page_path = row.dimension_values[0].value
+            if any(pattern in page_path.lower() for pattern in high_intent_patterns):
+                high_intent_data.append({
+                    'page': page_path,
+                    'city': row.dimension_values[1].value,
+                    'views': int(row.metric_values[0].value),
+                    'users': int(row.metric_values[1].value)
+                })
+
+        return high_intent_data
+
+    except Exception as e:
+        st.sidebar.warning(f"GA4 error: {str(e)[:100]}")
+        return []
+
 # ==================== MAIN APP ====================
 
 st.title("🎯 Lead Action Dashboard")
@@ -193,6 +248,11 @@ except (KeyError, FileNotFoundError):
 # Pipedrive is optional
 pipedrive_token = st.secrets.get("PIPEDRIVE_API_TOKEN")
 pipedrive_enabled = bool(pipedrive_token)
+
+# GA4 is optional
+ga4_property_id = st.secrets.get("GA4_PROPERTY_ID")
+ga4_credentials = st.secrets.get("GA4_SERVICE_ACCOUNT_JSON")
+ga4_enabled = bool(ga4_property_id and ga4_credentials)
 
 # Load subscribers
 try:
@@ -217,6 +277,23 @@ try:
             pipedrive_enabled = False
     else:
         st.sidebar.info("ℹ️ Pipedrive integratie uitgeschakeld")
+
+    # Load GA4 data (if available)
+    ga4_data = []
+    if ga4_enabled:
+        try:
+            with st.spinner("🌐 Laden van GA4 website data..."):
+                ga4_data = get_ga4_high_intent_visitors(ga4_property_id, ga4_credentials)
+            if ga4_data:
+                total_views = sum(d['views'] for d in ga4_data)
+                st.sidebar.success(f"✅ GA4: {total_views} high-intent page views")
+            else:
+                st.sidebar.info("ℹ️ GA4: Geen high-intent data (nog)")
+        except Exception as e:
+            st.sidebar.warning(f"⚠️ GA4 niet beschikbaar: {str(e)[:50]}")
+            ga4_enabled = False
+    else:
+        st.sidebar.info("ℹ️ GA4 integratie uitgeschakeld")
 
     # Segment leads
     hot_leads = [s for s in subscribers if s['engagement_score'] >= 20]
@@ -318,6 +395,39 @@ try:
     with st.expander(f"🧊 COLD LEADS ({len(cold_leads)}) - Klik om te openen"):
         st.caption("Lage engagement - blijf nurture via automatische campagnes")
         st.metric("Totaal in nurture flow", len(cold_leads))
+
+    # ==================== GA4 WEBSITE ENGAGEMENT ====================
+    if ga4_enabled and ga4_data:
+        st.markdown("---")
+        st.markdown("## 🌐 Website Engagement (GA4)")
+        st.caption("High-intent pagina's: tarieven, prijzen, demo, contact, afspraak")
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            total_views = sum(d['views'] for d in ga4_data)
+            st.metric("High-Intent Views", f"{total_views:,}", "Laatste 30 dagen")
+
+        with col2:
+            total_users = sum(d['users'] for d in ga4_data)
+            st.metric("Unieke Bezoekers", f"{total_users:,}")
+
+        with col3:
+            top_page = max(ga4_data, key=lambda x: x['views'])['page'] if ga4_data else '-'
+            st.metric("Top Pagina", top_page[:30])
+
+        # Show top pages
+        if len(ga4_data) > 0:
+            ga4_df = pd.DataFrame([{
+                'Pagina': d['page'][:50],
+                'Views': d['views'],
+                'Bezoekers': d['users'],
+                'Stad': d['city']
+            } for d in sorted(ga4_data, key=lambda x: x['views'], reverse=True)[:10]])
+
+            st.dataframe(ga4_df, use_container_width=True, hide_index=True)
+
+        st.info("💡 **User-ID tracking actief** - over 2-3 weken kunnen we leads koppelen aan website gedrag!")
 
     # ==================== CAMPAIGN STATS ====================
     st.markdown("---")
