@@ -25,7 +25,7 @@ except ImportError:
     pass
 
 # SDK import
-sys.path.insert(0, '../../_sdk')
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '_sdk'))
 from notifica_sdk import NotificaClient
 
 # Page config
