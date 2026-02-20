@@ -27,15 +27,21 @@ Op basis van jouw feedback heb ik 6 nieuwe regels toegevoegd aan de AI:
 | 5 | Lekkage keuken als JA | **Lekkage leiding buiten ketelkast = NEE** |
 | 6 | Tapwaterboiler als JA | **Tapwaterboiler ALTIJD NEE** (regie) |
 
+Dit sluit precies aan bij de contractregels uit jullie "Contractvoorwaarden diverse WBV.xlsx" die ik nu ook heb ingezien.
+
 ## 7 BONNEN INDIVIDUEEL CONTRACT:
 
-Die 7 bonnen die "niet binnen individueel contract" vielen - daarvoor heb ik inmiddels het contract-type filter gebouwd dat we bespraken. Je kunt nu kiezen: "Alle / Alleen individueel / Alleen collectief". Zo worden die bonnen automatisch uitgefilterd.
+Die 7 bonnen vielen allemaal onder **centraal ketelhuis** of **HVC stadsverwarming**. Het contract-type filter herkent nu automatisch:
+- **Collectief** = centraal ketelhuis, HVC, stadsverwarming
+- **Individueel** = alle overige (eigen ketel)
+
+Je kunt nu filteren: "Alle / Alleen individuele installaties / Alleen collectieve systemen"
 
 ## VOLGENDE STAP:
 
 V3 staat klaar op dezelfde URL. Zou je nog een test willen doen met een nieuwe set bonnen? Dan kunnen we zien of de accuracy richting 85-90% gaat.
 
-**URL:** https://tools-en-analyses-sporfkcjmuhnfdry9q3rfh.streamlit.app/
+**URL:** https://tools-en-analyses-fsysjwn7jqdcvgwbxgqhuk.streamlit.app/
 **Wachtwoord:** `Xk9#mP2$vL7nQ4wR`
 
 Groet,

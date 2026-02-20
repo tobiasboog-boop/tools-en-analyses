@@ -1,0 +1,38 @@
+MIME-Version: 1.0
+Subject: RE: Oplevering demo AI tool contractchecker tussenstand
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+X-Unsent: 1
+
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #333;">
+
+<p>Hoi Gerrit,</p>
+
+<p>Goed punt =E2=80=94 je hebt helemaal gelijk. Hydroblok en driewegklep zijn ketelonderdelen en horen dus binnen contract.</p>
+
+<p>Het probleem was dat de AI niet wist welke onderdelen fysiek <b>in de ketel</b> zitten. De contracttekst zegt &ldquo;binnen de mantel = in contract&rdquo;, maar somt de specifieke onderdelen niet op. De AI kon daardoor niet afleiden dat een hydroblok of driewegklep ketelonderdelen zijn.</p>
+
+<p>Ik heb nu een eerste lijst toegevoegd, maar die is waarschijnlijk niet compleet:</p>
+
+<ul style="line-height: 1.8; color: #555;">
+<li>Hydroblok, driewegklep, manometer, automatisch vulsysteem, vulset</li>
+<li>Expansievat, warmtewisselaar, branderunit, gasblok, ventilator</li>
+<li>Printplaat, ontstekingselektrode, ionisatie-electrode</li>
+<li>CV-pomp (in de ketel), overloopbeveiliging, veiligheidsklep</li>
+</ul>
+
+<h3 style="color: #16136F; margin-top: 20px;">Vraag</h3>
+
+<p>Zou je een <b>complete lijst van ketelonderdelen</b> kunnen aanleveren? Denk aan alle onderdelen die fysiek in of direct aan de ketel zitten en dus onder &ldquo;binnen de mantel&rdquo; vallen.</p>
+
+<p>Het liefst in een Excel of lijstje, zodat ik deze direct aan de AI kan meegeven. Hoe completer de lijst, hoe nauwkeuriger de beoordeling wordt.</p>
+
+<p>De huidige aanpassing staat alvast live in de demo.</p>
+
+<p>Groet,<br>Tobias</p>
+
+</body>
+</html>

@@ -28,6 +28,9 @@ except ImportError:
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '_sdk'))
 from notifica_sdk import NotificaClient
 
+# CSV BLOB helper
+from csv_blob_helper import get_blob_notities_from_csv, get_latest_csv_batch
+
 # Page config
 st.set_page_config(
     page_title="Zenith Werkbon Rapportage",
@@ -87,9 +90,21 @@ if not check_password():
 # ============================================================================
 
 def strip_rtf(text):
-    """Strip RTF formatting and escape sequences from BLOB text"""
+    """
+    Strip RTF formatting and escape sequences from BLOB text.
+
+    CSV data is already clean, so we skip processing if no RTF detected.
+    """
     if not text or not isinstance(text, str):
         return ''
+
+    # Fast path: Check if text contains RTF codes
+    # If no RTF found, return original text (for CSV data)
+    if not ('\\rtf' in text or '\\ansi' in text or (text.count('\\') > 2)):
+        return text.strip()
+
+    # RTF detected - proceed with stripping
+    original_text = text
 
     # Remove RTF header patterns
     text = re.sub(r'\\rtf[0-9]+', '', text)
@@ -480,11 +495,11 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         status_container.success(f"✓ {len(logboek)} reactie tijden gevonden")
 
         # ====================================================================
-        # STAP 4: BLOB NOTITIES
+        # STAP 4: BLOB NOTITIES (VIA CSV EXPORT)
         # ====================================================================
-        status_container.info("Stap 4/6: BLOB monteur notities ophalen...")
+        status_container.info("Stap 4/6: BLOB monteur notities ophalen (via CSV)...")
 
-        # Eerst sessies ophalen
+        # Eerst sessies ophalen (nog steeds via SQL)
         sessies = client.query(KLANTNUMMER, f'''
             SELECT
                 s."DocumentKey" AS "WerkbonDocumentKey",
@@ -496,54 +511,36 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         blob_notities = pd.DataFrame()
         if not sessies.empty:
             sessie_keys = sessies['MobieleuitvoersessieRegelKey'].tolist()
-            sessie_keys_str = ','.join(str(k) for k in sessie_keys)
 
-            # BLOB tabel 1: stg_at_mwbsess_clobs (monteur notities)
-            blob1 = client.query(KLANTNUMMER, f'''
-                SELECT
-                    m.gc_id AS "MobieleuitvoersessieRegelKey",
-                    m.notitie
-                FROM maatwerk.stg_at_mwbsess_clobs m
-                WHERE m.gc_id IN ({sessie_keys_str})
-                  AND m.notitie IS NOT NULL
-            ''')
+            # Haal meest recente CSV batch op
+            batch_info = get_latest_csv_batch(client, KLANTNUMMER, days=7)
 
-            # BLOB tabel 2: stg_at_uitvbest_clobs (tekst)
-            blob2 = client.query(KLANTNUMMER, f'''
-                SELECT
-                    u.gc_id AS "MobieleuitvoersessieRegelKey",
-                    u.tekst as notitie
-                FROM maatwerk.stg_at_uitvbest_clobs u
-                WHERE u.gc_id IN ({sessie_keys_str})
-                  AND u.tekst IS NOT NULL
-            ''')
-
-            # BLOB tabel 3: stg_at_document_clobs (document notities)
-            blob3 = client.query(KLANTNUMMER, f'''
-                SELECT
-                    d.gc_id AS "MobieleuitvoersessieRegelKey",
-                    COALESCE(d.gc_notitie_extern, d.gc_informatie) as notitie
-                FROM maatwerk.stg_at_document_clobs d
-                WHERE d.gc_id IN ({sessie_keys_str})
-                  AND (d.gc_notitie_extern IS NOT NULL OR d.gc_informatie IS NOT NULL)
-            ''')
-
-            # Combineer alle BLOB bronnen
-            blob_raw = pd.concat([blob1, blob2, blob3], ignore_index=True)
-
-            # Merge met sessies om WerkbonDocumentKey te krijgen
-            if not blob_raw.empty:
-                blob_notities = sessies.merge(
-                    blob_raw,
-                    on='MobieleuitvoersessieRegelKey',
-                    how='inner'
+            if batch_info:
+                # Toon welke CSV batch gebruikt wordt
+                st.info(f"📅 CSV Export: {batch_info['date']} (meest recente nachtelijke export)")
+                # Download BLOB CSV bestanden en filter op sessie keys
+                blob_raw = get_blob_notities_from_csv(
+                    client,
+                    KLANTNUMMER,
+                    sessie_keys,
+                    batch_info
                 )
-                # Als er meerdere notities zijn voor dezelfde werkbon, combineer ze
-                blob_notities = blob_notities.groupby('WerkbonDocumentKey').agg({
-                    'notitie': lambda x: '\n\n'.join(x.dropna().astype(str))
-                }).reset_index()
 
-        status_container.success(f"✓ {len(blob_notities)} BLOB notities gevonden")
+                # Merge met sessies om WerkbonDocumentKey te krijgen
+                if not blob_raw.empty:
+                    blob_notities = sessies.merge(
+                        blob_raw,
+                        on='MobieleuitvoersessieRegelKey',
+                        how='inner'
+                    )
+                    # Als er meerdere notities zijn voor dezelfde werkbon, combineer ze
+                    blob_notities = blob_notities.groupby('WerkbonDocumentKey').agg({
+                        'notitie': lambda x: '\n\n'.join(x.dropna().astype(str))
+                    }).reset_index()
+            else:
+                status_container.warning("⚠️ Geen recente CSV batch gevonden (laatste 7 dagen)")
+
+        status_container.success(f"✓ {len(blob_notities)} BLOB notities gevonden (via CSV)")
 
         # ====================================================================
         # STAP 5: DATA COMBINEREN

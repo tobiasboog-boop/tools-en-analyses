@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git -C \"c:\\\\projects\\\\contract-check\" diff docs/pilot-presentatie.html)",
+      "Bash(git -C \"c:\\\\projects\\\\contract-check\" status)",
+      "Bash(git -C \"C:\\\\Projects\\\\project-atlas\" init)",
+      "Bash(gh repo create:*)",
+      "Bash(winget install:*)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" repo create project-atlas --private --source=\"C:\\\\Projects\\\\project-atlas\" --remote=origin)",
+      "Bash(.\\\\venv\\\\Scripts\\\\python.exe -m streamlit run:*)",
+      "Bash(ping:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(git push)",
+      "Bash(venv/Scripts/python.exe:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

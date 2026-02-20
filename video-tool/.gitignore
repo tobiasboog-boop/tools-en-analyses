@@ -1,0 +1,10 @@
+.streamlit/secrets.toml
+venv/
+ffmpeg/
+temp/*
+!temp/.gitkeep
+__pycache__/
+*.pyc
+.env
+intro/*.mp4
+output/*.mp4

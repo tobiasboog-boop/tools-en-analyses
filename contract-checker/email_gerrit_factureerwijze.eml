@@ -1,0 +1,47 @@
+MIME-Version: 1.0
+Subject: RE: Feedback steekproef Bazalt/Thuisvester - aanpassingen doorgevoerd
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+X-Unsent: 1
+
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #333;">
+
+<p>Hoi Gerrit,</p>
+
+<p>Bedankt voor de uitgebreide feedback! Ik heb de punten bekeken en twee aanpassingen doorgevoerd:</p>
+
+<table style="border-collapse: collapse; margin: 16px 0; width: 100%;">
+<tr style="background: #f0f0f0;">
+<th style="padding: 8px 12px; border: 1px solid #ddd; text-align: left;">Punt</th>
+<th style="padding: 8px 12px; border: 1px solid #ddd; text-align: left;">Status</th>
+<th style="padding: 8px 12px; border: 1px solid #ddd; text-align: left;">Toelichting</th>
+</tr>
+<tr>
+<td style="padding: 8px 12px; border: 1px solid #ddd;"><b>1. Factureerwijze &ldquo;Regie&rdquo;</b></td>
+<td style="padding: 8px 12px; border: 1px solid #ddd; color: #059669;"><b>=E2=9C=85 Opgelost</b></td>
+<td style="padding: 8px 12px; border: 1px solid #ddd;">De AI ziet nu de factureerwijze en classificeert &ldquo;Regie (alles factureren)&rdquo; altijd als NEE, ongeacht andere signalen.</td>
+</tr>
+<tr>
+<td style="padding: 8px 12px; border: 1px solid #ddd;"><b>2. Projectfiltering</b><br><span style="color: #888;">(W2549624 &ldquo;Notenhof&rdquo;)</span></td>
+<td style="padding: 8px 12px; border: 1px solid #ddd; color: #059669;"><b>=E2=9C=85 Opgelost</b></td>
+<td style="padding: 8px 12px; border: 1px solid #ddd;">De tool filtert nu op alle individuele contractcodes van Bazalt, Thuisvester =C3=A9n Rhiant (naast Trivire). Werkbonnen van collectieve projecten zoals &ldquo;Notenhof&rdquo; worden overgeslagen.</td>
+</tr>
+</table>
+
+<p><b>Backtest resultaat:</b> 92,3% nauwkeurigheid op de Trivire steekproef (36/39) =E2=80=94 verbetering t.o.v. vorige versie (89,7%).</p>
+
+<p>De aanpassingen staan live in de demo. Je kunt het testen via dezelfde link.</p>
+
+<h3 style="margin-top: 24px; margin-bottom: 8px; color: #16136F;">Oplossingen van de monteur (W2549293)</h3>
+
+<p>Goed punt. De demo werkt nu met een eenmalige export van historische bonnen, zonder realtime koppeling met Syntess. Daardoor mist de AI op dit moment de oplossingnotities van de monteur =E2=80=94 en dat is precies wat je ziet bij W2549293.</p>
+
+<p>Voor een live versie is een directe koppeling met Syntess nodig, inclusief die aanvullende velden. Dat maakt de beoordeling een stuk completer. Laten we daar binnenkort even apart over afstemmen =E2=80=94 dan kijken we samen wat ervoor nodig is.</p>
+
+<p>Groet,<br>Tobias</p>
+
+</body>
+</html>

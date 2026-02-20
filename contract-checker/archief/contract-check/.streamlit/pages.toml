@@ -1,0 +1,39 @@
+[[pages]]
+path = "Home.py"
+name = "Home"
+
+[[pages]]
+path = "pages/00_Classificatie_Opdracht.py"
+name = "Classificatie Opdracht"
+
+[[pages]]
+path = "pages/01_Bedrijfscontext.py"
+name = "Bedrijfscontext"
+
+[[pages]]
+path = "pages/1_Contract_Register.py"
+name = "Contract Register"
+
+[[pages]]
+path = "pages/2_Werkbon_Selectie.py"
+name = "Werkbon Selectie"
+
+[[pages]]
+path = "pages/3_Beoordeling.py"
+name = "Beoordeling"
+
+[[pages]]
+path = "pages/4_Results.py"
+name = "Results"
+
+[[pages]]
+path = "pages/09_Help.py"
+name = "Help"
+
+[[pages]]
+path = "pages/20_Quick_Classificatie.py"
+name = "Quick Classificatie"
+
+[[pages]]
+path = "pages/21_Mijn_Resultaten.py"
+name = "Mijn Resultaten"

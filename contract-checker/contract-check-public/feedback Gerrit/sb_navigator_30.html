@@ -1,0 +1,4098 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SB Navigator</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@30.2.1/dist/ag-grid-community.min.noStyle.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@30.2.1/styles/ag-grid.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community@30.2.1/styles/ag-theme-alpine.css">
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-tertiary: #1a2234;
+            --bg-hover: #243049;
+            --border: #2a3a52;
+            --text-primary: #e8ecf4;
+            --text-secondary: #8899b4;
+            --text-muted: #5a6a82;
+            --accent: #3b82f6;
+            --accent-hover: #60a5fa;
+            --accent-dim: #1e3a5f;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --nav-width: 260px;
+            --header-height: 48px;
+            --menu-height: 40px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ═══════════════════════════════════════
+           HEADER
+           ═══════════════════════════════════════ */
+        #app-header {
+            height: var(--header-height);
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 16px;
+            z-index: 100;
+        }
+
+        .header-logo {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 700;
+            font-size: 15px;
+            color: var(--accent);
+            letter-spacing: -0.5px;
+            white-space: nowrap;
+        }
+
+        .header-logo span {
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        .header-separator {
+            width: 1px;
+            height: 24px;
+            background: var(--border);
+        }
+
+        .header-object-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .header-object-type {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+            background: var(--bg-tertiary);
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+        }
+
+        .header-spacer { flex: 1; }
+
+        .header-tabs {
+            display: flex;
+            gap: 2px;
+        }
+
+        .header-tab {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            user-select: none;
+        }
+
+        .header-tab:hover {
+            background: var(--bg-hover);
+            color: var(--text-secondary);
+        }
+
+        .header-tab.active {
+            background: var(--accent-dim);
+            color: var(--accent-hover);
+            font-weight: 600;
+        }
+
+        /* ═══════════════════════════════════════
+           TAB CONTENT
+           ═══════════════════════════════════════ */
+        .tab-content {
+            display: none;
+            height: calc(100vh - var(--header-height));
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #tab-navigator #app-body {
+            flex: 1;
+        }
+
+        #tab-navigator #menu-bar {
+            flex-shrink: 0;
+        }
+
+        /* ═══════════════════════════════════════
+           ARCHITECTURE PAGE
+           ═══════════════════════════════════════ */
+        .arch-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 32px 48px;
+            max-width: 1100px;
+        }
+
+        .arch-container::-webkit-scrollbar { width: 6px; }
+        .arch-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        .arch-header {
+            margin-bottom: 36px;
+        }
+
+        .arch-header h1 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .arch-header p {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .arch-section {
+            margin-bottom: 36px;
+        }
+
+        .arch-section-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent-hover);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .arch-section-icon {
+            font-size: 16px;
+        }
+
+        /* Cards */
+        .arch-cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .arch-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .arch-card-header {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .arch-card-tag {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: var(--accent-dim);
+            color: var(--accent-hover);
+        }
+
+        .arch-card-tag.api { background: #1a3a2a; color: var(--success); }
+        .arch-card-tag.grip { background: #3a2a1a; color: var(--warning); }
+
+        .arch-card-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
+        .arch-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+
+        .arch-table th {
+            text-align: left;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .arch-table td {
+            padding: 5px 8px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--bg-tertiary);
+        }
+
+        .arch-table code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--accent-hover);
+            background: var(--accent-dim);
+            padding: 1px 5px;
+            border-radius: 3px;
+        }
+
+        .arch-code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 12px;
+            border-radius: 6px;
+            line-height: 1.8;
+        }
+
+        /* Diagram */
+        .arch-diagram {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            padding: 24px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .arch-diagram-box {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            min-width: 200px;
+        }
+
+        .arch-diagram-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--accent-hover);
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .arch-diagram-fields div {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            padding: 3px 0;
+        }
+
+        .arch-diagram-fk {
+            color: var(--warning) !important;
+            font-weight: 600;
+        }
+
+        .arch-diagram-arrow {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .arch-arrow-line {
+            width: 60px;
+            height: 2px;
+            background: var(--warning);
+            position: relative;
+        }
+
+        .arch-arrow-line::after {
+            content: '▶';
+            position: absolute;
+            right: -8px;
+            top: -7px;
+            color: var(--warning);
+            font-size: 10px;
+        }
+
+        .arch-arrow-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        /* Flow */
+        .arch-flow {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 24px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .arch-flow-connector {
+            font-size: 20px;
+            color: var(--accent);
+            font-weight: 700;
+        }
+
+        .arch-flow-box {
+            padding: 16px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            min-width: 180px;
+            text-align: center;
+        }
+
+        .arch-flow-box.source { background: #1a2a1a; border-color: #2a4a2a; }
+        .arch-flow-box.process { background: #1a1a2a; border-color: #2a2a4a; }
+        .arch-flow-box.ui { background: #2a1a2a; border-color: #4a2a4a; }
+
+        .arch-flow-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .arch-flow-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .arch-flow-detail {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-secondary);
+            margin-top: 8px;
+            padding-top: 6px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* Steps */
+        .arch-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .arch-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+
+        .arch-step:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .arch-step-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--accent);
+            background: var(--accent-dim);
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .arch-step-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .arch-step-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .arch-step-desc code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--accent-hover);
+            background: var(--accent-dim);
+            padding: 1px 5px;
+            border-radius: 3px;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ═══════════════════════════════════════
+           MENU BAR (dynamic per object)
+           ═══════════════════════════════════════ */
+        #menu-bar {
+            height: var(--menu-height);
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 2px;
+            overflow-x: auto;
+        }
+
+        .menu-item {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            user-select: none;
+        }
+
+        .menu-item:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .menu-item.active {
+            background: var(--accent-dim);
+            color: var(--accent-hover);
+        }
+
+        .menu-item .menu-icon {
+            font-size: 14px;
+        }
+
+        .menu-separator {
+            width: 1px;
+            height: 20px;
+            background: var(--border);
+            margin: 0 4px;
+        }
+
+        /* ═══════════════════════════════════════
+           LAYOUT: NAV + CANVAS
+           ═══════════════════════════════════════ */
+        #app-body {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ═══════════════════════════════════════
+           NAVIGATOR (left panel)
+           ═══════════════════════════════════════ */
+        #navigator {
+            width: var(--nav-width);
+            min-width: var(--nav-width);
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .nav-search {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .nav-search input {
+            width: 100%;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 7px 10px 7px 32px;
+            color: var(--text-primary);
+            font-size: 12px;
+            font-family: 'DM Sans', sans-serif;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .nav-search input:focus {
+            border-color: var(--accent);
+        }
+
+        .nav-search-wrapper {
+            position: relative;
+        }
+
+        .nav-search-icon {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        .nav-tree {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 0;
+        }
+
+        .nav-tree::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .nav-tree::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .nav-group-header {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            padding: 12px 16px 4px;
+        }
+
+        .nav-group-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            cursor: pointer;
+            transition: all 0.12s;
+            user-select: none;
+        }
+
+        .nav-group-toggle:hover {
+            background: var(--bg-hover);
+        }
+
+        .nav-group-toggle.open {
+            background: var(--bg-tertiary);
+        }
+
+        .nav-toggle-icon {
+            font-size: 10px;
+            color: var(--text-muted);
+            width: 14px;
+            text-align: center;
+            transition: transform 0.15s;
+        }
+
+        .nav-group-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            flex: 1;
+        }
+
+        .nav-group-count {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            background: var(--bg-tertiary);
+            padding: 1px 6px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+        }
+
+        .nav-group-children .nav-item {
+            padding-left: 38px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            cursor: pointer;
+            transition: all 0.12s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-hover);
+        }
+
+        .nav-item.active {
+            background: var(--accent-dim);
+            border-left-color: var(--accent);
+        }
+
+        .nav-item-icon {
+            font-size: 15px;
+            width: 20px;
+            text-align: center;
+        }
+
+        .nav-item-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .nav-item-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            background: var(--bg-tertiary);
+            padding: 1px 6px;
+            border-radius: 4px;
+        }
+
+        /* ═══════════════════════════════════════
+           CANVAS (main content area)
+           ═══════════════════════════════════════ */
+        #canvas {
+            flex: 1;
+            overflow: auto;
+            background: var(--bg-primary);
+            position: relative;
+        }
+
+        /* Canvas: Welcome state */
+        .canvas-welcome {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            gap: 12px;
+        }
+
+        .canvas-welcome-icon {
+            font-size: 48px;
+            opacity: 0.3;
+        }
+
+        .canvas-welcome-text {
+            font-size: 14px;
+        }
+
+        /* Canvas: Datagrid */
+        .canvas-datagrid {
+            height: 100%;
+            padding: 0;
+        }
+
+        /* Canvas: SQL View */
+        .canvas-sql {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sql-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sql-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sql-header-right {
+            display: flex;
+            gap: 6px;
+        }
+
+        .sql-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--success);
+            background: #1a2a1a;
+            padding: 3px 8px;
+            border-radius: 4px;
+            border: 1px solid #2a4a2a;
+        }
+
+        .sql-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .sql-sub {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .sql-textarea {
+            flex: 1;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            padding: 16px 20px;
+            border: none;
+            outline: none;
+            resize: none;
+            tab-size: 4;
+        }
+
+        .sql-textarea::selection {
+            background: var(--accent-dim);
+            color: var(--accent-hover);
+        }
+
+        .sql-footer {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 11px;
+        }
+
+        /* Canvas: Export */
+        .export-container {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .export-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 36px 48px;
+            text-align: center;
+            max-width: 520px;
+            width: 100%;
+        }
+
+        .export-icon {
+            font-size: 40px;
+            margin-bottom: 12px;
+        }
+
+        .export-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 20px;
+        }
+
+        .export-info {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .export-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .export-stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent-hover);
+        }
+
+        .export-stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .export-stat-sep {
+            color: var(--border);
+            font-size: 20px;
+            margin-top: -12px;
+        }
+
+        .export-columns {
+            margin-bottom: 16px;
+            text-align: left;
+        }
+
+        .export-columns-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        .export-columns-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .export-col-tag {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+        }
+
+        .export-query {
+            margin-bottom: 20px;
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+        }
+
+        .export-query code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--accent-hover);
+        }
+
+        .export-btn {
+            display: inline-block;
+            padding: 12px 32px;
+            font-size: 14px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+
+        .export-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        /* ═══════════════════════════════════════
+           Canvas: Edit-canvas (dual editor)
+           ═══════════════════════════════════════ */
+        .edit-canvas {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .edit-toolbar {
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .edit-toolbar-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .edit-toolbar-sep {
+            width: 1px;
+            height: 22px;
+            background: var(--border);
+            margin: 0 6px;
+        }
+
+        .edit-toolbar input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 4px 8px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            outline: none;
+            width: 160px;
+        }
+
+        .edit-toolbar input:focus {
+            border-color: var(--accent);
+        }
+
+        .edit-toolbar input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .edit-btn {
+            padding: 4px 8px;
+            font-size: 11px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            transition: all 0.12s;
+            white-space: nowrap;
+        }
+
+        .edit-btn:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .edit-btn.active {
+            background: var(--accent-dim);
+            color: var(--accent-hover);
+            border-color: var(--accent);
+        }
+
+        .edit-btn.save {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+            font-weight: 600;
+        }
+
+        .edit-btn.save:hover {
+            background: var(--accent-hover);
+        }
+
+        .edit-btn.save.saving {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
+        .edit-btn.save.saved {
+            background: var(--success);
+            border-color: var(--success);
+        }
+
+        .edit-match-count {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            min-width: 40px;
+        }
+
+        .edit-panels {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .edit-panel {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .edit-panel-toelichting {
+            flex: 0 0 10%;
+            min-height: 60px;
+        }
+
+        .edit-panel-code {
+            flex: 1;
+            border-top: 1px solid var(--border);
+        }
+
+        .edit-panel + .edit-panel {
+            border-left: none;
+        }
+
+        .edit-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .edit-panel-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .edit-panel-badge {
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .edit-panel-badge.code {
+            background: var(--accent-dim);
+            color: var(--accent-hover);
+        }
+
+        .edit-panel-badge.notes {
+            background: #2a1a3a;
+            color: #c084fc;
+        }
+
+        .edit-panel-info {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .edit-textarea {
+            flex: 1;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            padding: 12px 16px;
+            border: none;
+            outline: none;
+            resize: none;
+            tab-size: 4;
+            white-space: pre;
+            overflow: auto;
+        }
+
+        /* Syntax highlighted editor wrapper */
+        .edit-code-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .edit-code-highlight {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            padding: 12px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            tab-size: 4;
+            white-space: pre;
+            overflow: auto;
+            color: var(--text-primary);
+            pointer-events: none;
+            background: var(--bg-primary);
+        }
+
+        .edit-code-input {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            padding: 12px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            tab-size: 4;
+            white-space: pre;
+            overflow: auto;
+            color: transparent;
+            caret-color: var(--text-primary);
+            background: transparent;
+            border: none;
+            outline: none;
+            resize: none;
+            z-index: 1;
+        }
+
+        .edit-code-input::selection {
+            background: rgba(59, 130, 246, 0.3);
+        }
+
+        /* Syntax highlight token colors */
+        .sh-keyword { color: #f59e0b; font-weight: 600; }
+        .sh-table { color: #c084fc; }
+        .sh-variable { color: #e06060; }
+        .sh-conditional { color: #22c55e; }
+        .sh-function { color: #60a0f0; }
+        .sh-number { color: #c084fc; }
+        .sh-string { color: #ef4444; }
+        .sh-comment { color: #5a6a82; font-style: italic; }
+
+        .edit-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 12px;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        .edit-footer-left, .edit-footer-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* GRIP-CALL window */
+        .grip-call-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .grip-call-window {
+            background: var(--bg-secondary);
+            border: 1px solid var(--accent);
+            border-radius: 10px;
+            width: 600px;
+            max-width: 90vw;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+
+        .grip-call-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border);
+            border-radius: 10px 10px 0 0;
+        }
+
+        .grip-call-title {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--accent-hover);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .grip-call-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 18px;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .grip-call-close:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .grip-call-body {
+            flex: 1;
+            overflow: auto;
+            padding: 16px;
+        }
+
+        .grip-call-code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.7;
+            color: var(--text-primary);
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .grip-call-footer {
+            padding: 8px 16px;
+            border-top: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .grip-call-log-header {
+            padding: 6px 16px;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .grip-call-log {
+            min-height: 80px;
+            max-height: 150px;
+            overflow-y: auto;
+            padding: 10px 16px;
+            background: #050810;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            line-height: 1.6;
+            color: var(--success);
+            white-space: pre-wrap;
+        }
+
+        /* ═══════════════════════════════════════
+           Canvas: Stamgegevens tegels
+           ═══════════════════════════════════════ */
+        .tiles-container {
+            height: 100%;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .tiles-header {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .tiles-sub {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+
+        .tiles-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 12px;
+        }
+
+        .tile {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .tile:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(59,130,246,0.15);
+        }
+
+        .tile-icon {
+            font-size: 28px;
+        }
+
+        .tile-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .tile-desc {
+            font-size: 11px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .tile-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: var(--text-muted);
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 3px;
+            align-self: flex-start;
+        }
+
+        .canvas-datagrid .ag-theme-alpine {
+            --ag-background-color: var(--bg-primary);
+            --ag-header-background-color: var(--bg-tertiary);
+            --ag-header-foreground-color: var(--text-secondary);
+            --ag-foreground-color: var(--text-primary);
+            --ag-row-hover-color: var(--bg-hover);
+            --ag-border-color: var(--border);
+            --ag-odd-row-background-color: var(--bg-secondary);
+            --ag-font-family: 'DM Sans', sans-serif;
+            --ag-font-size: 13px;
+            height: 100%;
+        }
+
+        /* Canvas: Data Entry Form */
+        .canvas-form {
+            padding: 24px;
+            max-width: 800px;
+        }
+
+        .form-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .form-input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 9px 12px;
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: 'DM Sans', sans-serif;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .form-input:focus {
+            border-color: var(--accent);
+        }
+
+        .form-input.readonly {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .form-actions {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            transition: all 0.15s;
+            font-family: 'DM Sans', sans-serif;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        /* Resize handle */
+        .nav-resize {
+            width: 3px;
+            cursor: col-resize;
+            background: transparent;
+            transition: background 0.15s;
+        }
+
+        .nav-resize:hover {
+            background: var(--accent);
+        }
+
+        /* ═══════════════════════════════════════
+           STATUSBAR
+           ═══════════════════════════════════════ */
+        #statusbar {
+            height: 28px;
+            min-height: 28px;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            gap: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            overflow: hidden;
+        }
+
+        .statusbar-section {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .statusbar-label {
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .statusbar-value {
+            color: var(--text-secondary);
+        }
+
+        .statusbar-sep {
+            color: var(--border);
+            margin: 0 2px;
+        }
+
+        .statusbar-spacer {
+            flex: 1;
+        }
+
+        .statusbar-commands {
+            color: var(--accent-hover);
+        }
+
+        .statusbar-action-url {
+            color: var(--warning);
+            font-weight: 600;
+        }
+
+        .statusbar-btn {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--accent-hover);
+            background: var(--accent-dim);
+            border: 1px solid var(--accent);
+            border-radius: 3px;
+            padding: 1px 8px;
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+
+        .statusbar-btn:hover {
+            background: var(--accent);
+            color: white;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ═══ HEADER ═══ -->
+    <div id="app-header">
+        <div class="header-logo">SB<span>nav</span></div>
+        <div class="header-separator"></div>
+        <div class="header-tabs">
+            <div class="header-tab active" data-tab="navigator" onclick="switchTab('navigator')">▸ Navigator</div>
+            <div class="header-tab" data-tab="architecture" onclick="switchTab('architecture')">◈ Architectuur</div>
+        </div>
+        <div class="header-separator"></div>
+        <div class="header-object-title" id="headerTitle">Selecteer een object</div>
+        <div class="header-object-type" id="headerType">—</div>
+        <div class="header-spacer"></div>
+        <div class="header-status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Verbonden</span>
+        </div>
+    </div>
+
+    <!-- ═══ BODY: NAV + CANVAS ═══ -->
+    <div id="tab-navigator" class="tab-content active">
+        <div id="menu-bar">
+            <div class="menu-item" style="color: var(--text-muted); cursor: default;">
+                Selecteer een object in de navigator
+            </div>
+        </div>
+        <div id="app-body">
+            <!-- NAVIGATOR -->
+            <div id="navigator">
+                <div class="nav-search">
+                    <div class="nav-search-wrapper">
+                        <span class="nav-search-icon">⌕</span>
+                        <input type="text" placeholder="Zoek object..." id="navSearchInput" oninput="filterNav(this.value)">
+                    </div>
+                </div>
+                <div class="nav-tree" id="navTree"></div>
+            </div>
+            <div class="nav-resize" id="navResize"></div>
+            <!-- CANVAS -->
+            <div id="canvas">
+                <div class="canvas-welcome">
+                    <div class="canvas-welcome-icon">◇</div>
+                    <div class="canvas-welcome-text">Selecteer een object om te beginnen</div>
+                </div>
+            </div>
+        </div>
+        <!-- STATUSBAR -->
+        <div id="statusbar">
+            <div class="statusbar-section">
+                <span class="statusbar-label">Object:</span>
+                <span class="statusbar-value" id="sbType">—</span>
+                <span class="statusbar-sep">│</span>
+                <span class="statusbar-value" id="sbDisplayName">—</span>
+                <span class="statusbar-sep">│</span>
+                <span class="statusbar-label">Tabel:</span>
+                <span class="statusbar-value" id="sbObjectName">—</span>
+            </div>
+            <div class="statusbar-spacer"></div>
+            <div class="statusbar-section">
+                <button class="statusbar-btn" onclick="renderStamgegevensCanvas()" title="Wijzigen stamgegevens">⚙ Stamgegevens</button>
+                <span class="statusbar-sep">│</span>
+                <span class="statusbar-label">Menu:</span>
+                <span class="statusbar-value" id="sbMenuDisplay">—</span>
+                <span class="statusbar-sep">│</span>
+                <span class="statusbar-label">»</span>
+                <span class="statusbar-value statusbar-commands" id="sbMenuCmd">—</span>
+                <span class="statusbar-sep">│</span>
+                <span class="statusbar-value statusbar-action-url" id="sbActionUrl">—</span>
+            </div>
+        </div>
+    </div>
+    <div id="tab-architecture" class="tab-content">
+        <div class="arch-container">
+            <div class="arch-header">
+                <h1>SB Navigator — Architectuur</h1>
+                <p>Versie 0.3 · 14 feb 2026 · Overzicht van datamodel, componenten, keuzes en Commando-mapper</p>
+            </div>
+
+            <!-- DESIGN KEUZES -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">🎯</span>
+                    Design Keuzes
+                </div>
+                <div class="arch-steps">
+                    <div class="arch-step">
+                        <div class="arch-step-num">K1</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Supabase als backend</div>
+                            <div class="arch-step-desc">PostgreSQL database met ingebouwde REST API. Geen aparte backend nodig. Toegang via <code>anon key</code> (browser) én via <code>add_conn</code> (GRIP). Schema <code>kijker</code> voor alle app-tabellen.</div>
+                        </div>
+                    </div>
+                    <div class="arch-step">
+                        <div class="arch-step-num">K2</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Session Pooler i.p.v. Direct Connection</div>
+                            <div class="arch-step-desc">Direct connection is alleen IPv6. Session pooler via <code>aws-1-eu-west-1.pooler.supabase.com</code> is IPv4 compatible. Username wordt <code>user.projectref</code> formaat.</div>
+                        </div>
+                    </div>
+                    <div class="arch-step">
+                        <div class="arch-step-num">K3</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Metadata-driven UI</div>
+                            <div class="arch-step-desc">Navigator, menu's en canvas worden volledig aangestuurd vanuit <code>sb_objects</code> en <code>sb_menus</code>. Geen hardcoded schermen — alles configureerbaar via database.</div>
+                        </div>
+                    </div>
+                    <div class="arch-step">
+                        <div class="arch-step-num">K4</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Koppeling via type</div>
+                            <div class="arch-step-desc"><code>sb_objects.type</code> koppelt aan <code>sb_menus.type</code>. Alle objecten van hetzelfde type delen dezelfde menu-opties. Bijv. alle "Table" objecten krijgen dezelfde menu's.</div>
+                        </div>
+                    </div>
+                    <div class="arch-step">
+                        <div class="arch-step-num">K5</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Menu-positie blijft behouden</div>
+                            <div class="arch-step-desc">Bij wisselen van object blijft de geselecteerde menu-index behouden (<code>currentMenuIndex</code>). Zo hoeft de gebruiker niet steeds opnieuw te klikken.</div>
+                        </div>
+                    </div>
+                    <div class="arch-step">
+                        <div class="arch-step-num">K6</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Schema-aware queries</div>
+                            <div class="arch-step-desc">Data-queries gebruiken <code>object_name2</code> als schema. Via <code>Accept-Profile</code> header wordt het juiste schema geselecteerd. Fallback van kijker → public.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DATAMODEL -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">🗄️</span>
+                    Datamodel
+                </div>
+                <div class="arch-cards">
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag">TABLE</span>
+                            kijker.sb_objects
+                        </div>
+                        <div class="arch-card-desc">Definieert alle navigeerbare objecten. Elke rij is een item in de navigator-boom. Groepering via <code>type</code>.</div>
+                        <table class="arch-table">
+                            <tr><th>Kolom</th><th>Type</th><th>Functie</th></tr>
+                            <tr><td><code>type</code></td><td>text</td><td>Groepering in navigator (boomtak) + koppeling naar sb_menus</td></tr>
+                            <tr><td><code>display_name</code></td><td>text</td><td>Weergavenaam (blad in boom)</td></tr>
+                            <tr><td><code>object_name1</code></td><td>text</td><td>Tabel/view naam in database</td></tr>
+                            <tr><td><code>object_name2</code></td><td>text</td><td>Schema naam (public, kijker, etc.)</td></tr>
+                        </table>
+                    </div>
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag">TABLE</span>
+                            kijker.sb_menus
+                        </div>
+                        <div class="arch-card-desc">Menu-definities per type. Wordt gekoppeld aan objecten via <code>type</code>. Elk menu-item heeft een <code>commando</code> dat de canvas-actie bepaalt.</div>
+                        <table class="arch-table">
+                            <tr><th>Kolom</th><th>Type</th><th>Functie</th></tr>
+                            <tr><td><code>type</code></td><td>text</td><td>Koppeling → sb_objects.type</td></tr>
+                            <tr><td><code>displaynaam</code></td><td>text</td><td>Menu-item label in menubalk</td></tr>
+                            <tr><td><code>commando</code></td><td>text</td><td>Commando dat canvas-actie aanstuurt</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RELATIE DIAGRAM -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">🔗</span>
+                    Relaties
+                </div>
+                <div class="arch-diagram">
+                    <div class="arch-diagram-box">
+                        <div class="arch-diagram-title">sb_objects</div>
+                        <div class="arch-diagram-fields">
+                            <div class="arch-diagram-fk">type ──────┐</div>
+                            <div>display_name</div>
+                            <div>object_name1</div>
+                            <div>object_name2</div>
+                        </div>
+                    </div>
+                    <div class="arch-diagram-arrow">
+                        <div class="arch-arrow-line"></div>
+                        <div class="arch-arrow-label">type = type</div>
+                    </div>
+                    <div class="arch-diagram-box">
+                        <div class="arch-diagram-title">sb_menus</div>
+                        <div class="arch-diagram-fields">
+                            <div class="arch-diagram-fk">type ◄──────┘</div>
+                            <div>displaynaam</div>
+                            <div>commando</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COMMAND DISPATCH -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">⚙️</span>
+                    Commando-mapper
+                </div>
+                <div class="arch-card-desc" style="margin-bottom:12px;color:var(--text-secondary);font-size:13px;">
+                    Het <code>commando</code> uit <code>sb_menus</code> wordt gecombineerd met het <code>type</code> uit <code>sb_objects</code> om te bepalen welke actie in het canvas wordt uitgevoerd.
+                </div>
+                <table class="arch-table" style="background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);">
+                    <tr>
+                        <th style="width:120px;">sb_objects.type</th>
+                        <th style="width:120px;">sb_menus.commando</th>
+                        <th style="width:130px;">Module</th>
+                        <th>Query / Resultaat</th>
+                    </tr>
+                    <tr>
+                        <td><code>Table</code></td>
+                        <td><code>ShowData</code></td>
+                        <td>Datagrid-canvas</td>
+                        <td><code>SELECT * FROM [object_name2].[object_name1] LIMIT 50</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>Table</code></td>
+                        <td><code>Export</code></td>
+                        <td>Export-canvas</td>
+                        <td><code>SELECT * FROM [object_name2].[object_name1]</code> → CSV download</td>
+                    </tr>
+                    <tr>
+                        <td><code>Table</code></td>
+                        <td><code>CreateScript</code></td>
+                        <td>SQL-canvas</td>
+                        <td><code>information_schema.columns</code> → DDL script</td>
+                    </tr>
+                    <tr>
+                        <td><code>GripCode</code></td>
+                        <td><code>Edit</code></td>
+                        <td>Edit-canvas → GRIP-CALL</td>
+                        <td><code>SELECT code, toelichting FROM kijker.sb_grip WHERE displaynaam = [object_name1]</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>FirebirdQry</code></td>
+                        <td><code>Import</code></td>
+                        <td>SQL-canvas</td>
+                        <td><code>SELECT sql_query FROM public.etl_view_definitions WHERE name = [object_name1]</code></td>
+                    </tr>
+                    <tr style="color:var(--text-muted);">
+                        <td><code>View</code></td>
+                        <td><code>ShowData</code></td>
+                        <td><em>Datagrid-canvas</em></td>
+                        <td><code>SELECT * FROM [object_name2].[object_name1] LIMIT 50</code></td>
+                    </tr>
+                    <tr style="color:var(--text-muted);">
+                        <td><code>*</code></td>
+                        <td><code>Commentaar</code></td>
+                        <td><em>— toekomstig —</em></td>
+                        <td>Toon commentaar/notities in canvas</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- MODULES -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">📦</span>
+                    Modules
+                </div>
+                <div class="arch-cards" style="grid-template-columns:1fr;">
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag">M1</span>
+                            Datagrid-canvas
+                        </div>
+                        <div class="arch-card-desc">Toont tabeldata in een AG Grid (of HTML-tabel fallback). Sorteerbaar, filterbaar. Query wordt bovenaan getoond. Gebruikt door <code>Table::ShowData</code> en <code>View::ShowData</code>.</div>
+                    </div>
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag">M2</span>
+                            SQL-canvas
+                        </div>
+                        <div class="arch-card-desc">Toont SQL/DDL in een readonly textbox met kopieerknop en metadata-footer. Gebruikt door <code>Table::CreateScript</code> en <code>FirebirdQry::Import</code>.</div>
+                    </div>
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag">M3</span>
+                            Export-canvas
+                        </div>
+                        <div class="arch-card-desc">Haalt alle data op, bouwt CSV (puntkomma, UTF-8 BOM), toont record/kolom-telling en download-knop. Bestandsnaam = tabelnaam.csv. Gebruikt door <code>Table::Export</code>.</div>
+                    </div>
+                    <div class="arch-card" style="border-color:#4a2a6a;">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag" style="background:#2a1a3a;color:#c084fc;">M4</span>
+                            Edit-canvas
+                        </div>
+                        <div class="arch-card-desc">
+                            Dubbele editor voor GripCode. Data uit <code>kijker.sb_grip</code> (lookup op <code>displaynaam = object_name1</code>).<br><br>
+                            <strong>Linker paneel</strong> — <code>code</code>: bewerkbare GRIP-code met regeltelling en cursorpositie.<br>
+                            <strong>Rechter paneel</strong> — <code>toelichting</code>: documentatie/notities. Paneel is toggelbaar.<br>
+                            <strong>Toolbar</strong> — Zoeken (F3 / Shift+F3), vervangen, alles vervangen.<br>
+                            <strong>Interactie</strong> — Dubbelklik op woord of sleepselectie van codeblok → opent GRIP-CALL window.<br>
+                            <strong>Footer</strong> — Cursor positie (Regel, Kolom), bron, aanmaak-/wijzigdatum.
+                        </div>
+                    </div>
+                    <div class="arch-card" style="border-color:#4a3a1a;">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag" style="background:#3a2a1a;color:var(--warning);">M5</span>
+                            GRIP-CALL
+                            <span style="font-size:10px;color:var(--text-muted);background:var(--bg-tertiary);padding:1px 6px;border-radius:3px;margin-left:6px;">STUB</span>
+                        </div>
+                        <div class="arch-card-desc">
+                            Popup-window dat geselecteerde code ontvangt vanuit Edit-canvas via dubbelklik (enkel woord) of sleepselectie (codeblok). Toont de code met metadata (regels, tekens, bron). <em>Wordt in een volgende iteratie uitgewerkt met GRIP-executie functionaliteit.</em>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SPECIAL-TOETS -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">⌨️</span>
+                    Special-Toets
+                </div>
+                <div class="arch-card-desc" style="margin-bottom:12px;color:var(--text-secondary);font-size:13px;">
+                    Sneltoetsen in de Edit-canvas (M4). Actief wanneer de cursor in het CODE-paneel staat.
+                </div>
+                <table class="arch-table" style="background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);">
+                    <tr>
+                        <th style="width:150px;">Toetscombinatie</th>
+                        <th style="width:120px;">Context</th>
+                        <th>Actie</th>
+                    </tr>
+                    <tr>
+                        <td><code>Ctrl+Enter</code></td>
+                        <td>Code paneel</td>
+                        <td>Stuurt de <strong>huidige regel</strong> (waar de cursor staat) naar het GRIP-CALL popup venster. De regel wordt later doorgegeven aan GRIP.EXE voor uitvoering.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Shift+Enter</code></td>
+                        <td>Code paneel</td>
+                        <td>Selecteert een <strong>codeblok</strong> rondom de cursor: omhoog tot de eerste lege regel of een regel die begint met <code>BEGIN</code>, omlaag tot de eerste lege regel of een regel die begint met <code>RETURN</code>. Het blok wordt geselecteerd in de editor en doorgestuurd naar GRIP-CALL.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Ctrl+S</code></td>
+                        <td>Edit-canvas</td>
+                        <td>Slaat <code>code</code> en <code>toelichting</code> op naar <code>kijker.sb_grip</code> met <code>modify_date = current_timestamp</code>.</td>
+                    </tr>
+                    <tr>
+                        <td><code>F3</code></td>
+                        <td>Edit-canvas</td>
+                        <td>Volgende zoekresultaat in het code paneel.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Shift+F3</code></td>
+                        <td>Edit-canvas</td>
+                        <td>Vorige zoekresultaat in het code paneel.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Ctrl+H</code></td>
+                        <td>Edit-canvas</td>
+                        <td>Focus op het vervangen-veld in de toolbar.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Dubbelklik</code></td>
+                        <td>Code paneel</td>
+                        <td>Stuurt het dubbelgeklikte woord naar GRIP-CALL popup.</td>
+                    </tr>
+                    <tr>
+                        <td><code>Sleepselectie</code></td>
+                        <td>Code paneel</td>
+                        <td>Bij selectie van meerdere regels (>20 tekens): stuurt het geselecteerde blok naar GRIP-CALL popup.</td>
+                    </tr>
+                    <tr>
+                        <td><code>ESC</code></td>
+                        <td>GRIP-CALL popup</td>
+                        <td>Sluit het GRIP-CALL popup venster.</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- SYNTAX HIGHLIGHTING -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">🎨</span>
+                    Syntax Highlighting — GRIP Code
+                </div>
+                <div class="arch-card-desc" style="margin-bottom:12px;color:var(--text-secondary);font-size:13px;">
+                    De Edit-canvas (M4) toont GRIP-code met syntax highlighting. De kleuren worden bepaald door tokentype. De highlighting werkt real-time bij het typen en na zoek/vervang-acties.
+                </div>
+                <table class="arch-table" style="background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border);">
+                    <tr>
+                        <th style="width:130px;">Categorie</th>
+                        <th style="width:80px;">Kleur</th>
+                        <th>Tokens</th>
+                    </tr>
+                    <tr>
+                        <td><span class="sh-keyword" style="font-family:JetBrains Mono,monospace;font-size:12px;">keywords</span></td>
+                        <td><span style="color:#f59e0b;">■</span> orange</td>
+                        <td style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text-secondary);line-height:1.8;">BEGIN, INSTALL, REFRESH, DROP_TEMP_TABLES, ODBC, QUIT, RETURN, QRY, SHOW, EXEC, DDL, TABLES, VIEWS, DICT, TABLE, VIEW, DBF, SET, VERSIEBEHEER, CALL, DISP, METADATA, ALL, TOTAL, PARA</td>
+                    </tr>
+                    <tr>
+                        <td><span class="sh-table" style="font-family:JetBrains Mono,monospace;font-size:12px;">tables</span></td>
+                        <td><span style="color:#c084fc;">■</span> purple</td>
+                        <td style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text-secondary);line-height:1.8;">GRIP_LOG, GRIP_AUD, GRIP_DEBUG, GRIP_JOB, GRIP_JOB_RUN, GRIP_JOB_RUN_HIST, GRIP_SOURCE, GRIP_LOG_V, GRIP_METADATA_V, GRIP_DATUM_V, GRIP_SOURCE_HIST, GRIP_PARA</td>
+                    </tr>
+                    <tr>
+                        <td><span class="sh-variable" style="font-family:JetBrains Mono,monospace;font-size:12px;">variables</span></td>
+                        <td><span style="color:#e06060;">■</span> red4</td>
+                        <td style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text-secondary);">&lt;FLOW&gt;, &lt;USER&gt;, etc. (patroon: &lt;NAAM&gt;)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="sh-conditional" style="font-family:JetBrains Mono,monospace;font-size:12px;">conditionals</span></td>
+                        <td><span style="color:#22c55e;">■</span> green</td>
+                        <td style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text-secondary);">try, except, if, else, elif, MVAR</td>
+                    </tr>
+                    <tr>
+                        <td><span class="sh-function" style="font-family:JetBrains Mono,monospace;font-size:12px;">functions</span></td>
+                        <td><span style="color:#60a0f0;">■</span> blue4</td>
+                        <td style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text-secondary);">show_flow, remove_job_def, record_on, record_off, fexec, new_flow</td>
+                    </tr>
+                    <tr>
+                        <td><span class="sh-number" style="font-family:JetBrains Mono,monospace;font-size:12px;">numbers</span></td>
+                        <td><span style="color:#c084fc;">■</span> purple</td>
+                        <td style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text-secondary);">Integers en decimalen (bijv. 42, 3.14)</td>
+                    </tr>
+                    <tr>
+                        <td><span class="sh-string" style="font-family:JetBrains Mono,monospace;font-size:12px;">strings</span></td>
+                        <td><span style="color:#ef4444;">■</span> red</td>
+                        <td style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text-secondary);">Tekst tussen enkele of dubbele aanhalingstekens ('...' of "...")</td>
+                    </tr>
+                    <tr>
+                        <td><span class="sh-comment" style="font-family:JetBrains Mono,monospace;font-size:12px;">comments</span></td>
+                        <td><span style="color:#5a6a82;">■</span> grijs</td>
+                        <td style="font-family:JetBrains Mono,monospace;font-size:10px;color:var(--text-secondary);">Regels die beginnen met -- of # (italic)</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- DATAFLOW -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">⚡</span>
+                    Dataflow
+                </div>
+                <div class="arch-steps">
+                    <div class="arch-step">
+                        <div class="arch-step-num">1</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Init</div>
+                            <div class="arch-step-desc">App laadt <code>sb_objects</code> en <code>sb_menus</code> via Supabase REST API (schema <code>kijker</code>)</div>
+                        </div>
+                    </div>
+                    <div class="arch-step">
+                        <div class="arch-step-num">2</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Navigator opbouw</div>
+                            <div class="arch-step-desc">Groepeer op <code>type</code> → toon als inklapbare boomstructuur met <code>display_name</code> als items</div>
+                        </div>
+                    </div>
+                    <div class="arch-step">
+                        <div class="arch-step-num">3</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Object selectie</div>
+                            <div class="arch-step-desc">Klik op <code>display_name</code> → update header + statusbalk. Laad menu via <code>sb_menus.type = sb_objects.type</code>. Eerste item (of <code>currentMenuIndex</code>) wordt automatisch geselecteerd.</div>
+                        </div>
+                    </div>
+                    <div class="arch-step">
+                        <div class="arch-step-num">4</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Command dispatch</div>
+                            <div class="arch-step-desc">Combinatie van <code>sb_objects.type</code> + <code>sb_menus.commando</code> bepaalt de actie. Bijv: <code>Table</code> + <code>ShowData</code> → <code>SELECT * FROM schema.tabel LIMIT 50</code> → datagrid in canvas.</div>
+                        </div>
+                    </div>
+                    <div class="arch-step">
+                        <div class="arch-step-num">5</div>
+                        <div class="arch-step-content">
+                            <div class="arch-step-title">Canvas renderen</div>
+                            <div class="arch-step-desc">Resultaat wordt getoond in het canvas. Datagrid via AG Grid met sorteer- en filteropties. Statusbalk toont geselecteerd commando.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COMPONENTEN -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">🧩</span>
+                    Componenten
+                </div>
+                <div class="arch-flow">
+                    <div class="arch-flow-item">
+                        <div class="arch-flow-box source">
+                            <div class="arch-flow-label">Supabase</div>
+                            <div class="arch-flow-sub">PostgreSQL + REST API</div>
+                            <div class="arch-flow-detail">Schema: kijker · IPv4 pooler</div>
+                        </div>
+                    </div>
+                    <div class="arch-flow-connector">→</div>
+                    <div class="arch-flow-item">
+                        <div class="arch-flow-box process">
+                            <div class="arch-flow-label">SB.query()</div>
+                            <div class="arch-flow-sub">REST Client</div>
+                            <div class="arch-flow-detail">Accept-Profile: kijker<br>+ schema fallback</div>
+                        </div>
+                    </div>
+                    <div class="arch-flow-connector">→</div>
+                    <div class="arch-flow-item">
+                        <div class="arch-flow-box process" style="background:#1a2a1a;border-color:#2a4a2a;">
+                            <div class="arch-flow-label">Dispatch</div>
+                            <div class="arch-flow-sub">type + commando</div>
+                            <div class="arch-flow-detail">Bepaalt query + canvas type</div>
+                        </div>
+                    </div>
+                    <div class="arch-flow-connector">→</div>
+                    <div class="arch-flow-item">
+                        <div class="arch-flow-box ui">
+                            <div class="arch-flow-label">UI Layer</div>
+                            <div class="arch-flow-sub">Navigator · Menu · Canvas</div>
+                            <div class="arch-flow-detail">AG Grid · Forms · Status</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- UI STRUCTUUR -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">🖥️</span>
+                    UI Structuur
+                </div>
+                <div class="arch-code" style="line-height:2;">
+┌─────────────────────────────────────────────────────────┐<br>
+│ <span style="color:var(--accent-hover)">HEADER</span>: Logo · [Navigator] [Architectuur] · Titel · Status │<br>
+├───────────────────────────────────────────────────────── ┤<br>
+│ <span style="color:var(--warning)">MENU BAR</span>: ▸ Commando-1 │ ▸ Commando-2 │ ▸ Commando-3  │<br>
+├────────────┬────────────────────────────────────────────┤<br>
+│ <span style="color:var(--success)">NAVIGATOR</span>  │  <span style="color:#c084fc">CANVAS</span>                                    │<br>
+│ ▶ Type-1   │  Datagrid / Form / Info                   │<br>
+│   · item-a │                                            │<br>
+│   · item-b │  (gevuld op basis van dispatch:            │<br>
+│ ▶ Type-2   │   type + commando → query → resultaat)    │<br>
+│   · item-c │                                            │<br>
+├────────────┴────────────────────────────────────────────┤<br>
+│ <span style="color:var(--text-muted)">STATUS</span>: Object: type │ name │ Tabel    Menu: naam │ » cmd │<br>
+└─────────────────────────────────────────────────────────┘
+                </div>
+            </div>
+
+            <!-- CONNECTIE INFO -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">🔌</span>
+                    Connecties
+                </div>
+                <div class="arch-cards">
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag api">REST API</span>
+                            Huidig: Browser → Supabase (cloud)
+                        </div>
+                        <div class="arch-code">
+                            URL: https://usxstdmeljiclmcbjgvu.supabase.co/rest/v1/<br>
+                            Auth: anon key (Bearer token)<br>
+                            Schema: Accept-Profile: kijker
+                        </div>
+                    </div>
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag grip">GRIP</span>
+                            Huidig: add_conn → Supabase (cloud)
+                        </div>
+                        <div class="arch-code">
+                            Server: aws-1-eu-west-1.pooler.supabase.com<br>
+                            Port: 5432 · DB: postgres<br>
+                            User: kijker.usxstdmeljiclmcbjgvu<br>
+                            Schema: kijker · Driver: PostgreSQL Unicode
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TARGET ARCHITECTURE -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">🎯</span>
+                    Target Architecture — GRIP als REST Bridge
+                </div>
+                <div class="arch-card-desc" style="margin-bottom:16px;color:var(--text-secondary);font-size:13px;">
+                    Doel: Supabase (cloud) vervangen door lokale PostgreSQL op D:\ met GRIP.EXE als enig tussenstation.
+                    GRIP draait Python en wordt uitgebreid met een <strong>FastAPI/Flask HTTP server</strong> die zowel data-queries als command-executie afhandelt.
+                    Eén proces, geen cloud-afhankelijkheid.
+                </div>
+
+                <!-- Deployment diagram -->
+                <div class="arch-code" style="line-height:2.0;margin-bottom:16px;">
+<span style="color:var(--accent-hover);font-weight:700;">TARGET DEPLOYMENT</span><br>
+<br>
+┌─────────────────┐&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;┌──────────────────────────────────┐&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;┌──────────────────┐<br>
+│&nbsp;&nbsp;<span style="color:var(--accent-hover);">BROWSER</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;<span style="color:var(--warning);font-weight:700;">GRIP.EXE (Python)</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;<span style="color:var(--success);">PostgreSQL</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+│&nbsp;&nbsp;sb_navigator&nbsp;&nbsp;&nbsp;│────▶│&nbsp;&nbsp;FastAPI server&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│────▶│&nbsp;&nbsp;D:\pgdata&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+│&nbsp;&nbsp;.html&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│◀────│&nbsp;&nbsp;localhost:8765&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│◀────│&nbsp;&nbsp;localhost:5432&nbsp;&nbsp;│<br>
+│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;Schema: kijker&nbsp;&nbsp;│<br>
+│&nbsp;&nbsp;fetch()&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;┌───────────┐&nbsp;┌────────────┐&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;Schema: public&nbsp;│<br>
+│&nbsp;&nbsp;&nbsp;&nbsp;→ /api/query&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;│&nbsp;<span style="color:var(--success);">DATA API</span>&nbsp;│&nbsp;│&nbsp;<span style="color:var(--danger);">EXEC API</span>&nbsp;&nbsp;│&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└──────────────────┘<br>
+│&nbsp;&nbsp;&nbsp;&nbsp;→ /api/exec&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;│&nbsp;psycopg2&nbsp;&nbsp;│&nbsp;│&nbsp;GRIP core&nbsp;&nbsp;│&nbsp;│<br>
+│&nbsp;&nbsp;&nbsp;&nbsp;→ /api/stream&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;└───────────┘&nbsp;└────────────┘&nbsp;│<br>
+└─────────────────┘&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└──────────────────────────────────┘
+                </div>
+
+                <!-- API Endpoints -->
+                <div class="arch-cards" style="grid-template-columns:1fr;">
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag api">API</span>
+                            GRIP REST Endpoints (localhost:8765)
+                        </div>
+                        <table class="arch-table">
+                            <tr><th style="width:80px;">Method</th><th style="width:200px;">Endpoint</th><th>Functie</th><th style="width:100px;">Vervangt</th></tr>
+                            <tr>
+                                <td><code style="color:var(--success);">GET</code></td>
+                                <td><code>/api/query/{table}</code></td>
+                                <td>SELECT query met filter, order, limit, schema parameters. Vervangt Supabase REST API.</td>
+                                <td>SB.query()</td>
+                            </tr>
+                            <tr>
+                                <td><code style="color:var(--warning);">PATCH</code></td>
+                                <td><code>/api/update/{table}</code></td>
+                                <td>UPDATE met filter en data payload. Voor Edit-canvas save.</td>
+                                <td>SB.update()</td>
+                            </tr>
+                            <tr>
+                                <td><code style="color:var(--danger);">POST</code></td>
+                                <td><code>/api/exec</code></td>
+                                <td>GRIP commando uitvoeren. Body: <code>{ code: "...", type: "line|block|script" }</code></td>
+                                <td><em>nieuw</em></td>
+                            </tr>
+                            <tr>
+                                <td><code style="color:var(--accent-hover);">GET</code></td>
+                                <td><code>/api/stream/{job_id}</code></td>
+                                <td>Server-Sent Events (SSE) stream voor realtime logging van GRIP executie.</td>
+                                <td><em>nieuw</em></td>
+                            </tr>
+                            <tr>
+                                <td><code style="color:var(--success);">GET</code></td>
+                                <td><code>/api/schema/{schema}</code></td>
+                                <td>Lijst tabellen/views in een schema. Voor stamgegevens en CreateScript.</td>
+                                <td>info_schema</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <!-- Migratie impact -->
+                    <div class="arch-card" style="border-color:#4a3a1a;">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag" style="background:#3a2a1a;color:var(--warning);">MIGRATIE</span>
+                            Impact op navigator code
+                        </div>
+                        <div class="arch-card-desc" style="margin-bottom:8px;">De migratie van Supabase → GRIP REST bridge raakt slechts één plek:</div>
+                        <div class="arch-code" style="line-height:1.8;">
+<span style="color:var(--text-muted);">// HUIDIG — Supabase</span><br>
+<span style="color:var(--danger);text-decoration:line-through;">const SUPABASE_URL = 'https://...supabase.co';</span><br>
+<span style="color:var(--danger);text-decoration:line-through;">const SUPABASE_KEY = 'eyJ...';</span><br>
+<br>
+<span style="color:var(--text-muted);">// NIEUW — GRIP lokaal</span><br>
+<span style="color:var(--success);">const API_URL = 'http://localhost:8765';</span><br>
+<span style="color:var(--success);">// Geen API key nodig (localhost)</span><br>
+<br>
+<span style="color:var(--text-muted);">// SB.query() wordt:</span><br>
+<span style="color:var(--accent-hover);">fetch(`${API_URL}/api/query/${table}?select=...&schema=...`)</span><br>
+<br>
+<span style="color:var(--text-muted);">// GRIP-CALL execute wordt:</span><br>
+<span style="color:var(--accent-hover);">fetch(`${API_URL}/api/exec`, { method:'POST', body: JSON.stringify({code}) })</span><br>
+<span style="color:var(--text-muted);">// + SSE stream voor logging:</span><br>
+<span style="color:var(--accent-hover);">new EventSource(`${API_URL}/api/stream/${job_id}`)</span>
+                        </div>
+                    </div>
+
+                    <!-- GRIP server stub -->
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag grip">PYTHON</span>
+                            GRIP server skeleton (FastAPI)
+                        </div>
+                        <div class="arch-code" style="line-height:1.7;font-size:11px;">
+<span style="color:var(--accent-hover);">from</span> fastapi <span style="color:var(--accent-hover);">import</span> FastAPI, Query<br>
+<span style="color:var(--accent-hover);">from</span> fastapi.responses <span style="color:var(--accent-hover);">import</span> StreamingResponse<br>
+<span style="color:var(--accent-hover);">from</span> fastapi.middleware.cors <span style="color:var(--accent-hover);">import</span> CORSMiddleware<br>
+<span style="color:var(--accent-hover);">import</span> psycopg2<br>
+<br>
+app = FastAPI()<br>
+app.add_middleware(CORSMiddleware, allow_origins=[<span style="color:var(--danger);">"*"</span>])<br>
+conn = psycopg2.connect(<span style="color:var(--danger);">"host=localhost dbname=grip port=5432"</span>)<br>
+<br>
+<span style="color:var(--warning);">@app.get</span>(<span style="color:var(--danger);">"/api/query/{table}"</span>)<br>
+<span style="color:var(--accent-hover);">def</span> query(table, schema=<span style="color:var(--danger);">"kijker"</span>, select=<span style="color:var(--danger);">"*"</span>, limit=<span style="color:var(--c084fc);">None</span>):<br>
+&nbsp;&nbsp;&nbsp;&nbsp;cur = conn.cursor()<br>
+&nbsp;&nbsp;&nbsp;&nbsp;sql = <span style="color:var(--danger);">f"SELECT {select} FROM {schema}.{table}"</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--success);">if</span> limit: sql += <span style="color:var(--danger);">f" LIMIT {limit}"</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;cur.execute(sql)<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--accent-hover);">return</span> [dict(zip([d[0] <span style="color:var(--accent-hover);">for</span> d <span style="color:var(--accent-hover);">in</span> cur.description], r)) <span style="color:var(--accent-hover);">for</span> r <span style="color:var(--accent-hover);">in</span> cur.fetchall()]<br>
+<br>
+<span style="color:var(--warning);">@app.post</span>(<span style="color:var(--danger);">"/api/exec"</span>)<br>
+<span style="color:var(--accent-hover);">def</span> exec_grip(body: dict):<br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-muted);"># Hier GRIP core aanroepen</span><br>
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--accent-hover);">return</span> {<span style="color:var(--danger);">"status"</span>: <span style="color:var(--danger);">"ok"</span>, <span style="color:var(--danger);">"job_id"</span>: <span style="color:var(--danger);">"..."</span>}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TECHNISCHE DETAILS -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">🔧</span>
+                    Technische Details
+                </div>
+
+                <div class="arch-cards" style="grid-template-columns:1fr;gap:12px;">
+                    <!-- REST API Flow -->
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag api">REST</span>
+                            API Request Flow
+                        </div>
+                        <div class="arch-code" style="line-height:2;">
+<span style="color:var(--accent-hover);">SB.query(table, options)</span><br>
+&nbsp;&nbsp;│<br>
+&nbsp;&nbsp;├─ URL: <span style="color:var(--text-secondary);">SUPABASE_URL/rest/v1/{table}?select=...&amp;filter=...</span><br>
+&nbsp;&nbsp;├─ Headers:<br>
+&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├─ apikey: <span style="color:var(--text-muted);">anon key</span><br>
+&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;├─ Authorization: <span style="color:var(--text-muted);">Bearer {anon key}</span><br>
+&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└─ Accept-Profile: <span style="color:var(--warning);">{schema}</span> (kijker, public, information_schema)<br>
+&nbsp;&nbsp;├─ Method: <span style="color:var(--success);">GET</span> (query) · <span style="color:var(--warning);">PATCH</span> (update)<br>
+&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;└─ PATCH gebruikt Content-Profile i.p.v. Accept-Profile<br>
+&nbsp;&nbsp;└─ Response: JSON array → state / canvas render
+                        </div>
+                    </div>
+
+                    <!-- Error Handling -->
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag" style="background:#3a1a1a;color:var(--danger);">ERR</span>
+                            Error Handling
+                        </div>
+                        <div class="arch-card-desc" style="margin-bottom:8px;">Elke canvas-module volgt hetzelfde error-patroon:</div>
+                        <div class="arch-code" style="line-height:1.8;">
+<span style="color:var(--accent-hover);">try {</span><br>
+&nbsp;&nbsp;<span style="color:var(--text-secondary);">1. Schema-aware query via SB.query()</span><br>
+&nbsp;&nbsp;<span style="color:var(--text-secondary);">2. Fallback: probeer alternatief schema</span><br>
+&nbsp;&nbsp;<span style="color:var(--text-secondary);">3. Leeg resultaat → toon ∅ + query</span><br>
+&nbsp;&nbsp;<span style="color:var(--text-secondary);">4. Data gevonden → render in canvas</span><br>
+<span style="color:var(--danger);">} catch (err) {</span><br>
+&nbsp;&nbsp;<span style="color:var(--text-secondary);">→ Toon ⚠ + err.message + uitgevoerde query</span><br>
+<span style="color:var(--danger);">}</span>
+                        </div>
+                    </div>
+
+                    <!-- Schema routing -->
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag">SCHEMA</span>
+                            Schema Routing per Module
+                        </div>
+                        <table class="arch-table">
+                            <tr><th>Module / Actie</th><th>Primair schema</th><th>Fallback</th></tr>
+                            <tr><td>Navigator data (sb_objects, sb_menus)</td><td><code>kijker</code></td><td>—</td></tr>
+                            <tr><td>GripCode::Edit (sb_grip)</td><td><code>kijker</code></td><td>—</td></tr>
+                            <tr><td>Table::ShowData / Export</td><td><code>object_name2</code></td><td>tegenovergesteld schema</td></tr>
+                            <tr><td>Table::CreateScript</td><td><code>information_schema</code></td><td>sample-based type inference</td></tr>
+                            <tr><td>FirebirdQry::Import</td><td><code>public</code></td><td>—</td></tr>
+                            <tr><td>Stamgegevens</td><td><code>information_schema</code></td><td>sb_objects filter</td></tr>
+                        </table>
+                    </div>
+
+                    <!-- State Management -->
+                    <div class="arch-card">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag">STATE</span>
+                            Client State
+                        </div>
+                        <div class="arch-code" style="line-height:1.8;">
+state = {<br>
+&nbsp;&nbsp;objects: [],&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-muted);">// sb_objects data (geladen bij init)</span><br>
+&nbsp;&nbsp;menus: [],&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-muted);">// sb_menus data (geladen bij init)</span><br>
+&nbsp;&nbsp;activeObject: null,&nbsp;<span style="color:var(--text-muted);">// huidig geselecteerd navigator-object</span><br>
+&nbsp;&nbsp;activeMenu: null,&nbsp;&nbsp;&nbsp;<span style="color:var(--text-muted);">// huidig actief menu-item</span><br>
+&nbsp;&nbsp;currentMenuIndex: 0,<span style="color:var(--text-muted);">// behouden menu-positie bij objectwissel</span><br>
+&nbsp;&nbsp;editDisplaynaam: '' <span style="color:var(--text-muted);">// displaynaam voor Edit-canvas save</span><br>
+}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ROADMAP -->
+            <div class="arch-section">
+                <div class="arch-section-title">
+                    <span class="arch-section-icon">🗺️</span>
+                    Roadmap
+                </div>
+                <div class="arch-cards" style="grid-template-columns:1fr;">
+
+                    <!-- Iteratie 1: GRIP.EXE als REST Bridge -->
+                    <div class="arch-card" style="border-left:3px solid var(--danger);">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag" style="background:#3a1a1a;color:var(--danger);">PRIO 1</span>
+                            GRIP.EXE als REST Bridge + Command Executor
+                        </div>
+                        <div class="arch-card-desc">
+                            <strong>Besluit:</strong> GRIP.EXE (Python) wordt uitgebreid met een FastAPI server op <code>localhost:8765</code>.
+                            Eén proces levert zowel de data-API (vervangt Supabase REST) als de GRIP command executie.
+                            PostgreSQL draait lokaal op D:\. Geen cloud-afhankelijkheid.
+                        </div>
+                        <table class="arch-table">
+                            <tr><th style="width:40px;">#</th><th>Taak</th><th>Detail</th><th style="width:80px;">Status</th></tr>
+                            <tr><td>1a</td><td>FastAPI server in GRIP</td><td>HTTP server starten in GRIP.EXE met <code>uvicorn</code>. CORS voor localhost. Port 8765.</td><td><code>TODO</code></td></tr>
+                            <tr><td>1b</td><td><code>/api/query/{table}</code></td><td>SELECT via psycopg2 → JSON. Parameters: schema, select, filter, order, limit. Vervangt SB.query().</td><td><code>TODO</code></td></tr>
+                            <tr><td>1c</td><td><code>/api/update/{table}</code></td><td>PATCH via psycopg2. Parameters: filter, data, schema. Vervangt SB.update().</td><td><code>TODO</code></td></tr>
+                            <tr><td>1d</td><td><code>/api/exec</code></td><td>POST: ontvangt GRIP code, voert uit via GRIP core, retourneert job_id.</td><td><code>TODO</code></td></tr>
+                            <tr><td>1e</td><td><code>/api/stream/{job_id}</code></td><td>SSE (Server-Sent Events) stream voor realtime logging naar GRIP-CALL log-paneel.</td><td><code>TODO</code></td></tr>
+                            <tr><td>1f</td><td><code>/api/schema/{schema}</code></td><td>Lijst tabellen/views. Vervangt information_schema queries.</td><td><code>TODO</code></td></tr>
+                            <tr><td>1g</td><td>Navigator SB → API</td><td>SB object refactoren: URL naar localhost:8765, API key verwijderen, endpoints aanpassen.</td><td><code>TODO</code></td></tr>
+                            <tr><td>1h</td><td>GRIP-CALL koppeling</td><td>Execute-knop → POST /api/exec, log-paneel → EventSource /api/stream.</td><td><code>TODO</code></td></tr>
+                            <tr><td>1i</td><td>GripCode::Run</td><td>Hele script uitvoeren via /api/exec met type="script".</td><td><code>TODO</code></td></tr>
+                        </table>
+                    </div>
+
+                    <!-- Iteratie 2: Nieuwe commando's -->
+                    <div class="arch-card" style="border-left:3px solid var(--warning);">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag" style="background:#3a2a1a;color:var(--warning);">PRIO 2</span>
+                            Nieuwe commando's
+                        </div>
+                        <table class="arch-table">
+                            <tr><th style="width:40px;">#</th><th>Commando</th><th>Omschrijving</th><th style="width:100px;">Status</th></tr>
+                            <tr><td>2a</td><td><code>GripCode::Run</code></td><td>Volledige GRIP-script uitvoeren via M5 (afhankelijk van 1a-1e)</td><td><code>TODO</code></td></tr>
+                            <tr><td>2b</td><td><code>*::Commentaar</code></td><td>Notities/commentaar tonen bij elk objecttype</td><td><code>TODO</code></td></tr>
+                            <tr><td>2c</td><td><code>FirebirdQry::ShowData</code></td><td>Query uitvoeren via Firebird connectie, data tonen in datagrid</td><td><code>TODO</code></td></tr>
+                            <tr><td>2d</td><td><code>FirebirdQry::Export</code></td><td>Firebird query-resultaat exporteren als CSV</td><td><code>TODO</code></td></tr>
+                        </table>
+                    </div>
+
+                    <!-- Iteratie 3: Edit-canvas verbetering -->
+                    <div class="arch-card" style="border-left:3px solid var(--accent);">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag">PRIO 3</span>
+                            Edit-canvas verbetering
+                        </div>
+                        <table class="arch-table">
+                            <tr><th style="width:40px;">#</th><th>Feature</th><th>Omschrijving</th><th style="width:100px;">Status</th></tr>
+                            <tr><td>3a</td><td>Regelnummers</td><td>Regelnummering links van code-paneel</td><td><code>TODO</code></td></tr>
+                            <tr><td>3b</td><td>Undo / Redo</td><td>Ctrl+Z / Ctrl+Y met history stack</td><td><code>TODO</code></td></tr>
+                            <tr><td>3c</td><td>Dirty state</td><td>Indicator als code gewijzigd is t.o.v. opgeslagen versie</td><td><code>TODO</code></td></tr>
+                            <tr><td>3d</td><td>Tab-ondersteuning</td><td>Tab-toets voor inspringing i.p.v. focus-wissel</td><td><code>TODO</code></td></tr>
+                            <tr><td>3e</td><td>Autocomplete</td><td>Suggesties voor GRIP-keywords en tabelnamen</td><td><code>TODO</code></td></tr>
+                        </table>
+                    </div>
+
+                    <!-- Iteratie 4: Stamgegevens CRUD -->
+                    <div class="arch-card" style="border-left:3px solid var(--success);">
+                        <div class="arch-card-header">
+                            <span class="arch-card-tag" style="background:#1a2a1a;color:var(--success);">PRIO 4</span>
+                            Stamgegevens CRUD
+                        </div>
+                        <table class="arch-table">
+                            <tr><th style="width:40px;">#</th><th>Feature</th><th>Omschrijving</th><th style="width:100px;">Status</th></tr>
+                            <tr><td>4a</td><td>Inline editing</td><td>Dubbel-klik op cel → direct bewerken in datagrid</td><td><code>TODO</code></td></tr>
+                            <tr><td>4b</td><td>Rij toevoegen</td><td>Nieuw record toevoegen aan kijker-tabellen</td><td><code>TODO</code></td></tr>
+                            <tr><td>4c</td><td>Rij verwijderen</td><td>Record verwijderen met bevestiging</td><td><code>TODO</code></td></tr>
+                            <tr><td>4d</td><td>Validatie</td><td>Veldvalidatie bij invoer (type, verplicht, etc.)</td><td><code>TODO</code></td></tr>
+                        </table>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+    // ═══════════════════════════════════════════════════════════════
+    // CONFIGURATIE — Supabase connectie
+    // ═══════════════════════════════════════════════════════════════
+    const SUPABASE_URL = 'https://usxstdmeljiclmcbjgvu.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzeHN0ZG1lbGppY2xtY2JqZ3Z1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk0Mjg0NTYsImV4cCI6MjA4NTAwNDQ1Nn0.OhtOSrpsxqJaWNvhYTGFnZNVQ1JsmOMObbDdYEWR07A';
+
+    const SB = {
+        async query(table, { select = '*', filter = null, order = null, limit = null, schema = 'kijker' } = {}) {
+            let url = `${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(select)}`;
+            if (filter) url += `&${filter}`;
+            if (order) url += `&order=${order}`;
+            if (limit) url += `&limit=${limit}`;
+
+            const headers = {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'Content-Type': 'application/json'
+            };
+            // Stel schema in als het niet public is
+            if (schema && schema !== 'public') {
+                headers['Accept-Profile'] = schema;
+            }
+
+            const res = await fetch(url, { headers });
+            if (!res.ok) {
+                const body = await res.text();
+                throw new Error(`Supabase ${res.status}: ${body}`);
+            }
+            return res.json();
+        },
+
+        async rpc(fn, params = {}) {
+            const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+                method: 'POST',
+                headers: {
+                    'apikey': SUPABASE_KEY,
+                    'Authorization': `Bearer ${SUPABASE_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(params)
+            });
+            if (!res.ok) throw new Error(`RPC error: ${res.status}`);
+            return res.json();
+        },
+
+        async update(table, { filter, data, schema = 'kijker' } = {}) {
+            let url = `${SUPABASE_URL}/rest/v1/${table}?${filter}`;
+            const headers = {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=minimal'
+            };
+            if (schema && schema !== 'public') {
+                headers['Content-Profile'] = schema;
+            }
+            const res = await fetch(url, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify(data)
+            });
+            if (!res.ok) {
+                const body = await res.text();
+                throw new Error(`Update ${res.status}: ${body}`);
+            }
+            return true;
+        }
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    // STATE
+    // ═══════════════════════════════════════════════════════════════
+    let state = {
+        objects: [],         // sb_objects data
+        menus: [],           // sb_menus data
+        activeObject: null,  // huidig geselecteerd object
+        activeMenu: null,    // huidig actief menu-item
+        currentMenuIndex: 0  // index van geselecteerd menu-item (blijft behouden)
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    // DEMO DATA — vervang dit door SB.query() calls
+    // ═══════════════════════════════════════════════════════════════
+    const DEMO_OBJECTS = [
+        { id: 1, name: 'Organizations',  obj_type: 'table',  icon: '🏢', group: 'CRM',       table_name: 'organizations', canvas_type: 'datagrid' },
+        { id: 2, name: 'Commands',       obj_type: 'table',  icon: '⚡', group: 'System',     table_name: 'commands',      canvas_type: 'datagrid' },
+        { id: 3, name: 'Apps Overview',  obj_type: 'view',   icon: '📊', group: 'Dashboard',  table_name: 'apps_overview', canvas_type: 'datagrid' },
+        { id: 4, name: 'Audit Log',      obj_type: 'table',  icon: '📋', group: 'System',     table_name: 'audit_log',     canvas_type: 'datagrid' },
+        { id: 5, name: 'Nieuw Record',   obj_type: 'form',   icon: '✏️', group: 'CRM',       table_name: 'organizations', canvas_type: 'form' },
+        { id: 6, name: 'LLM Usage',      obj_type: 'table',  icon: '🤖', group: 'Dashboard',  table_name: 'llm_usage_summary', canvas_type: 'datagrid' },
+    ];
+
+    const DEMO_MENUS = {
+        1: [ // Organizations
+            { label: 'Alles tonen',    icon: '📋', command: 'grid:all' },
+            { label: 'Zoek',           icon: '🔍', command: 'grid:search' },
+            { label: 'Exporteer CSV',  icon: '📥', command: 'export:csv' },
+            { sep: true },
+            { label: 'Nieuw record',   icon: '➕', command: 'form:new' },
+            { label: 'Verwijderen',    icon: '🗑️', command: 'action:delete', style: 'danger' },
+        ],
+        2: [ // Commands
+            { label: 'Alles tonen',    icon: '📋', command: 'grid:all' },
+            { label: 'Zoek',           icon: '🔍', command: 'grid:search' },
+            { label: 'Uitvoeren',      icon: '▶️', command: 'action:execute' },
+        ],
+        3: [ // Apps Overview
+            { label: 'Dashboard',      icon: '📊', command: 'grid:all' },
+            { label: 'Vernieuwen',     icon: '🔄', command: 'action:refresh' },
+        ],
+        // Default menu voor objecten zonder specifiek menu
+        default: [
+            { label: 'Alles tonen',    icon: '📋', command: 'grid:all' },
+            { label: 'Zoek',           icon: '🔍', command: 'grid:search' },
+            { label: 'Exporteer CSV',  icon: '📥', command: 'export:csv' },
+        ]
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    // INIT — Laad objecten en bouw navigator
+    // ═══════════════════════════════════════════════════════════════
+    async function init() {
+        try {
+            // Laad objecten uit Supabase
+            const objects = await SB.query('sb_objects', {
+                select: '*'
+            });
+            state.objects = objects;
+
+            // Laad alle menus uit Supabase
+            const menus = await SB.query('sb_menus', {
+                select: '*'
+            });
+            state.menus = menus;
+
+            renderNavigator(state.objects);
+            updateStatus('connected', `Verbonden · ${objects.length} objecten`);
+        } catch (err) {
+            console.error('Init error:', err);
+            updateStatus('error', 'Fout: ' + err.message);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // NAVIGATOR — Render en interactie
+    // ═══════════════════════════════════════════════════════════════
+    function renderNavigator(objects) {
+        const tree = document.getElementById('navTree');
+        const groups = {};
+
+        objects.forEach(obj => {
+            const group = obj.type || 'Overig';
+            if (!groups[group]) groups[group] = [];
+            groups[group].push(obj);
+        });
+
+        tree.innerHTML = Object.entries(groups).map(([group, items]) => `
+            <div class="nav-group">
+                <div class="nav-group-toggle" onclick="toggleGroup(this)">
+                    <span class="nav-toggle-icon">▶</span>
+                    <span class="nav-group-label">${group}</span>
+                    <span class="nav-group-count">${items.length}</span>
+                </div>
+                <div class="nav-group-children" style="display:none;">
+                    ${items.map((obj, idx) => `
+                        <div class="nav-item" data-id="${state.objects.indexOf(obj)}" onclick="selectObject(this.dataset.id)">
+                            <span class="nav-item-icon">📄</span>
+                            <span class="nav-item-label">${obj.display_name}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function toggleGroup(el) {
+        const children = el.nextElementSibling;
+        const icon = el.querySelector('.nav-toggle-icon');
+        const isOpen = children.style.display !== 'none';
+        children.style.display = isOpen ? 'none' : 'block';
+        icon.textContent = isOpen ? '▶' : '▼';
+        el.classList.toggle('open', !isOpen);
+    }
+
+    function filterNav(query) {
+        const q = query.toLowerCase();
+        const filtered = state.objects.filter(o =>
+            (o.display_name || '').toLowerCase().includes(q) || 
+            (o.type || '').toLowerCase().includes(q) ||
+            (o.object_name1 || '').toLowerCase().includes(q)
+        );
+        renderNavigator(filtered);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // OBJECT SELECTIE — Update header, menu en canvas
+    // ═══════════════════════════════════════════════════════════════
+    function selectObject(dataId) {
+        const idx = parseInt(dataId);
+        const obj = state.objects[idx];
+        if (!obj) return;
+
+        state.activeObject = obj;
+
+        // Highlight in nav
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        document.querySelector(`.nav-item[data-id="${dataId}"]`)?.classList.add('active');
+
+        // Update header
+        document.getElementById('headerTitle').textContent = obj.display_name;
+        document.getElementById('headerType').textContent = obj.type;
+
+        // Render menu op basis van obj.type → sb_menus.type
+        renderMenu(obj.type);
+
+        // Update statusbar - object info
+        document.getElementById('sbType').textContent = obj.type;
+        document.getElementById('sbDisplayName').textContent = obj.display_name;
+        document.getElementById('sbObjectName').textContent = `${obj.object_name2}.${obj.object_name1}`;
+
+        // Render canvas
+        renderCanvas(obj);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MENU — Dynamisch per object
+    // ═══════════════════════════════════════════════════════════════
+    function renderMenu(typeName) {
+        const menuBar = document.getElementById('menu-bar');
+        const items = state.menus.filter(m => m.type === typeName);
+
+        if (items.length === 0) {
+            menuBar.innerHTML = `<div class="menu-item" style="color:var(--text-muted);cursor:default;">Geen menu voor ${typeName}</div>`;
+            updateStatusbarMenu(null);
+            return;
+        }
+
+        // Beperk index tot beschikbare items
+        const idx = Math.min(state.currentMenuIndex, items.length - 1);
+
+        menuBar.innerHTML = items.map((item, i) => `
+            <div class="menu-item${i === idx ? ' active' : ''}" data-menu-idx="${i}" onclick="selectMenuItem(this, ${i}, '${item.commando}')">
+                <span class="menu-icon">▸</span>
+                ${item.displaynaam}
+            </div>
+        `).join('');
+
+        // Update statusbar met geselecteerd menu-item
+        updateStatusbarMenu(items[idx]);
+
+        // Auto-dispatch het geselecteerde commando
+        execMenuCommand(items[idx].commando);
+    }
+
+    function selectMenuItem(el, idx, commando) {
+        state.currentMenuIndex = idx;
+
+        // Highlight active menu item
+        document.querySelectorAll('#menu-bar .menu-item').forEach(m => m.classList.remove('active'));
+        el.classList.add('active');
+
+        // Update statusbar
+        const items = state.menus.filter(m => m.type === state.activeObject?.type);
+        updateStatusbarMenu(items[idx]);
+
+        // Execute command
+        execMenuCommand(commando);
+    }
+
+    function updateStatusbarMenu(menuItem) {
+        const obj = state.activeObject;
+        if (menuItem) {
+            document.getElementById('sbMenuDisplay').textContent = menuItem.displaynaam;
+            document.getElementById('sbMenuCmd').textContent = menuItem.commando;
+            // ACTIE-URL: type::commando
+            const actionUrl = obj ? `${obj.type}::${menuItem.commando}` : menuItem.commando;
+            document.getElementById('sbActionUrl').textContent = actionUrl;
+        } else {
+            document.getElementById('sbMenuDisplay').textContent = '—';
+            document.getElementById('sbMenuCmd').textContent = '—';
+            document.getElementById('sbActionUrl').textContent = '—';
+        }
+    }
+
+    function execMenuCommand(command) {
+        const obj = state.activeObject;
+        if (!obj) return;
+
+        console.log(`Dispatch: type=${obj.type} commando=${command}`, obj);
+
+        // ═══ COMMAND DISPATCH: type + commando ═══
+        const dispatch = `${obj.type}::${command}`;
+
+        switch(dispatch) {
+            case 'Table::ShowData':
+            case 'View::ShowData':
+                renderDatagridCanvas(obj);
+                break;
+
+            case 'Table::Export':
+            case 'View::Export':
+                renderExportCanvas(obj);
+                break;
+
+            case 'Table::CreateScript':
+            case 'View::CreateScript':
+                renderCreateScriptCanvas(obj);
+                break;
+
+            case 'GripCode::Edit':
+                renderEditCanvas(obj);
+                break;
+
+            case 'FirebirdQry::Import':
+                renderSqlViewCanvas(obj);
+                break;
+
+            // Toekomstige commando's:
+            // case 'Table::Export':
+            // case 'Table::EditRecord':
+            // case 'FirebirdQry::ShowData':
+            // case '*::Commentaar':
+
+            default:
+                openNotImplementedPopup(obj, command, dispatch);
+                break;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // POPUP: Niet-geïmplementeerd commando
+    // ═══════════════════════════════════════════════════════════════
+    function openNotImplementedPopup(obj, command, dispatch) {
+        const existing = document.getElementById('notImplOverlay');
+        if (existing) existing.remove();
+
+        // Suggesties per type
+        const suggestions = {
+            'GripCode': {
+                hint: 'GripCode objecten bevatten GRIP-scripts in <code>kijker.sb_grip</code>.',
+                steps: [
+                    'Voeg een nieuw <code>case</code> toe in de dispatch switch: <code>case \'GripCode::' + command + '\':</code>',
+                    'Maak een canvas-renderer functie, bijv. <code>renderGripRunCanvas(obj)</code>',
+                    'Haal de code op: <code>SB.query(\'sb_grip\', { filter: `displaynaam=eq.${obj.object_name1}`, schema: \'kijker\' })</code>',
+                    'Voer de code uit via GRIP.EXE koppeling (M5 GRIP-CALL module)',
+                    'Toon logging/resultaat in het canvas of GRIP-CALL popup',
+                ],
+                suggestie: 'Overweeg om <code>' + dispatch + '</code> te koppelen aan de GRIP-CALL module (M5) zodat de volledige code automatisch wordt doorgestuurd voor executie.'
+            },
+            'FirebirdQry': {
+                hint: 'FirebirdQry objecten verwijzen naar Firebird queries in <code>public.etl_view_definitions</code>.',
+                steps: [
+                    'Voeg een nieuw <code>case</code> toe: <code>case \'FirebirdQry::' + command + '\':</code>',
+                    'Haal de SQL op: <code>SB.query(\'etl_view_definitions\', { filter: `name=eq.${obj.object_name1}`, schema: \'public\' })</code>',
+                    'Implementeer de actie voor commando <code>' + command + '</code>',
+                ],
+                suggestie: 'Voor <code>Export</code> kun je de SQL ophalen en het resultaat als CSV aanbieden. Voor <code>ShowData</code> kun je de query tonen met een preview-optie.'
+            },
+            'Table': {
+                hint: 'Table objecten verwijzen naar tabellen in schema <code>' + (obj.object_name2 || 'public') + '</code>.',
+                steps: [
+                    'Voeg een nieuw <code>case</code> toe: <code>case \'Table::' + command + '\':</code>',
+                    'Maak een canvas-renderer, bijv. met <code>SB.query(\'' + obj.object_name1 + '\', { schema: \'' + (obj.object_name2 || 'public') + '\' })</code>',
+                    'Kies een canvas-module: Datagrid (M1), SQL (M2), Export (M3), of een nieuwe module',
+                ],
+                suggestie: 'Hergebruik een bestaande module of maak een nieuwe aan. Vergeet niet de Commando-mapper in de Architectuur tab bij te werken.'
+            }
+        };
+
+        const info = suggestions[obj.type] || {
+            hint: 'Dit objecttype heeft nog geen specifieke configuratie.',
+            steps: [
+                'Voeg een nieuw <code>case</code> toe in <code>execMenuCommand()</code>: <code>case \'' + dispatch + '\':</code>',
+                'Maak een canvas-renderer functie aan',
+                'Haal data op via <code>SB.query()</code> met de juiste parameters',
+                'Werk de Commando-mapper bij in de Architectuur tab',
+            ],
+            suggestie: 'Bekijk de bestaande modules (M1-M5) in de Architectuur tab voor inspiratie en hergebruik.'
+        };
+
+        const overlay = document.createElement('div');
+        overlay.id = 'notImplOverlay';
+        overlay.className = 'grip-call-overlay';
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+        overlay.innerHTML = `
+            <div class="grip-call-window" style="width:680px;">
+                <div class="grip-call-header" style="background:#2a1a0a;border-bottom-color:#4a3a1a;">
+                    <div class="grip-call-title" style="color:var(--warning);">
+                        <span style="font-size:16px;">⚠</span>
+                        Niet geïmplementeerd
+                    </div>
+                    <button class="grip-call-close" onclick="document.getElementById('notImplOverlay').remove()">✕</button>
+                </div>
+                <div class="grip-call-body" style="padding:20px;">
+                    <div style="margin-bottom:16px;">
+                        <div style="font-family:JetBrains Mono,monospace;font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:8px;">
+                            Commando <span style="color:var(--accent-hover);background:var(--accent-dim);padding:2px 8px;border-radius:4px;">${command}</span> 
+                            voor type <span style="color:var(--warning);background:#3a2a1a;padding:2px 8px;border-radius:4px;">${obj.type}</span>
+                        </div>
+                        <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">
+                            Actie-URL: <code style="color:var(--warning);">${dispatch}</code>
+                        </div>
+                        <div style="font-size:12px;color:var(--text-secondary);">${info.hint}</div>
+                    </div>
+
+                    <div style="margin-bottom:16px;">
+                        <div style="font-family:JetBrains Mono,monospace;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+                            Stappen om te implementeren
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:6px;">
+                            ${info.steps.map((step, i) => `
+                                <div style="display:flex;gap:10px;align-items:flex-start;">
+                                    <span style="font-family:JetBrains Mono,monospace;font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-dim);width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${i+1}</span>
+                                    <span style="font-size:12px;color:var(--text-secondary);line-height:1.5;">${step}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:8px;padding:12px 16px;">
+                        <div style="font-family:JetBrains Mono,monospace;font-size:10px;font-weight:600;color:var(--success);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
+                            💡 Suggestie
+                        </div>
+                        <div style="font-size:12px;color:var(--text-secondary);line-height:1.5;">
+                            ${info.suggestie}
+                        </div>
+                    </div>
+
+                    <div style="margin-top:12px;padding:10px 16px;background:var(--accent-dim);border:1px solid var(--accent);border-radius:8px;display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="document.getElementById('notImplOverlay').remove();switchTab('architecture');">
+                        <span style="font-size:14px;">📖</span>
+                        <div>
+                            <div style="font-size:12px;font-weight:600;color:var(--accent-hover);">Bekijk de Commando-mapper in de Architectuur tab</div>
+                            <div style="font-size:11px;color:var(--text-muted);">Overzicht van alle type + commando combinaties en hun modules</div>
+                        </div>
+                        <span style="margin-left:auto;color:var(--accent-hover);">→</span>
+                    </div>
+                </div>
+                <div class="grip-call-footer" style="border-top-color:#4a3a1a;">
+                    <span>Object: ${obj.display_name} · ${obj.object_name2}.${obj.object_name1}</span>
+                    <span>ESC om te sluiten</span>
+                </div>
+            </div>`;
+
+        document.body.appendChild(overlay);
+
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                document.getElementById('notImplOverlay')?.remove();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CANVAS — Render op basis van object type
+    // ═══════════════════════════════════════════════════════════════
+    function renderCanvas(obj) {
+        // Wordt aangeroepen bij object selectie — dispatch gaat via renderMenu → auto-select
+        // Canvas wordt gevuld door execMenuCommand via selectMenuItem
+    }
+
+    async function renderDatagridCanvas(obj) {
+        const canvas = document.getElementById('canvas');
+        const tableName = obj.object_name1;
+        const schema = obj.object_name2 || 'kijker';
+
+        canvas.innerHTML = `
+            <div class="canvas-datagrid">
+                <div style="padding:8px 12px;font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-muted);border-bottom:1px solid var(--border);">
+                    SELECT * FROM ${schema}.${tableName} LIMIT 50
+                </div>
+                <div id="dataGrid" class="ag-theme-alpine" style="height:calc(100% - 32px);width:100%;"></div>
+            </div>`;
+
+        try {
+            let data;
+            try {
+                data = await SB.query(tableName, { limit: 50, schema: schema });
+            } catch(e) {
+                // Fallback naar ander schema
+                data = await SB.query(tableName, { limit: 50, schema: schema === 'kijker' ? 'public' : 'kijker' });
+            }
+
+            if (data.length === 0) {
+                canvas.innerHTML = `<div class="canvas-welcome">
+                    <div class="canvas-welcome-icon">∅</div>
+                    <div class="canvas-welcome-text" style="text-align:center;">
+                        Geen data gevonden<br>
+                        <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">SELECT * FROM ${schema}.${tableName} LIMIT 50</code>
+                    </div>
+                </div>`;
+                return;
+            }
+
+            const columns = Object.keys(data[0]).map(key => ({
+                field: key,
+                headerName: key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+                sortable: true,
+                filter: true,
+                resizable: true,
+            }));
+
+            const gridOptions = {
+                columnDefs: columns,
+                rowData: data,
+                defaultColDef: {
+                    flex: 1,
+                    minWidth: 100,
+                },
+                animateRows: true,
+                rowSelection: 'single',
+                onRowClicked: (e) => {
+                    console.log('Row clicked:', e.data);
+                }
+            };
+
+            const gridDiv = document.getElementById('dataGrid');
+            if (typeof agGrid !== 'undefined') {
+                new agGrid.Grid(gridDiv, gridOptions);
+            } else {
+                // Fallback: HTML tabel
+                gridDiv.innerHTML = renderHtmlTable(columns, data);
+            }
+
+        } catch (err) {
+            canvas.innerHTML = `<div class="canvas-welcome">
+                <div class="canvas-welcome-icon" style="color:var(--danger)">⚠</div>
+                <div class="canvas-welcome-text" style="text-align:center;">
+                    ${err.message}<br>
+                    <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">SELECT * FROM ${schema}.${tableName} LIMIT 50</code>
+                </div>
+            </div>`;
+        }
+    }
+
+    function renderFormCanvas(obj, record) {
+        const canvas = document.getElementById('canvas');
+        const isNew = !record;
+
+        canvas.innerHTML = `
+            <div class="canvas-form">
+                <div class="form-title">${isNew ? 'Nieuw' : 'Bewerk'}: ${obj.name}</div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">ID</label>
+                        <input class="form-input readonly" value="${record?.id || '(automatisch)'}" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Naam</label>
+                        <input class="form-input" placeholder="Naam invoeren..." value="${record?.name || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Code</label>
+                        <input class="form-input" placeholder="Code..." value="${record?.code || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <input class="form-input" placeholder="Status..." value="${record?.status || ''}">
+                    </div>
+                    <div class="form-group full-width">
+                        <label class="form-label">Omschrijving</label>
+                        <input class="form-input" placeholder="Omschrijving..." value="${record?.description || ''}">
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-primary" onclick="alert('Opslaan...')">Opslaan</button>
+                        <button class="btn btn-secondary" onclick="renderCanvas(state.activeObject)">Annuleren</button>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // DEMO DATA GENERATOR — verwijder bij live gebruik
+    // ═══════════════════════════════════════════════════════════════
+    function generateDemoData(tableName) {
+        const templates = {
+            organizations: () => Array.from({length: 25}, (_, i) => ({
+                id: `org_${i+1}`,
+                name: ['Bavak', 'Kromwijk', 'VH Koudetechniek', 'Notifica', 'Grip op Data'][i % 5],
+                code: `${1269 + i}`,
+                city: ['Utrecht', 'Amsterdam', 'Rotterdam', 'Den Haag', 'Eindhoven'][i % 5],
+                status: ['actief', 'inactief'][i % 2],
+                created: `2024-${String(i % 12 + 1).padStart(2, '0')}-15`
+            })),
+            commands: () => Array.from({length: 15}, (_, i) => ({
+                id: i + 1,
+                command: ['ADD_CONN', 'ACTUALIZE', 'EXEC_SQL', 'COPYTAB', 'EXPORT_CSV'][i % 5],
+                category: ['Database', 'ETL', 'Database', 'ETL', 'Export'][i % 5],
+                usage_count: Math.floor(Math.random() * 200),
+                last_used: '2025-02-10'
+            })),
+        };
+
+        const gen = templates[tableName] || templates.organizations;
+        return gen();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MODULE: Edit-canvas — Dubbele editor voor GripCode
+    // Bron: kijker.sb_grip (kolommen: code, toelichting)
+    // Features: zoeken, vervangen, dubbelklik → GRIP-CALL window
+    // ═══════════════════════════════════════════════════════════════
+    async function renderEditCanvas(obj) {
+        const canvas = document.getElementById('canvas');
+        const viewName = obj.object_name1;
+
+        canvas.innerHTML = `
+            <div class="canvas-welcome">
+                <div class="spinner"></div>
+                <div class="canvas-welcome-text">Code ophalen voor ${viewName}...</div>
+            </div>`;
+
+        try {
+            const rows = await SB.query('sb_grip', {
+                filter: `displaynaam=eq.${encodeURIComponent(viewName)}`,
+                schema: 'kijker'
+            });
+
+            if (!rows || rows.length === 0) {
+                canvas.innerHTML = `
+                    <div class="canvas-welcome">
+                        <div class="canvas-welcome-icon" style="color:var(--warning)">∅</div>
+                        <div class="canvas-welcome-text" style="text-align:center;">
+                            Geen code gevonden<br>
+                            <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">
+                                SELECT code, toelichting FROM kijker.sb_grip WHERE displaynaam = '${viewName}'
+                            </code>
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            const row = rows[0];
+            const code = row.code || '';
+            const toelichting = row.toelichting || '';
+
+            canvas.innerHTML = `
+                <div class="edit-canvas">
+                    <!-- TOOLBAR: Zoeken & Vervangen -->
+                    <div class="edit-toolbar">
+                        <div class="edit-toolbar-group">
+                            <input type="text" id="editSearch" placeholder="Zoeken..." oninput="editDoSearch()">
+                            <button class="edit-btn" onclick="editFindNext()" title="Volgende (F3)">▼</button>
+                            <button class="edit-btn" onclick="editFindPrev()" title="Vorige (Shift+F3)">▲</button>
+                            <span class="edit-match-count" id="editMatchCount"></span>
+                        </div>
+                        <div class="edit-toolbar-sep"></div>
+                        <div class="edit-toolbar-group">
+                            <input type="text" id="editReplace" placeholder="Vervangen door...">
+                            <button class="edit-btn" onclick="editReplaceOne()">Vervang</button>
+                            <button class="edit-btn" onclick="editReplaceAll()">Alles</button>
+                        </div>
+                        <div class="edit-toolbar-sep"></div>
+                        <div class="edit-toolbar-group">
+                            <button class="edit-btn" id="editPanelToggle" onclick="toggleEditPanel()" title="Toon/verberg toelichting">◫ Panelen</button>
+                            <button class="edit-btn save" id="editSaveBtn" onclick="editSave()">💾 Opslaan</button>
+                        </div>
+                    </div>
+
+                    <!-- PANELS: Toelichting (top 10%) + Code (bottom 90%) -->
+                    <div class="edit-panels" id="editPanels">
+                        <div class="edit-panel edit-panel-toelichting" id="editToelichtingPanel">
+                            <div class="edit-panel-header">
+                                <div class="edit-panel-title">
+                                    <span class="edit-panel-badge notes">TOELICHTING</span>
+                                    Documentatie
+                                </div>
+                                <div class="edit-panel-info" id="editNotesInfo">${toelichting.split('\\n').length} regels</div>
+                            </div>
+                            <textarea id="editToelichting" class="edit-textarea" spellcheck="false"
+                                oninput="editUpdateInfo()">${toelichting}</textarea>
+                        </div>
+                        <div class="edit-panel edit-panel-code">
+                            <div class="edit-panel-header">
+                                <div class="edit-panel-title">
+                                    <span class="edit-panel-badge code">CODE</span>
+                                    ${obj.display_name}
+                                </div>
+                                <div class="edit-panel-info" id="editCodeInfo">${code.split('\\n').length} regels</div>
+                            </div>
+                            <div class="edit-code-wrapper">
+                                <pre id="editCodeHighlight" class="edit-code-highlight"></pre>
+                                <textarea id="editCode" class="edit-code-input" spellcheck="false"
+                                    ondblclick="editHandleDblClick(event)"
+                                    onmouseup="editHandleSelection(event)"
+                                    oninput="editSyncHighlight(); editUpdateInfo()"
+                                    onscroll="editSyncScroll()">${code}</textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FOOTER -->
+                    <div class="edit-footer">
+                        <div class="edit-footer-left">
+                            <span>Bron: kijker.sb_grip</span>
+                            <span>·</span>
+                            <span>${row.date_created ? 'Aangemaakt: ' + new Date(row.date_created).toLocaleDateString('nl-NL') : ''}</span>
+                            <span id="editModifyDate">${row.modify_date ? '· Gewijzigd: ' + new Date(row.modify_date).toLocaleDateString('nl-NL') : ''}</span>
+                        </div>
+                        <div class="edit-footer-right">
+                            <span id="editCursorPos">Regel 1, Kolom 1</span>
+                            <span>·</span>
+                            <span>Dubbelklik of selecteer → GRIP-CALL</span>
+                        </div>
+                    </div>
+                </div>`;
+
+            // Store displaynaam for save
+            state.editDisplaynaam = viewName;
+
+            // Initial syntax highlighting
+            editSyncHighlight();
+
+            // Cursor positie tracking
+            document.getElementById('editCode').addEventListener('keyup', editUpdateCursor);
+            document.getElementById('editCode').addEventListener('click', editUpdateCursor);
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', editKeyHandler);
+
+        } catch (err) {
+            canvas.innerHTML = `
+                <div class="canvas-welcome">
+                    <div class="canvas-welcome-icon" style="color:var(--danger)">⚠</div>
+                    <div class="canvas-welcome-text" style="text-align:center;">
+                        ${err.message}<br>
+                        <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">
+                            SELECT * FROM kijker.sb_grip WHERE displaynaam = '${viewName}'
+                        </code>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // SYNTAX HIGHLIGHTING — GRIP code kleuren
+    // ═══════════════════════════════════════════════════════════════
+    const GRIP_SYNTAX = {
+        keywords: {
+            cls: 'sh-keyword',
+            words: ['BEGIN','INSTALL','REFRESH','DROP_TEMP_TABLES','ODBC','QUIT','RETURN','QRY','SHOW','EXEC','DDL','TABLES','VIEWS','DICT','TABLE','VIEW','DBF','SET','VERSIEBEHEER','CALL','DISP','METADATA','ALL','TOTAL','PARA']
+        },
+        tables: {
+            cls: 'sh-table',
+            words: ['GRIP_LOG','GRIP_AUD','GRIP_DEBUG','GRIP_JOB','GRIP_JOB_RUN','GRIP_JOB_RUN_HIST','GRIP_SOURCE','GRIP_LOG_V','GRIP_METADATA_V','GRIP_DATUM_V','GRIP_SOURCE_HIST','GRIP_PARA']
+        },
+        conditionals: {
+            cls: 'sh-conditional',
+            words: ['try','except','if','else','elif','MVAR']
+        },
+        functions: {
+            cls: 'sh-function',
+            words: ['show_flow','remove_job_def','record_on','record_off','fexec','new_flow']
+        }
+    };
+
+    // Bouw regex: langste woorden eerst (voorkomt partial matches)
+    const allTokenWords = [];
+    for (const cat of Object.values(GRIP_SYNTAX)) {
+        for (const w of cat.words) {
+            allTokenWords.push({ word: w, cls: cat.cls });
+        }
+    }
+    allTokenWords.sort((a, b) => b.word.length - a.word.length);
+
+    // Variables pattern: <FLOW>, <USER> etc.
+    const VAR_RE = /(&lt;[A-Z_]+&gt;)/g;
+    // Strings: 'xxx' of "xxx"
+    const STR_RE = /('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g;
+    // Numbers: standalone integers/decimals
+    const NUM_RE = /\b(\d+(?:\.\d+)?)\b/g;
+    // Comments: lijnen die beginnen met -- of #
+    const COMMENT_RE = /^([ \t]*(?:--|#).*)$/gm;
+
+    function highlightGrip(text) {
+        // HTML-escape
+        let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
+        // 1. Comments eerst (hele regels, zodat ze niet door andere tokens geraakt worden)
+        html = html.replace(COMMENT_RE, '<span class="sh-comment">$1</span>');
+
+        // 2. Strings
+        html = html.replace(STR_RE, '<span class="sh-string">$1</span>');
+
+        // 3. Variables: <FLOW>, <USER>
+        html = html.replace(VAR_RE, '<span class="sh-variable">$1</span>');
+
+        // 4. Keywords, tables, conditionals, functions (word boundary)
+        for (const { word, cls } of allTokenWords) {
+            const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const re = new RegExp('\\b(' + escaped + ')\\b', 'g');
+            html = html.replace(re, (match) => {
+                // Check of we al in een span zitten (simpele heuristiek)
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+
+        // 5. Numbers (na keywords, zodat bijv. PARA1 niet breekt)
+        html = html.replace(NUM_RE, (match, num) => {
+            return '<span class="sh-number">' + num + '</span>';
+        });
+
+        // Trailing newline zodat pre goed uitlijnt
+        if (!html.endsWith('\n')) html += '\n';
+        return html;
+    }
+
+    function editSyncHighlight() {
+        const input = document.getElementById('editCode');
+        const highlight = document.getElementById('editCodeHighlight');
+        if (!input || !highlight) return;
+        highlight.innerHTML = highlightGrip(input.value);
+    }
+
+    function editSyncScroll() {
+        const input = document.getElementById('editCode');
+        const highlight = document.getElementById('editCodeHighlight');
+        if (!input || !highlight) return;
+        highlight.scrollTop = input.scrollTop;
+        highlight.scrollLeft = input.scrollLeft;
+    }
+
+    // ── Zoeken ──
+    let editSearchState = { matches: [], currentIdx: -1 };
+
+    function editDoSearch() {
+        const query = document.getElementById('editSearch').value;
+        const textarea = document.getElementById('editCode');
+        const text = textarea.value;
+        const counter = document.getElementById('editMatchCount');
+
+        if (!query) {
+            editSearchState = { matches: [], currentIdx: -1 };
+            counter.textContent = '';
+            return;
+        }
+
+        const matches = [];
+        let idx = text.toLowerCase().indexOf(query.toLowerCase());
+        while (idx !== -1) {
+            matches.push(idx);
+            idx = text.toLowerCase().indexOf(query.toLowerCase(), idx + 1);
+        }
+
+        editSearchState = { matches, currentIdx: matches.length > 0 ? 0 : -1 };
+        counter.textContent = matches.length > 0 ? `${1}/${matches.length}` : '0';
+
+        if (matches.length > 0) {
+            textarea.focus();
+            textarea.setSelectionRange(matches[0], matches[0] + query.length);
+        }
+    }
+
+    function editFindNext() {
+        const { matches, currentIdx } = editSearchState;
+        if (matches.length === 0) return;
+        const query = document.getElementById('editSearch').value;
+        const textarea = document.getElementById('editCode');
+        const next = (currentIdx + 1) % matches.length;
+        editSearchState.currentIdx = next;
+        textarea.focus();
+        textarea.setSelectionRange(matches[next], matches[next] + query.length);
+        document.getElementById('editMatchCount').textContent = `${next + 1}/${matches.length}`;
+    }
+
+    function editFindPrev() {
+        const { matches, currentIdx } = editSearchState;
+        if (matches.length === 0) return;
+        const query = document.getElementById('editSearch').value;
+        const textarea = document.getElementById('editCode');
+        const prev = (currentIdx - 1 + matches.length) % matches.length;
+        editSearchState.currentIdx = prev;
+        textarea.focus();
+        textarea.setSelectionRange(matches[prev], matches[prev] + query.length);
+        document.getElementById('editMatchCount').textContent = `${prev + 1}/${matches.length}`;
+    }
+
+    // ── Vervangen ──
+    function editReplaceOne() {
+        const query = document.getElementById('editSearch').value;
+        const replacement = document.getElementById('editReplace').value;
+        const textarea = document.getElementById('editCode');
+        if (!query) return;
+
+        const start = textarea.selectionStart;
+        const selected = textarea.value.substring(start, start + query.length);
+        if (selected.toLowerCase() === query.toLowerCase()) {
+            textarea.value = textarea.value.substring(0, start) + replacement + textarea.value.substring(start + query.length);
+            editSyncHighlight();
+            editDoSearch();
+            editUpdateInfo();
+        } else {
+            editFindNext();
+        }
+    }
+
+    function editReplaceAll() {
+        const query = document.getElementById('editSearch').value;
+        const replacement = document.getElementById('editReplace').value;
+        const textarea = document.getElementById('editCode');
+        if (!query) return;
+
+        const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        const count = (textarea.value.match(regex) || []).length;
+        textarea.value = textarea.value.replace(regex, replacement);
+        editSyncHighlight();
+        editDoSearch();
+        editUpdateInfo();
+        document.getElementById('editMatchCount').textContent = `${count}× vervangen`;
+    }
+
+    // ── Save to kijker.sb_grip ──
+    async function editSave() {
+        const btn = document.getElementById('editSaveBtn');
+        const code = document.getElementById('editCode')?.value;
+        const toelichting = document.getElementById('editToelichting')?.value;
+        const displaynaam = state.editDisplaynaam;
+
+        if (!displaynaam) return;
+
+        btn.classList.add('saving');
+        btn.textContent = '⏳ Opslaan...';
+
+        try {
+            await SB.update('sb_grip', {
+                filter: `displaynaam=eq.${encodeURIComponent(displaynaam)}`,
+                data: {
+                    code: code,
+                    toelichting: toelichting,
+                    modify_date: new Date().toISOString()
+                },
+                schema: 'kijker'
+            });
+
+            btn.classList.remove('saving');
+            btn.classList.add('saved');
+            btn.textContent = '✓ Opgeslagen';
+
+            // Update modify_date in footer
+            const now = new Date().toLocaleDateString('nl-NL');
+            document.getElementById('editModifyDate').textContent = `· Gewijzigd: ${now}`;
+
+            setTimeout(() => {
+                btn.classList.remove('saved');
+                btn.textContent = '💾 Opslaan';
+            }, 2000);
+
+        } catch (err) {
+            btn.classList.remove('saving');
+            btn.textContent = '⚠ Fout';
+            btn.title = err.message;
+            console.error('Save error:', err);
+
+            setTimeout(() => {
+                btn.textContent = '💾 Opslaan';
+                btn.title = '';
+            }, 3000);
+        }
+    }
+
+    // ── Panel toggle ──
+    function toggleEditPanel() {
+        const panel = document.getElementById('editToelichtingPanel');
+        const btn = document.getElementById('editPanelToggle');
+        const isHidden = panel.style.display === 'none';
+        panel.style.display = isHidden ? 'flex' : 'none';
+        btn.classList.toggle('active', isHidden);
+    }
+
+    // ── Info updates ──
+    function editUpdateInfo() {
+        const code = document.getElementById('editCode');
+        const notes = document.getElementById('editToelichting');
+        if (code) document.getElementById('editCodeInfo').textContent = `${code.value.split('\\n').length} regels · ${code.value.length} tekens`;
+        if (notes) document.getElementById('editNotesInfo').textContent = `${notes.value.split('\\n').length} regels · ${notes.value.length} tekens`;
+    }
+
+    function editUpdateCursor() {
+        const textarea = document.getElementById('editCode');
+        if (!textarea) return;
+        const pos = textarea.selectionStart;
+        const lines = textarea.value.substring(0, pos).split('\n');
+        const line = lines.length;
+        const col = lines[lines.length - 1].length + 1;
+        document.getElementById('editCursorPos').textContent = `Regel ${line}, Kolom ${col}`;
+    }
+
+    // ── Dubbelklik & selectie → GRIP-CALL ──
+    function editHandleDblClick(event) {
+        const textarea = event.target;
+        setTimeout(() => {
+            const selected = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+            if (selected) openGripCall(selected, 'dubbelklik');
+        }, 10);
+    }
+
+    function editHandleSelection(event) {
+        const textarea = event.target;
+        const selected = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+        // Alleen bij substantiële selectie (sleepselectie, niet dubbelklik)
+        if (selected && selected.includes('\n') && selected.length > 20) {
+            openGripCall(selected, 'selectie');
+        }
+    }
+
+    // ── Keyboard shortcuts ──
+    function editKeyHandler(e) {
+        const codeEl = document.getElementById('editCode');
+        if (!codeEl) return;
+        if (e.key === 'F3' && !e.shiftKey) { e.preventDefault(); editFindNext(); }
+        if (e.key === 'F3' && e.shiftKey) { e.preventDefault(); editFindPrev(); }
+        if (e.ctrlKey && e.key === 'h') { e.preventDefault(); document.getElementById('editReplace').focus(); }
+        if (e.ctrlKey && e.key === 's') { e.preventDefault(); editSave(); }
+
+        // Ctrl+Enter: stuur huidige regel naar GRIP-CALL
+        if (e.ctrlKey && e.key === 'Enter' && document.activeElement === codeEl) {
+            e.preventDefault();
+            const text = codeEl.value;
+            const pos = codeEl.selectionStart;
+            const lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+            const lineEnd = text.indexOf('\n', pos);
+            const currentLine = text.substring(lineStart, lineEnd === -1 ? text.length : lineEnd).trim();
+            if (currentLine) openGripCall(currentLine, 'Ctrl+Enter (huidige regel)');
+        }
+
+        // Shift+Enter: selecteer blok omhoog tot lege regel of BEGIN, omlaag tot lege regel of RETURN
+        if (e.shiftKey && e.key === 'Enter' && !e.ctrlKey && document.activeElement === codeEl) {
+            e.preventDefault();
+            const text = codeEl.value;
+            const lines = text.split('\n');
+            const pos = codeEl.selectionStart;
+            const currentLineIdx = text.substring(0, pos).split('\n').length - 1;
+
+            // Zoek omhoog: tot lege regel of regel die begint met BEGIN
+            let blockStart = currentLineIdx;
+            for (let i = currentLineIdx - 1; i >= 0; i--) {
+                const ln = lines[i].trim();
+                if (ln === '') break;
+                if (/^BEGIN\b/i.test(ln)) { blockStart = i; break; }
+                blockStart = i;
+            }
+
+            // Zoek omlaag: tot lege regel of regel die begint met RETURN
+            let blockEnd = currentLineIdx;
+            for (let i = currentLineIdx + 1; i < lines.length; i++) {
+                const ln = lines[i].trim();
+                if (ln === '') break;
+                if (/^RETURN\b/i.test(ln)) { blockEnd = i; break; }
+                blockEnd = i;
+            }
+
+            const block = lines.slice(blockStart, blockEnd + 1).join('\n').trim();
+            if (block) {
+                // Selecteer het blok in de textarea
+                const startPos = lines.slice(0, blockStart).join('\n').length + (blockStart > 0 ? 1 : 0);
+                const endPos = startPos + lines.slice(blockStart, blockEnd + 1).join('\n').length;
+                codeEl.setSelectionRange(startPos, endPos);
+                openGripCall(block, 'Shift+Enter (blokselectie)');
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // MODULE: GRIP-CALL window (stub — wordt later uitgewerkt)
+    // ═══════════════════════════════════════════════════════════════
+    function openGripCall(code, source) {
+        // Verwijder bestaand GRIP-CALL window
+        const existing = document.getElementById('gripCallOverlay');
+        if (existing) existing.remove();
+
+        const lines = code.split('\n').length;
+        const overlay = document.createElement('div');
+        overlay.id = 'gripCallOverlay';
+        overlay.className = 'grip-call-overlay';
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+
+        overlay.innerHTML = `
+            <div class="grip-call-window">
+                <div class="grip-call-header">
+                    <div class="grip-call-title">
+                        <span style="font-size:16px;">▶</span>
+                        GRIP-CALL
+                        <span style="font-size:10px;color:var(--text-muted);font-weight:400;margin-left:8px;">${source}</span>
+                    </div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <button class="edit-btn" onclick="gripCallExecute()" title="Wordt later gekoppeld aan GRIP.EXE">▶ Execute</button>
+                        <button class="grip-call-close" onclick="document.getElementById('gripCallOverlay').remove()">✕</button>
+                    </div>
+                </div>
+                <div class="grip-call-body">
+                    <pre class="grip-call-code">${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                </div>
+                <div class="grip-call-log-header">LOG · GRIP.EXE</div>
+                <div class="grip-call-log" id="gripCallLog">
+                    <span style="color:var(--text-muted);">Wacht op uitvoering...</span>
+                </div>
+                <div class="grip-call-footer">
+                    <span>${lines} regels · ${code.length} tekens</span>
+                    <span>ESC of klik buiten venster om te sluiten</span>
+                </div>
+            </div>`;
+
+        document.body.appendChild(overlay);
+
+        // ESC to close
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                document.getElementById('gripCallOverlay')?.remove();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+    }
+
+    function gripCallExecute() {
+        const log = document.getElementById('gripCallLog');
+        if (!log) return;
+        const ts = () => new Date().toLocaleTimeString('nl-NL');
+        log.innerHTML = `<span style="color:var(--accent-hover);">[${ts()}] GRIP-CALL gestart...</span>\n`;
+        setTimeout(() => {
+            log.innerHTML += `<span style="color:var(--warning);">[${ts()}] ⏳ GRIP.EXE koppeling nog niet geïmplementeerd</span>\n`;
+            log.innerHTML += `<span style="color:var(--text-muted);">[${ts()}] Logging verschijnt hier wanneer GRIP.EXE is aangesloten</span>\n`;
+        }, 500);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CANVAS: CreateScript — Genereer CREATE TABLE DDL
+    // ═══════════════════════════════════════════════════════════════
+    async function renderCreateScriptCanvas(obj) {
+        const canvas = document.getElementById('canvas');
+        const tableName = obj.object_name1;
+        const schema = obj.object_name2 || 'public';
+
+        canvas.innerHTML = `
+            <div class="canvas-welcome">
+                <div class="spinner"></div>
+                <div class="canvas-welcome-text">Schema ophalen voor ${schema}.${tableName}...</div>
+            </div>`;
+
+        try {
+            // Haal kolom-metadata op via Supabase RPC of information_schema
+            let columns;
+            try {
+                columns = await SB.query('columns', {
+                    select: 'column_name,data_type,is_nullable,column_default,character_maximum_length,numeric_precision,numeric_scale,ordinal_position',
+                    filter: `table_schema=eq.${encodeURIComponent(schema)}&table_name=eq.${encodeURIComponent(tableName)}`,
+                    order: 'ordinal_position',
+                    schema: 'information_schema'
+                });
+            } catch(e) {
+                // Fallback: haal 1 rij op en leid types af
+                const sample = await SB.query(tableName, { limit: 1, schema: schema });
+                if (sample && sample.length > 0) {
+                    columns = Object.entries(sample[0]).map(([key, val], i) => ({
+                        column_name: key,
+                        data_type: inferType(val),
+                        is_nullable: 'YES',
+                        column_default: null,
+                        character_maximum_length: null,
+                        ordinal_position: i + 1
+                    }));
+                } else {
+                    columns = [];
+                }
+            }
+
+            if (!columns || columns.length === 0) {
+                canvas.innerHTML = `
+                    <div class="canvas-welcome">
+                        <div class="canvas-welcome-icon" style="color:var(--warning)">∅</div>
+                        <div class="canvas-welcome-text" style="text-align:center;">
+                            Geen kolominformatie gevonden<br>
+                            <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">
+                                SELECT * FROM information_schema.columns WHERE table_name = '${tableName}'
+                            </code>
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            // Bouw CREATE TABLE script
+            const colDefs = columns.map(col => {
+                let dtype = col.data_type;
+                if (col.character_maximum_length) {
+                    dtype += `(${col.character_maximum_length})`;
+                } else if (col.numeric_precision && col.data_type === 'numeric') {
+                    dtype += `(${col.numeric_precision}${col.numeric_scale ? ',' + col.numeric_scale : ''})`;
+                }
+                let line = `    ${padRight(col.column_name, 32)} ${dtype}`;
+                if (col.column_default) {
+                    line += ` DEFAULT ${col.column_default}`;
+                }
+                if (col.is_nullable === 'NO') {
+                    line += ` NOT NULL`;
+                }
+                return line;
+            });
+
+            const script = `-- ═══════════════════════════════════════════════════════
+-- CREATE TABLE: ${schema}.${tableName}
+-- Gegenereerd: ${new Date().toLocaleString('nl-NL')}
+-- Kolommen: ${columns.length}
+-- ═══════════════════════════════════════════════════════
+
+CREATE TABLE ${schema}.${tableName} (
+${colDefs.join(',\n')}
+);`;
+
+            canvas.innerHTML = `
+                <div class="canvas-sql">
+                    <div class="sql-header">
+                        <div class="sql-header-left">
+                            <span class="sql-badge" style="color:var(--warning);background:#3a2a1a;border-color:#4a3a2a;">DDL</span>
+                            <span class="sql-title">${tableName}</span>
+                            <span class="sql-sub">${schema} · ${columns.length} kolommen</span>
+                        </div>
+                        <div class="sql-header-right">
+                            <button class="btn btn-secondary btn-sm" onclick="copySqlToClipboard()">📋 Kopieer</button>
+                        </div>
+                    </div>
+                    <textarea id="sqlTextArea" class="sql-textarea" spellcheck="false" readonly>${script}</textarea>
+                    <div class="sql-footer">
+                        <span>${script.split('\n').length} regels</span>
+                        <span>·</span>
+                        <span>${script.length} tekens</span>
+                        <span>·</span>
+                        <span>${columns.length} kolommen</span>
+                        <span>·</span>
+                        <span>Bron: information_schema.columns</span>
+                    </div>
+                </div>`;
+
+        } catch (err) {
+            canvas.innerHTML = `
+                <div class="canvas-welcome">
+                    <div class="canvas-welcome-icon" style="color:var(--danger)">⚠</div>
+                    <div class="canvas-welcome-text" style="text-align:center;">
+                        ${err.message}<br>
+                        <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">
+                            SELECT * FROM information_schema.columns WHERE table_schema = '${schema}' AND table_name = '${tableName}'
+                        </code>
+                    </div>
+                </div>`;
+        }
+    }
+
+    function padRight(str, len) {
+        return str + ' '.repeat(Math.max(0, len - str.length));
+    }
+
+    function inferType(val) {
+        if (val === null || val === undefined) return 'text';
+        if (typeof val === 'number') return Number.isInteger(val) ? 'integer' : 'numeric';
+        if (typeof val === 'boolean') return 'boolean';
+        if (typeof val === 'string') {
+            if (/^\d{4}-\d{2}-\d{2}T/.test(val)) return 'timestamptz';
+            if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return 'date';
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(val)) return 'uuid';
+        }
+        return 'text';
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CANVAS: Export — Download tabel als CSV
+    // ═══════════════════════════════════════════════════════════════
+    async function renderExportCanvas(obj) {
+        const canvas = document.getElementById('canvas');
+        const tableName = obj.object_name1;
+        const schema = obj.object_name2 || 'kijker';
+
+        canvas.innerHTML = `
+            <div class="canvas-welcome">
+                <div class="spinner"></div>
+                <div class="canvas-welcome-text">Data ophalen uit ${schema}.${tableName}...</div>
+            </div>`;
+
+        try {
+            let data;
+            try {
+                data = await SB.query(tableName, { schema: schema });
+            } catch(e) {
+                data = await SB.query(tableName, { schema: schema === 'kijker' ? 'public' : 'kijker' });
+            }
+
+            if (!data || data.length === 0) {
+                canvas.innerHTML = `
+                    <div class="canvas-welcome">
+                        <div class="canvas-welcome-icon" style="color:var(--warning)">∅</div>
+                        <div class="canvas-welcome-text" style="text-align:center;">
+                            Geen data om te exporteren<br>
+                            <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">
+                                SELECT * FROM ${schema}.${tableName}
+                            </code>
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            const rowCount = data.length;
+            const colCount = Object.keys(data[0]).length;
+            const columns = Object.keys(data[0]);
+
+            // Bouw CSV
+            const csvHeader = columns.map(c => `"${c}"`).join(';');
+            const csvRows = data.map(row => 
+                columns.map(c => {
+                    const val = row[c];
+                    if (val === null || val === undefined) return '';
+                    const str = String(val).replace(/"/g, '""');
+                    return `"${str}"`;
+                }).join(';')
+            );
+            const csvContent = [csvHeader, ...csvRows].join('\n');
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const blobUrl = URL.createObjectURL(blob);
+            const fileSize = (blob.size / 1024).toFixed(1);
+
+            canvas.innerHTML = `
+                <div class="export-container">
+                    <div class="export-card">
+                        <div class="export-icon">📥</div>
+                        <div class="export-title">Export: ${tableName}</div>
+                        <div class="export-info">
+                            <div class="export-stat">
+                                <span class="export-stat-value">${rowCount.toLocaleString()}</span>
+                                <span class="export-stat-label">records</span>
+                            </div>
+                            <div class="export-stat-sep">·</div>
+                            <div class="export-stat">
+                                <span class="export-stat-value">${colCount}</span>
+                                <span class="export-stat-label">kolommen</span>
+                            </div>
+                            <div class="export-stat-sep">·</div>
+                            <div class="export-stat">
+                                <span class="export-stat-value">${fileSize} KB</span>
+                                <span class="export-stat-label">bestand</span>
+                            </div>
+                        </div>
+                        <div class="export-columns">
+                            <div class="export-columns-label">Kolommen:</div>
+                            <div class="export-columns-list">${columns.map(c => `<span class="export-col-tag">${c}</span>`).join('')}</div>
+                        </div>
+                        <div class="export-query">
+                            <code>SELECT * FROM ${schema}.${tableName}</code>
+                        </div>
+                        <a id="exportLink" href="${blobUrl}" download="${tableName}.csv" class="btn btn-primary export-btn" onclick="exportClicked(this)">
+                            📥 Download ${tableName}.csv
+                        </a>
+                    </div>
+                </div>`;
+
+        } catch (err) {
+            canvas.innerHTML = `
+                <div class="canvas-welcome">
+                    <div class="canvas-welcome-icon" style="color:var(--danger)">⚠</div>
+                    <div class="canvas-welcome-text" style="text-align:center;">
+                        ${err.message}<br>
+                        <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">
+                            SELECT * FROM ${schema}.${tableName}
+                        </code>
+                    </div>
+                </div>`;
+        }
+    }
+
+    function exportClicked(el) {
+        setTimeout(() => {
+            el.innerHTML = '✓ Gedownload';
+            el.style.background = 'var(--success)';
+            el.style.borderColor = 'var(--success)';
+            setTimeout(() => {
+                el.innerHTML = `📥 Download opnieuw`;
+                el.style.background = '';
+                el.style.borderColor = '';
+            }, 2000);
+        }, 100);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CANVAS: SQL View — Haal sql_query op uit etl_view_definitions
+    // ═══════════════════════════════════════════════════════════════
+    async function renderSqlViewCanvas(obj) {
+        const canvas = document.getElementById('canvas');
+        const viewName = obj.object_name1;
+        const lookupSchema = 'public';
+
+        canvas.innerHTML = `
+            <div class="canvas-welcome">
+                <div class="spinner"></div>
+                <div class="canvas-welcome-text">SQL ophalen voor ${viewName}...</div>
+            </div>`;
+
+        try {
+            const rows = await SB.query('etl_view_definitions', { 
+                filter: `name=eq.${encodeURIComponent(viewName)}`,
+                schema: lookupSchema 
+            });
+
+            if (!rows || rows.length === 0) {
+                canvas.innerHTML = `
+                    <div class="canvas-welcome">
+                        <div class="canvas-welcome-icon" style="color:var(--warning)">∅</div>
+                        <div class="canvas-welcome-text" style="text-align:center;">
+                            Geen definitie gevonden<br>
+                            <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">
+                                SELECT sql_query FROM public.etl_view_definitions WHERE name = '${viewName}'
+                            </code>
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            const row = rows[0];
+            const sqlQuery = row.sql_query || '-- sql_query is leeg';
+
+            canvas.innerHTML = `
+                <div class="canvas-sql">
+                    <div class="sql-header">
+                        <div class="sql-header-left">
+                            <span class="sql-badge">SQL</span>
+                            <span class="sql-title">${obj.display_name}</span>
+                            <span class="sql-sub">${viewName}</span>
+                        </div>
+                        <div class="sql-header-right">
+                            <button class="btn btn-secondary btn-sm" onclick="copySqlToClipboard()">📋 Kopieer</button>
+                        </div>
+                    </div>
+                    <textarea id="sqlTextArea" class="sql-textarea" spellcheck="false" readonly>${sqlQuery}</textarea>
+                    <div class="sql-footer">
+                        <span>${sqlQuery.split('\n').length} regels</span>
+                        <span>·</span>
+                        <span>${sqlQuery.length} tekens</span>
+                        <span>·</span>
+                        <span>Bron: public.etl_view_definitions</span>
+                    </div>
+                </div>`;
+
+        } catch (err) {
+            canvas.innerHTML = `
+                <div class="canvas-welcome">
+                    <div class="canvas-welcome-icon" style="color:var(--danger)">⚠</div>
+                    <div class="canvas-welcome-text" style="text-align:center;">
+                        ${err.message}<br>
+                        <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">
+                            SELECT sql_query FROM public.etl_view_definitions WHERE name = '${viewName}'
+                        </code>
+                    </div>
+                </div>`;
+        }
+    }
+
+    function copySqlToClipboard() {
+        const textarea = document.getElementById('sqlTextArea');
+        if (textarea) {
+            navigator.clipboard.writeText(textarea.value).then(() => {
+                const btn = event.currentTarget;
+                btn.textContent = '✓ Gekopieerd';
+                setTimeout(() => { btn.innerHTML = '📋 Kopieer'; }, 1500);
+            });
+        }
+    }
+    function renderHtmlTable(columns, data) {
+        return `<div style="overflow:auto;height:100%;"><table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead><tr>${columns.map(c => 
+                `<th style="position:sticky;top:0;background:var(--bg-tertiary);padding:8px 12px;text-align:left;font-family:JetBrains Mono,monospace;font-size:11px;font-weight:600;color:var(--text-muted);border-bottom:2px solid var(--border);white-space:nowrap;">${c.headerName}</th>`
+            ).join('')}</tr></thead>
+            <tbody>${data.map((row, i) => 
+                `<tr style="background:${i % 2 ? 'var(--bg-secondary)' : 'transparent'};">${columns.map(c => 
+                    `<td style="padding:6px 12px;border-bottom:1px solid var(--border);color:var(--text-primary);white-space:nowrap;">${row[c.field] ?? ''}</td>`
+                ).join('')}</tr>`
+            ).join('')}</tbody>
+        </table></div>`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CANVAS: Stamgegevens — Tegels met kijker-tabellen
+    // ═══════════════════════════════════════════════════════════════
+    async function renderStamgegevensCanvas() {
+        const canvas = document.getElementById('canvas');
+        canvas.innerHTML = `
+            <div class="canvas-welcome">
+                <div class="spinner"></div>
+                <div class="canvas-welcome-text">Kijker-tabellen ophalen...</div>
+            </div>`;
+
+        try {
+            let tables;
+            try {
+                tables = await SB.query('tables', {
+                    select: 'table_name,table_type',
+                    filter: 'table_schema=eq.kijker',
+                    order: 'table_name',
+                    schema: 'information_schema'
+                });
+            } catch(e) {
+                tables = state.objects
+                    .filter(o => o.object_name2 === 'kijker')
+                    .map(o => ({ table_name: o.object_name1, table_type: 'BASE TABLE' }));
+            }
+
+            if (!tables || tables.length === 0) {
+                canvas.innerHTML = `
+                    <div class="canvas-welcome">
+                        <div class="canvas-welcome-icon" style="color:var(--warning)">∅</div>
+                        <div class="canvas-welcome-text">Geen tabellen gevonden in schema kijker</div>
+                    </div>`;
+                return;
+            }
+
+            const icons = {
+                'sb_objects': '🧭', 'sb_menus': '📋', 'sb_grip': '⚡',
+                'BASE TABLE': '🗄️', 'VIEW': '👁️'
+            };
+
+            canvas.innerHTML = `
+                <div class="tiles-container">
+                    <div class="tiles-header">⚙ Stamgegevens</div>
+                    <div class="tiles-sub">Tabellen in schema <strong>kijker</strong> · klik om te openen</div>
+                    <div class="tiles-grid">
+                        ${tables.map(t => `
+                            <div class="tile" onclick="stamOpenTable('${t.table_name}')">
+                                <div class="tile-icon">${icons[t.table_name] || icons[t.table_type] || '🗄️'}</div>
+                                <div class="tile-name">${t.table_name}</div>
+                                <div class="tile-badge">kijker · ${t.table_type === 'VIEW' ? 'view' : 'table'}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+
+        } catch (err) {
+            canvas.innerHTML = `
+                <div class="canvas-welcome">
+                    <div class="canvas-welcome-icon" style="color:var(--danger)">⚠</div>
+                    <div class="canvas-welcome-text" style="text-align:center;">
+                        ${err.message}<br>
+                        <code style="color:var(--accent-hover);background:var(--accent-dim);padding:4px 10px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:12px;display:inline-block;margin-top:8px;">
+                            SELECT table_name FROM information_schema.tables WHERE table_schema = 'kijker'
+                        </code>
+                    </div>
+                </div>`;
+        }
+    }
+
+    function stamOpenTable(tableName) {
+        const obj = {
+            type: 'Table',
+            display_name: tableName,
+            object_name1: tableName,
+            object_name2: 'kijker'
+        };
+        state.activeObject = obj;
+        document.getElementById('headerTitle').textContent = `⚙ ${tableName}`;
+        document.getElementById('headerType').textContent = 'Stamgegevens';
+        document.getElementById('sbType').textContent = 'Table';
+        document.getElementById('sbDisplayName').textContent = tableName;
+        document.getElementById('sbObjectName').textContent = `kijker.${tableName}`;
+        renderDatagridCanvas(obj);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // UTILS
+    // ═══════════════════════════════════════════════════════════════
+    function updateStatus(type, text) {
+        const dot = document.getElementById('statusDot');
+        const label = document.getElementById('statusText');
+        dot.style.background = type === 'connected' ? 'var(--success)' :
+                               type === 'error' ? 'var(--danger)' : 'var(--warning)';
+        label.textContent = text;
+    }
+
+    function exportCSV() {
+        alert('CSV export... (implementeer met datagrid data)');
+    }
+
+    // Nav resize
+    const resizer = document.getElementById('navResize');
+    let isResizing = false;
+    resizer.addEventListener('mousedown', () => isResizing = true);
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+        const w = Math.max(180, Math.min(500, e.clientX));
+        document.getElementById('navigator').style.width = w + 'px';
+        document.getElementById('navigator').style.minWidth = w + 'px';
+    });
+    document.addEventListener('mouseup', () => isResizing = false);
+
+    // ═══════════════════════════════════════════════════════════════
+    // TAB SWITCHING
+    // ═══════════════════════════════════════════════════════════════
+    function switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.header-tab').forEach(t => t.classList.remove('active'));
+        document.querySelector(`.header-tab[data-tab="${tabName}"]`).classList.add('active');
+
+        // Show/hide tab content
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // START
+    // ═══════════════════════════════════════════════════════════════
+    init();
+    </script>
+</body>
+</html>

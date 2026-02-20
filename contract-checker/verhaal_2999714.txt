@@ -1,0 +1,25 @@
+📋 WERKBON: W2547010 - GEEN CV en WW
+📅 Melddatum: 2025-12-09
+👷 Monteur: Andel E.  van
+
+--- PARAGRAAF 1: remeha tzerra cw4 ---
+- ⚙️ Type: Storing                 
+- ⚠️ Factureerwijze: Vaste prijs (binnen contract)
+- 🔴 Storing: 003 - GEEN CV en WW
+- 🔎 Oorzaak: 950 - Niet thuis
+
+🔗 VERVOLGBON 1: W2549002 - =vervolg-GEEN CV en WW
+
+--- PARAGRAAF 1: remeha tzerra cw4 ---
+- ⚙️ Type: Storing                 
+- ⚠️ Factureerwijze: Vaste prijs (binnen contract)
+- 🔴 Storing: 003 - GEEN CV en WW
+- 🔎 Oorzaak: 100 - Toestel storing
+
+🔗 VERVOLGBON 2: W2549873 - =meenemen-Hydroblok rechts/driewegklep/ manometer en de automatisch vul syst
+
+--- PARAGRAAF 1: remeha tzerra cw4 ---
+- ⚙️ Type: Storing                 
+- ⚠️ Factureerwijze: Vaste prijs (binnen contract)
+- 🔴 Storing: 003 - GEEN CV en WW
+- 🔎 Oorzaak: 100 - Toestel storing

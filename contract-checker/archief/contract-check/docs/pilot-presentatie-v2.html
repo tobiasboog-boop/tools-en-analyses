@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WVC Contract Checker - Pilot Presentatie v2</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --secondary: #64748b;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --purple: #7c3aed;
+            --light: #f8fafc;
+            --dark: #1e293b;
+            --border: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background: var(--light);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        header .subtitle { font-size: 1.25rem; opacity: 0.9; }
+        header .badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 0.25rem 1rem;
+            border-radius: 2rem;
+            margin-top: 1rem;
+            font-size: 0.875rem;
+        }
+        header .version {
+            display: inline-block;
+            background: var(--success);
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.25rem;
+            margin-left: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        section {
+            background: white;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin: 2rem 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        section h2 {
+            color: var(--primary);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        section h3 {
+            color: var(--dark);
+            margin: 1.5rem 0 1rem;
+        }
+
+        /* Flow diagram */
+        .flow-diagram {
+            background: #f1f5f9;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin: 1.5rem 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            overflow-x: auto;
+        }
+
+        /* Three state boxes */
+        .three-states {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .state-box {
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+
+        .state-box.klaar {
+            background: #dcfce7;
+            border: 2px solid var(--success);
+        }
+
+        .state-box.wacht {
+            background: #fef3c7;
+            border: 2px solid var(--warning);
+        }
+
+        .state-box.bijvangst {
+            background: #fee2e2;
+            border: 2px solid var(--danger);
+        }
+
+        .state-box .label {
+            font-size: 1.25rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .state-box .desc {
+            font-size: 0.85rem;
+            color: var(--secondary);
+            margin-bottom: 0.75rem;
+        }
+
+        .state-box .action {
+            font-size: 0.9rem;
+            font-weight: 500;
+            padding: 0.5rem;
+            background: rgba(255,255,255,0.5);
+            border-radius: 0.25rem;
+        }
+
+        /* Two datasets */
+        .datasets {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .dataset {
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+        }
+
+        .dataset.historisch {
+            background: #f0f9ff;
+            border-left: 4px solid #0284c7;
+        }
+
+        .dataset.openstaand {
+            background: #fdf4ff;
+            border-left: 4px solid var(--purple);
+        }
+
+        .dataset h4 { margin: 0 0 0.5rem 0; }
+        .dataset .count {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 0.5rem 0;
+        }
+        .dataset.historisch .count { color: #0284c7; }
+        .dataset.openstaand .count { color: var(--purple); }
+
+        /* Workflow steps */
+        .workflow {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .step {
+            display: flex;
+            gap: 1rem;
+            padding: 1.5rem;
+            background: var(--light);
+            border-radius: 0.5rem;
+            border: 1px solid var(--border);
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .step-content { flex: 1; }
+        .step-content h4 { margin-bottom: 0.5rem; }
+        .step-content p { color: var(--secondary); font-size: 0.9rem; }
+
+        .step.highlight {
+            border-left: 4px solid var(--success);
+            background: #f0fdf4;
+        }
+
+        .step.new {
+            border-left: 4px solid var(--purple);
+            background: #faf5ff;
+        }
+
+        .new-badge {
+            display: inline-block;
+            background: var(--purple);
+            color: white;
+            padding: 0.15rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+
+        /* KPIs */
+        .kpis {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        .kpi {
+            text-align: center;
+            padding: 1.5rem;
+            background: var(--light);
+            border-radius: 0.5rem;
+        }
+
+        .kpi .value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .kpi .label {
+            font-size: 0.875rem;
+            color: var(--secondary);
+        }
+
+        /* Notes */
+        .note {
+            padding: 1rem 1.5rem;
+            border-radius: 0 0.5rem 0.5rem 0;
+            margin: 1rem 0;
+        }
+
+        .note.info {
+            background: #eff6ff;
+            border-left: 4px solid var(--primary);
+        }
+
+        .note.warning {
+            background: #fffbeb;
+            border-left: 4px solid var(--warning);
+        }
+
+        .note.success {
+            background: #f0fdf4;
+            border-left: 4px solid var(--success);
+        }
+
+        .note strong { color: inherit; }
+        .note.info strong { color: var(--primary); }
+        .note.warning strong { color: var(--warning); }
+        .note.success strong { color: var(--success); }
+
+        /* Lists */
+        ul { margin-left: 1.5rem; margin-top: 0.5rem; }
+        li { margin-bottom: 0.5rem; }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+
+        th, td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--light);
+            font-weight: 600;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--secondary);
+            font-size: 0.875rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .three-states, .datasets, .kpis {
+                grid-template-columns: 1fr;
+            }
+            header h1 { font-size: 1.75rem; }
+        }
+
+        @media print {
+            body { background: white; }
+            section {
+                box-shadow: none;
+                border: 1px solid var(--border);
+                break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>WVC Contract Checker</h1>
+        <p class="subtitle">Automatische classificatie van werkbonnen tegen servicecontracten</p>
+        <span class="badge">Pilot Project</span>
+        <span class="version">v2 - Januari 2026</span>
+    </header>
+
+    <div class="container">
+        <!-- Wat is nieuw -->
+        <section>
+            <h2>Wat is nieuw in deze versie?</h2>
+            <p>Op basis van analyse van het datawarehouse hebben we de pilot-aanpak verfijnd:</p>
+
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin: 1.5rem 0;">
+                <div style="padding: 1rem; background: #faf5ff; border-radius: 0.5rem; border-left: 4px solid var(--purple);">
+                    <strong style="color: var(--purple);">1. "Klaar voor classificatie" check</strong>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem; color: var(--secondary);">
+                        Niet elke werkbon is direct klaar voor beoordeling. We checken eerst of er nog openstaande acties zijn.
+                    </p>
+                </div>
+                <div style="padding: 1rem; background: #faf5ff; border-radius: 0.5rem; border-left: 4px solid var(--purple);">
+                    <strong style="color: var(--purple);">2. Validatie tegen historie</strong>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem; color: var(--secondary);">
+                        We meten de "hit rate" door AI-classificatie te vergelijken met werkelijke facturatie van historische bonnen.
+                    </p>
+                </div>
+                <div style="padding: 1rem; background: #faf5ff; border-radius: 0.5rem; border-left: 4px solid var(--purple);">
+                    <strong style="color: var(--purple);">3. "Bijvangst" detectie</strong>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem; color: var(--secondary);">
+                        Werkbonnen die NIET klaar zijn maar waar ook GEEN actie uitstaat worden gesignaleerd.
+                    </p>
+                </div>
+                <div style="padding: 1rem; background: #faf5ff; border-radius: 0.5rem; border-left: 4px solid var(--purple);">
+                    <strong style="color: var(--purple);">4. Twee datasets gescheiden</strong>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem; color: var(--secondary);">
+                        Historische data voor validatie, openstaande data voor classificatie. Geen data lekkage.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- De twee datasets -->
+        <section>
+            <h2>Twee Datasets</h2>
+            <p>De werkbonnen in het datawarehouse zijn verdeeld in twee groepen met verschillende doelen:</p>
+
+            <div class="datasets">
+                <div class="dataset historisch">
+                    <h4 style="color: #0284c7;">Historische Data</h4>
+                    <p style="font-size: 0.9rem;">Uitgevoerd + <strong>Historisch</strong></p>
+                    <div class="count">~784.000</div>
+                    <p style="font-size: 0.85rem; color: var(--secondary);">werkbonnen</p>
+                    <hr style="margin: 1rem 0; border: none; border-top: 1px solid #bae6fd;">
+                    <p style="font-size: 0.85rem;"><strong>Pilot:</strong> Validatie (steekproef ~100-500)</p>
+                    <p style="font-size: 0.85rem; color: var(--secondary); margin-top: 0.5rem;">
+                        Hit rate meten: vergelijk AI-classificatie met werkelijke factureerstatus.
+                    </p>
+                    <p style="font-size: 0.85rem; margin-top: 0.5rem;"><strong>Fase 2:</strong> Training / ML</p>
+                    <p style="font-size: 0.85rem; color: var(--secondary); margin-top: 0.25rem;">
+                        Patronen leren, contract profielen genereren (out of scope pilot).
+                    </p>
+                </div>
+                <div class="dataset openstaand">
+                    <h4 style="color: var(--purple);">Classificatie Data</h4>
+                    <p style="font-size: 0.9rem;">Uitgevoerd + <strong>Openstaand</strong></p>
+                    <div class="count">~4.400</div>
+                    <p style="font-size: 0.85rem; color: var(--secondary);">werkbonnen</p>
+                    <hr style="margin: 1rem 0; border: none; border-top: 1px solid #e9d5ff;">
+                    <p style="font-size: 0.85rem;"><strong>Doel:</strong> Dagelijks classificeren</p>
+                    <p style="font-size: 0.85rem; color: var(--secondary); margin-top: 0.5rem;">
+                        Nog niet gefactureerd. Dit zijn de bonnen waar WVC dagelijks mee werkt. Hier moet de AI adviseren.
+                    </p>
+                </div>
+            </div>
+
+            <div class="note warning">
+                <strong>Historische data heeft twee doelen:</strong><br>
+                <span style="color: var(--success);">&#10003;</span> <strong>Validatie</strong> (pilot): "werkt onze aanpak?" - hit rate meten op steekproef<br>
+                <span style="color: var(--secondary);">&#10007;</span> <strong>Training/ML</strong> (fase 2): "leer patronen" - batch analyse van 784k bonnen
+            </div>
+
+            <div class="note info">
+                <strong>Belangrijk:</strong> De factureerstatus wordt NIET meegegeven aan de AI bij classificatie. Dit voorkomt dat de AI "spiekt" bij het antwoord.
+            </div>
+        </section>
+
+        <!-- Klaar check -->
+        <section>
+            <h2>Stap 1: Is de Werkbon Klaar?</h2>
+            <p>Voordat we classificeren, checken we of de werkbon "klaar" is voor beoordeling. Er zijn drie mogelijke uitkomsten:</p>
+
+            <div class="three-states">
+                <div class="state-box klaar">
+                    <div class="label">KLAAR</div>
+                    <div class="desc">Geen open acties, keten compleet, kosten definitief</div>
+                    <div class="action">&#8594; AI Classificatie</div>
+                </div>
+                <div class="state-box wacht">
+                    <div class="label">NIET KLAAR</div>
+                    <div class="desc">Bestelling onderweg, vervolgbon ingepland, opvolging open</div>
+                    <div class="action">&#8594; Wachten op actie</div>
+                </div>
+                <div class="state-box bijvangst">
+                    <div class="label">BIJVANGST!</div>
+                    <div class="desc">Lijkt niet klaar, maar er staat GEEN actie uit</div>
+                    <div class="action">&#8594; Signaleren!</div>
+                </div>
+            </div>
+
+            <h3>Indicatoren voor "Klaar"</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Indicator</th>
+                        <th>Check</th>
+                        <th>Blokkeert classificatie?</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Opvolgingen</td>
+                        <td>Alle status = 'Afgehandeld' of 'Vervallen'</td>
+                        <td>Ja, bij open opvolgingen</td>
+                    </tr>
+                    <tr>
+                        <td>Kostenstatus</td>
+                        <td>Alle kosten = 'Definitief'</td>
+                        <td>Ja, bij niet-definitieve kosten</td>
+                    </tr>
+                    <tr>
+                        <td>Vervolgbonnen</td>
+                        <td>Alle bonnen in keten = 'Uitgevoerd'</td>
+                        <td>Ja, bij actieve vervolgbon</td>
+                    </tr>
+                    <tr>
+                        <td>Pakbon status</td>
+                        <td>Materiaal geleverd</td>
+                        <td>Ja, bij openstaande levering</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="note warning">
+                <strong>Bijvangst waarde:</strong> Werkbonnen die "niet klaar" lijken maar waar geen actie uitstaat, zijn waardevol om te signaleren. Hier moet iemand naar kijken - er is mogelijk iets misgegaan in het proces.
+            </div>
+        </section>
+
+        <!-- Pilot Flow -->
+        <section>
+            <h2>De Pilot Flow</h2>
+
+            <div class="flow-diagram">
+<pre>
+                    ┌─────────────────────────────────────────┐
+                    │  DAGELIJKSE WERKBON BEOORDELING         │
+                    └─────────────────────────────────────────┘
+                                      │
+                                      ▼
+                    ┌─────────────────────────────────────────┐
+                    │  Laad werkbonnen (Uitgevoerd+Openstaand) │
+                    │  Filter: alleen bonnen met contract      │
+                    └─────────────────────────────────────────┘
+                                      │
+                                      ▼
+                    ┌─────────────────────────────────────────┐
+                    │  CHECK: Is werkbon KLAAR?                │
+                    │  - Open opvolgingen?                     │
+                    │  - Niet-definitieve kosten?              │
+                    │  - Actieve vervolgbon?                   │
+                    └─────────────────────────────────────────┘
+                                      │
+           ┌──────────────────────────┼──────────────────────────┐
+           │                          │                          │
+           ▼                          ▼                          ▼
+    ┌─────────────┐          ┌─────────────────┐         ┌──────────────┐
+    │   KLAAR     │          │  NIET KLAAR     │         │ NIET KLAAR   │
+    │             │          │  + actie        │         │ GEEN actie   │
+    └──────┬──────┘          └────────┬────────┘         └──────┬───────┘
+           │                          │                         │
+           ▼                          ▼                         ▼
+    ┌─────────────┐          ┌─────────────────┐         ┌──────────────┐
+    │ AI Classif. │          │    Wachten      │         │  BIJVANGST!  │
+    │ binnen/     │          │ (toon reden)    │         │  Signaleer   │
+    │ buiten      │          │                 │         │  aan WVC     │
+    └──────┬──────┘          └─────────────────┘         └──────────────┘
+           │
+           ▼
+    ┌─────────────────────────────────────────┐
+    │  Output per kostenregel:                 │
+    │  - JA / NEE / ONZEKER                   │
+    │  - Betrouwbaarheidsscore                │
+    │  - Artikelreferentie                    │
+    │  - Toelichting                          │
+    └─────────────────────────────────────────┘
+</pre>
+            </div>
+
+            <h3>Validatie Flow (Hit Rate Meten)</h3>
+
+            <div class="flow-diagram">
+<pre>
+                    ┌─────────────────────────────────────────┐
+                    │  VALIDATIE TEGEN HISTORIE                │
+                    └─────────────────────────────────────────┘
+                                      │
+                                      ▼
+                    ┌─────────────────────────────────────────┐
+                    │  Laad werkbonnen (Uitgevoerd+Historisch) │
+                    │  Steekproef: N bonnen                    │
+                    └─────────────────────────────────────────┘
+                                      │
+                                      ▼
+                    ┌─────────────────────────────────────────┐
+                    │  AI classificeert (zonder factuurstatus) │
+                    └─────────────────────────────────────────┘
+                                      │
+                                      ▼
+                    ┌─────────────────────────────────────────┐
+                    │  Vergelijk:                              │
+                    │  AI uitkomst vs Werkelijke factuurstatus │
+                    └─────────────────────────────────────────┘
+                                      │
+                                      ▼
+                    ┌─────────────────────────────────────────┐
+                    │  Bereken "Hit Rate":                     │
+                    │  - % correct geclassificeerd             │
+                    │  - % false positives                     │
+                    │  - % false negatives                     │
+                    └─────────────────────────────────────────┘
+</pre>
+            </div>
+        </section>
+
+        <!-- Pilot Stappen -->
+        <section>
+            <h2>Pilot Stappen</h2>
+
+            <div class="workflow">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h4>Contracten aanleveren & verwerken</h4>
+                        <p>WVC levert contracten aan. Notifica zet om naar tekst, koppelt aan relaties.</p>
+                    </div>
+                </div>
+
+                <div class="step new">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h4>Validatie op historische data <span class="new-badge">NIEUW</span></h4>
+                        <p>Test de AI op ~100 historische werkbonnen. Meet de hit rate: hoe vaak classificeert de AI correct vergeleken met de werkelijke factureerstatus?</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h4>Itereren op contractteksten</h4>
+                        <p>Op basis van foute classificaties verbeteren we de contractteksten (LLM Ready) of voegen context toe.</p>
+                    </div>
+                </div>
+
+                <div class="step new">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h4>Classificatie openstaande werkbonnen <span class="new-badge">NIEUW</span></h4>
+                        <p>Na validatie: classificeer de ~4.400 openstaande werkbonnen. Eerst "klaar" check, dan AI classificatie.</p>
+                    </div>
+                </div>
+
+                <div class="step highlight">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h4>WVC beoordeelt resultaten</h4>
+                        <p>WVC bekijkt classificaties, valideert steekproef, en geeft feedback. Bijvangst werkbonnen worden apart gesignaleerd.</p>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <h4>Evaluatie & Go/No-Go</h4>
+                        <p>Op basis van hit rate en WVC feedback: beslissen over operationalisatie.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Succescriteria -->
+        <section>
+            <h2>Wanneer is de pilot geslaagd?</h2>
+
+            <div class="kpis">
+                <div class="kpi">
+                    <div class="value">&gt; 80%</div>
+                    <div class="label">Hit Rate<br><small>(correcte classificaties)</small></div>
+                </div>
+                <div class="kpi">
+                    <div class="value">&lt; 5%</div>
+                    <div class="label">False Negatives<br><small>(gemiste facturatie)</small></div>
+                </div>
+                <div class="kpi">
+                    <div class="value">&lt; 15%</div>
+                    <div class="label">Onzeker<br><small>(handmatige review)</small></div>
+                </div>
+            </div>
+
+            <div class="note success">
+                <strong>Primaire KPI:</strong> De hit rate op historische data is de belangrijkste indicator. Als de AI >80% correct classificeert op bonnen waarvan we het antwoord kennen, hebben we een werkend model.
+            </div>
+        </section>
+
+        <!-- Wat krijgt WVC -->
+        <section>
+            <h2>Wat ziet WVC in de applicatie?</h2>
+
+            <h3>Dagelijks overzicht</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Werkbon</th>
+                        <th>Klant</th>
+                        <th>Kosten</th>
+                        <th>Status</th>
+                        <th>Actie</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>WB-2024-1234</td>
+                        <td>Klant A</td>
+                        <td>&euro;450</td>
+                        <td><span style="background: #dcfce7; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.85rem;">KLAAR</span></td>
+                        <td>Classificeer</td>
+                    </tr>
+                    <tr>
+                        <td>WB-2024-1235</td>
+                        <td>Klant B</td>
+                        <td>&euro;680</td>
+                        <td><span style="background: #fef3c7; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.85rem;">WACHT</span></td>
+                        <td>Bestelling onderweg</td>
+                    </tr>
+                    <tr style="background: #fef2f2;">
+                        <td>WB-2024-1236</td>
+                        <td>Klant C</td>
+                        <td>&euro;320</td>
+                        <td><span style="background: #fee2e2; padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.85rem;">BIJVANGST</span></td>
+                        <td><strong>Aandacht nodig!</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Classificatie resultaat (per werkbon)</h3>
+            <div style="background: var(--light); padding: 1.5rem; border-radius: 0.5rem; margin: 1rem 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div>
+                        <strong>WB-2024-1234</strong> - Klant A<br>
+                        <span style="font-size: 0.85rem; color: var(--secondary);">Storing CV-ketel | 15-01-2026</span>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 1.5rem; font-weight: bold;">&euro;450</div>
+                        <span style="font-size: 0.85rem; color: var(--secondary);">totaal kosten</span>
+                    </div>
+                </div>
+
+                <table style="margin: 0;">
+                    <thead>
+                        <tr>
+                            <th>Regel</th>
+                            <th>Bedrag</th>
+                            <th>Classificatie</th>
+                            <th>Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Arbeid - Storing verhelpen</td>
+                            <td>&euro;120</td>
+                            <td><span style="background: #dcfce7; color: #166534; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">JA</span></td>
+                            <td>92%</td>
+                        </tr>
+                        <tr>
+                            <td>Materiaal - Ontstekingsunit</td>
+                            <td>&euro;280</td>
+                            <td><span style="background: #fee2e2; color: #991b1b; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">NEE</span></td>
+                            <td>88%</td>
+                        </tr>
+                        <tr>
+                            <td>Arbeid - Extra uur wachttijd</td>
+                            <td>&euro;50</td>
+                            <td><span style="background: #fef3c7; color: #92400e; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">ONZEKER</span></td>
+                            <td>45%</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div style="display: flex; justify-content: space-around; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <div style="text-align: center;">
+                        <div style="font-size: 1.25rem; font-weight: bold; color: var(--success);">&euro;120</div>
+                        <div style="font-size: 0.8rem; color: var(--secondary);">Binnen contract</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 1.25rem; font-weight: bold; color: var(--danger);">&euro;280</div>
+                        <div style="font-size: 0.8rem; color: var(--secondary);">Factureren</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 1.25rem; font-weight: bold; color: var(--warning);">&euro;50</div>
+                        <div style="font-size: 0.8rem; color: var(--secondary);">Handmatig beoordelen</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Scope pilot -->
+        <section>
+            <h2>Scope van de Pilot</h2>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1.5rem 0;">
+                <div style="background: #f0fdf4; padding: 1.5rem; border-radius: 0.5rem; border: 1px solid #bbf7d0;">
+                    <h4 style="color: var(--success); margin: 0 0 1rem 0;">Wel in pilot</h4>
+                    <ul style="margin: 0; padding-left: 1.25rem;">
+                        <li>Contract import & koppeling</li>
+                        <li>"Klaar" check met drie staten</li>
+                        <li>AI classificatie per kostenregel</li>
+                        <li>Validatie tegen historische data</li>
+                        <li>Hit rate meting</li>
+                        <li>Bijvangst signalering</li>
+                        <li>Export naar CSV</li>
+                    </ul>
+                </div>
+                <div style="background: #fef2f2; padding: 1.5rem; border-radius: 0.5rem; border: 1px solid #fecaca;">
+                    <h4 style="color: var(--danger); margin: 0 0 1rem 0;">Niet in pilot (fase 2)</h4>
+                    <ul style="margin: 0; padding-left: 1.25rem;">
+                        <li>Machine learning / batch analyse</li>
+                        <li>Automatische patroonherkenning</li>
+                        <li>Retroactieve validatie</li>
+                        <li>Steekproef-validatie</li>
+                        <li>Integratie met facturatiesysteem</li>
+                        <li>Real-time verwerking</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="note info">
+                <strong>Focus pilot:</strong> Valideren dat AI-classificatie werkt voor WVC werkbonnen. De complexe patronen (welke storingscodes leiden tot facturatie) komen in fase 2 met batch analyse.
+            </div>
+        </section>
+
+        <!-- Wat nodig van WVC -->
+        <section>
+            <h2>Wat is nodig van WVC?</h2>
+
+            <h3>Aan te leveren</h3>
+            <ul>
+                <li><strong>Servicecontracten</strong> - Word/Excel bestanden</li>
+                <li><strong>Feedback op classificaties</strong> - Steekproef valideren</li>
+            </ul>
+
+            <h3>Tijdsinvestering</h3>
+            <ul>
+                <li>Kick-off + contracten aanleveren</li>
+                <li>Tussentijdse review hit rate resultaten</li>
+                <li>Validatie van classificaties (steekproef)</li>
+                <li>Bijvangst werkbonnen beoordelen</li>
+                <li>Evaluatiegesprek</li>
+            </ul>
+        </section>
+
+        <!-- Validatie evolutie -->
+        <section>
+            <h2>Visie: Van Advies naar Automatisering</h2>
+
+            <p>Het systeem evolueert mee met het vertrouwen van WVC:</p>
+
+            <div style="margin: 2rem 0;">
+                <div style="display: flex; align-items: flex-start; margin-bottom: 1.5rem; padding: 1rem; background: #f0fdf4; border-radius: 0.5rem; border-left: 4px solid var(--success);">
+                    <div style="font-size: 2rem; margin-right: 1rem;">1️⃣</div>
+                    <div>
+                        <h4 style="margin: 0 0 0.5rem 0; color: var(--success);">Pilot: AI als Adviseur</h4>
+                        <p style="margin: 0; font-size: 0.9rem;">
+                            AI geeft <strong>advies</strong>, WVC beslist zelf.<br>
+                            Validatie is eenvoudig: vergelijk AI-advies met WVC beslissing.<br>
+                            <em>→ Volledige controle, maximale leermogelijkheid</em>
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: flex-start; margin-bottom: 1.5rem; padding: 1rem; background: #fefce8; border-radius: 0.5rem; border-left: 4px solid var(--warning);">
+                    <div style="font-size: 2rem; margin-right: 1rem;">2️⃣</div>
+                    <div>
+                        <h4 style="margin: 0 0 0.5rem 0; color: #ca8a04;">Groeiend vertrouwen: Minder handmatige review</h4>
+                        <p style="margin: 0; font-size: 0.9rem;">
+                            AI-advies wordt steeds vaker gevolgd.<br>
+                            WVC focust op <strong>ONZEKER</strong> classificaties en steekproeven.<br>
+                            <em>→ Efficiëntie neemt toe, WVC blijft in controle</em>
+                        </p>
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: flex-start; margin-bottom: 1.5rem; padding: 1rem; background: #eff6ff; border-radius: 0.5rem; border-left: 4px solid var(--primary);">
+                    <div style="font-size: 2rem; margin-right: 1rem;">3️⃣</div>
+                    <div>
+                        <h4 style="margin: 0 0 0.5rem 0; color: var(--primary);">Volwassen: Automatisch met steekproef-validatie</h4>
+                        <p style="margin: 0; font-size: 0.9rem;">
+                            AI-classificatie wordt automatisch doorgevoerd.<br>
+                            Validatie via <strong>steekproeven</strong> + retroactieve checks.<br>
+                            <em>→ Maximale efficiëntie, continue kwaliteitsbewaking</em>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="note warning">
+                <strong>De Validatie Paradox:</strong><br>
+                Als WVC het AI-advies 100% volgt, valideer je alleen nog je eigen advies.
+                Daarom is <strong>steekproef-validatie</strong> essentieel in de volwassen fase:
+                periodiek een selectie werkbonnen handmatig beoordelen om de AI-kwaliteit te bewaken.
+            </div>
+        </section>
+
+        <!-- Retroactieve validatie -->
+        <section>
+            <h2>Fase 2: Retroactieve Validatie</h2>
+
+            <p>Openstaande werkbonnen die vandaag geclassificeerd worden, kunnen later gevalideerd worden:</p>
+
+            <div style="background: var(--light); padding: 1.5rem; border-radius: 0.5rem; margin: 1rem 0;">
+                <pre style="margin: 0; font-family: monospace; font-size: 0.85rem; line-height: 1.6;">
+Vandaag (pilot):
+├─ Werkbon X is OPENSTAAND
+├─ AI classificeert: "Factureren"
+└─ Opslaan in database
+
+        ⬇️  ... 1 maand later ...
+
+Februari:
+├─ Werkbon X is nu HISTORISCH
+├─ Factureerstatus bekend uit systeem
+└─ Vergelijk: was AI correct?
+
+        ⬇️  ... continue loop ...
+
+Rapportage:
+├─ Hit rate per periode
+├─ Trends over tijd
+└─ Waar maakt AI fouten?
+                </pre>
+            </div>
+
+            <div class="note info">
+                <strong>Niet in pilot:</strong> Retroactieve validatie vereist wachttijd (werkbonnen moeten eerst historisch worden).
+                Wel belangrijk: we slaan nu al de benodigde data op om dit later mogelijk te maken.
+            </div>
+        </section>
+
+        <!-- Steekproef-validatie -->
+        <section>
+            <h2>Fase 2: Steekproef-validatie</h2>
+
+            <p>Wanneer WVC het AI-advies steeds vaker volgt, wordt traditionele validatie lastiger.
+            <strong>Steekproef-validatie</strong> biedt dan de oplossing:</p>
+
+            <h3>Wat is steekproef-validatie?</h3>
+            <p>Periodiek een willekeurige selectie werkbonnen <em>handmatig</em> beoordelen, onafhankelijk van het AI-advies.
+            Dit geeft een objectief beeld van de AI-kwaliteit, ook als het advies wordt gevolgd.</p>
+
+            <div style="background: var(--light); padding: 1.5rem; border-radius: 0.5rem; margin: 1.5rem 0;">
+                <pre style="margin: 0; font-family: monospace; font-size: 0.85rem; line-height: 1.6;">
+Dagelijkse flow (volwassen fase):
+├─ AI classificeert werkbon → JA/NEE/ONZEKER
+├─ WVC volgt advies (automatisch of met 1 klik)
+└─ Werkbon verwerkt ✓
+
+        ⬇️  ... wekelijks/maandelijks ...
+
+Steekproef-validatie:
+├─ Systeem selecteert N willekeurige werkbonnen
+├─ WVC beoordeelt ZONDER AI-advies te zien
+├─ Vergelijk: WVC-oordeel vs AI-classificatie
+└─ Bereken "blinde" hit rate
+                </pre>
+            </div>
+
+            <h3>Hoe selecteer je de steekproef?</h3>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Methode</th>
+                        <th>Beschrijving</th>
+                        <th>Wanneer gebruiken</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Willekeurig</strong></td>
+                        <td>Pure random selectie uit alle classificaties</td>
+                        <td>Algemeen kwaliteitsbeeld</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Gestratificeerd</strong></td>
+                        <td>Evenredige selectie per classificatie (JA/NEE/ONZEKER)</td>
+                        <td>Zeker weten dat alle uitkomsten worden gevalideerd</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Risico-gebaseerd</strong></td>
+                        <td>Focus op lage confidence scores (60-75%)</td>
+                        <td>Efficiënt fouten vinden</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Nieuw contract</strong></td>
+                        <td>Extra steekproeven voor recent toegevoegde contracten</td>
+                        <td>Eerste weken na nieuw contract</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Aanbevolen frequentie</h3>
+
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1.5rem 0;">
+                <div style="padding: 1rem; background: #f0fdf4; border-radius: 0.5rem; text-align: center;">
+                    <div style="font-size: 1.5rem; font-weight: bold; color: var(--success);">Wekelijks</div>
+                    <div style="font-size: 0.85rem; color: var(--secondary); margin-top: 0.5rem;">
+                        10-20 werkbonnen<br>
+                        <em>Eerste 3 maanden</em>
+                    </div>
+                </div>
+                <div style="padding: 1rem; background: #fefce8; border-radius: 0.5rem; text-align: center;">
+                    <div style="font-size: 1.5rem; font-weight: bold; color: #ca8a04;">Maandelijks</div>
+                    <div style="font-size: 0.85rem; color: var(--secondary); margin-top: 0.5rem;">
+                        50-100 werkbonnen<br>
+                        <em>Na stabiele hit rate</em>
+                    </div>
+                </div>
+                <div style="padding: 1rem; background: #eff6ff; border-radius: 0.5rem; text-align: center;">
+                    <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary);">Kwartaal</div>
+                    <div style="font-size: 0.85rem; color: var(--secondary); margin-top: 0.5rem;">
+                        Uitgebreide audit<br>
+                        <em>Continue monitoring</em>
+                    </div>
+                </div>
+            </div>
+
+            <div class="note success">
+                <strong>Voordeel:</strong> Steekproef-validatie is onafhankelijk van wat WVC met het AI-advies doet.
+                Ook als 100% van de adviezen wordt gevolgd, blijft objectieve kwaliteitsmeting mogelijk.
+            </div>
+
+            <div class="note info">
+                <strong>Niet in pilot:</strong> Steekproef-validatie wordt relevant als WVC het AI-advies structureel gaat volgen.
+                In de pilot is volledige handmatige review nog mogelijk en wenselijk voor het leerproces.
+            </div>
+        </section>
+
+        <!-- Batch Analyse & ML -->
+        <section>
+            <h2>Fase 2: Batch Analyse & Machine Learning</h2>
+
+            <p>Naast real-time AI-classificatie kunnen we <strong>patronen leren</strong> uit de 784.000 historische werkbonnen.
+            Dit is geen vervanging van de AI, maar een <em>verrijking</em>.</p>
+
+            <h3>Wat is batch analyse?</h3>
+            <p>Grootschalige analyse van historische data om patronen te ontdekken die de AI kan gebruiken.
+            Dit draait lokaal met Python/SQL - <strong>geen AI-kosten</strong>.</p>
+
+            <div class="flow-diagram">
+<pre>
+BATCH ANALYSE PIPELINE
+
+┌─────────────────────────────────────────────────────────────────┐
+│  INPUT: 784.000 historische werkbonnen                          │
+│  - Storingscodes, omschrijvingen, kosten                        │
+│  - Factureerstatus (JA/NEE bekend)                              │
+│  - Contracten, klanten, periodes                                │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  ANALYSE (Python/SQL - lokaal)                                  │
+│                                                                 │
+│  1. Frequentie-analyse                                          │
+│     → Welke storingscodes komen het meest voor?                 │
+│     → Hoe vaak leidt type X tot facturatie?                     │
+│                                                                 │
+│  2. Contract profielen                                          │
+│     → Contract A: 95% arbeid binnen, 40% materiaal buiten       │
+│     → Contract B: alleen storingen binnen, al het overige buiten│
+│                                                                 │
+│  3. Correlaties                                                 │
+│     → Combinatie storing+leeftijd ketel → bijna altijd factureren│
+│     → Bepaalde monteur → meer "buiten contract" beoordelingen   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  OUTPUT: Contract Profielen & Statistieken                      │
+│                                                                 │
+│  Per contract:                                                  │
+│  ├─ Facturatiepercentage per kostentype                         │
+│  ├─ Typische grensbedragen                                      │
+│  ├─ Uitzonderingen en speciale gevallen                         │
+│  └─ Historische hit rate                                        │
+└─────────────────────────────────────────────────────────────────┘
+</pre>
+            </div>
+
+            <h3>Hoe verrijkt dit de AI-classificatie?</h3>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 1.5rem 0;">
+                <div style="padding: 1.5rem; background: #f0f9ff; border-radius: 0.5rem; border-left: 4px solid #0284c7;">
+                    <h4 style="color: #0284c7; margin: 0 0 0.75rem 0;">Zonder batch analyse</h4>
+                    <p style="font-size: 0.9rem; margin: 0;">
+                        AI leest contract + werkbon omschrijving.<br>
+                        Besluit puur op tekstuele match.<br><br>
+                        <em style="color: var(--secondary);">"Staat het in het contract?"</em>
+                    </p>
+                </div>
+                <div style="padding: 1.5rem; background: #faf5ff; border-radius: 0.5rem; border-left: 4px solid var(--purple);">
+                    <h4 style="color: var(--purple); margin: 0 0 0.75rem 0;">Met batch analyse</h4>
+                    <p style="font-size: 0.9rem; margin: 0;">
+                        AI krijgt ook: "Bij dit contract is storingscode X<br>
+                        in 94% van de gevallen binnen contract geweest."<br><br>
+                        <em style="color: var(--secondary);">"Wat zegt het contract + wat zegt de historie?"</em>
+                    </p>
+                </div>
+            </div>
+
+            <h3>Concrete toepassingen</h3>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Patroon</th>
+                        <th>Wat we leren</th>
+                        <th>Hoe AI het gebruikt</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Storingscode → facturatie</strong></td>
+                        <td>Code "CV-01" = 98% binnen contract</td>
+                        <td>Extra confidence bij deze code</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Materiaalkosten drempel</strong></td>
+                        <td>Contract X: materiaal > €200 altijd buiten</td>
+                        <td>Automatisch NEE bij hoge materiaalkosten</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Seizoenspatronen</strong></td>
+                        <td>December: meer coulance voor binnen contract</td>
+                        <td>Context voor grensgevallen</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Klant-specifiek gedrag</strong></td>
+                        <td>Klant Y: 100% van storing X gefactureerd</td>
+                        <td>Klant-specifieke regels detecteren</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Machine Learning mogelijkheden</h3>
+
+            <div class="note info">
+                <strong>ML vs LLM:</strong><br>
+                <ul style="margin: 0.5rem 0 0 1rem;">
+                    <li><strong>ML (Machine Learning)</strong>: Leert patronen uit getallen en categorieën. Snel, goedkoop, draait lokaal.</li>
+                    <li><strong>LLM (Claude)</strong>: Begrijpt tekst en context. Flexibel, maar kost tokens.</li>
+                </ul>
+                De ideale combinatie: ML voor patroonherkenning, LLM voor tekstbegrip en uitleg.
+            </div>
+
+            <div style="background: var(--light); padding: 1.5rem; border-radius: 0.5rem; margin: 1.5rem 0;">
+                <h4 style="margin: 0 0 1rem 0;">Voorbeeld: Gecombineerde aanpak</h4>
+                <pre style="margin: 0; font-family: monospace; font-size: 0.85rem; line-height: 1.6;">
+Werkbon binnenkomt:
+├─ Storingscode: CV-01
+├─ Materiaalkosten: €180
+├─ Contract: "ServicePlus"
+└─ Omschrijving: "Ontstekingsunit vervangen na storing"
+
+ML-model (lokaal, instant):
+├─ Storingscode CV-01 → 98% binnen contract
+├─ Materiaal €180 < drempel €200 → OK
+└─ ML-score: 0.95 (hoge confidence binnen)
+
+LLM (Claude, alleen bij twijfel):
+├─ Leest contract + omschrijving
+├─ Bevestigt: ontstekingsunit valt onder storingsdekking
+└─ LLM-score: 0.92
+
+Gecombineerd resultaat:
+└─ JA (binnen contract) - confidence 94%
+                </pre>
+            </div>
+
+            <div class="note warning">
+                <strong>Niet in pilot:</strong> Batch analyse en ML vereisen significante data-engineering.
+                Tijdens de pilot valideren we eerst of de basisaanpak (LLM + contract) werkt.
+                Batch analyse is een logische volgende stap na succesvolle pilot.
+            </div>
+
+            <div class="note success">
+                <strong>Kostenbewust:</strong> Batch analyse draait 100% lokaal met Python en SQL.
+                Geen AI/LLM kosten. ML-modellen kunnen op een laptop draaien.
+                AI-tokens alleen voor dagelijkse classificatie en grensgevallen.
+            </div>
+        </section>
+
+        <!-- Next steps -->
+        <section>
+            <h2>Na de Pilot</h2>
+
+            <p>Bij een positieve pilot (hit rate &gt;80%) zijn de vervolgstappen:</p>
+
+            <ol style="margin-left: 1.5rem;">
+                <li style="margin-bottom: 1rem;">
+                    <strong>Batch analyse implementeren</strong><br>
+                    <span style="color: var(--secondary); font-size: 0.9rem;">Python/SQL analyse van historische data om patronen te leren (welke storingscodes → facturatie)</span>
+                </li>
+                <li style="margin-bottom: 1rem;">
+                    <strong>Contract profielen genereren</strong><br>
+                    <span style="color: var(--secondary); font-size: 0.9rem;">Per contract: facturatiegedrag, uitzonderingen, grensbedragen</span>
+                </li>
+                <li style="margin-bottom: 1rem;">
+                    <strong>Operationalisatie</strong><br>
+                    <span style="color: var(--secondary); font-size: 0.9rem;">Dagelijkse classificatie workflow, integratie met bestaande systemen</span>
+                </li>
+            </ol>
+
+            <div class="note info">
+                <strong>Kostenbewust:</strong> Batch analyse draait lokaal met Python/SQL (geen AI kosten). AI tokens alleen voor dagelijkse classificatie.
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <p>WVC Contract Checker - Pilot Presentatie v2</p>
+        <p>Notifica &bull; Januari 2026</p>
+    </footer>
+</body>
+</html>

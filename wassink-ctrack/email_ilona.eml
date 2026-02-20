@@ -1,0 +1,104 @@
+MIME-Version: 1.0
+Subject: Prototype Vlootbeheer Dashboard op basis van C-Track data
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+X-Unsent: 1
+
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #333; line-height: 1.5; }
+h2 { color: #1E3A5F; font-size: 14pt; margin-top: 24px; margin-bottom: 8px; }
+a { color: #1E3A5F; }
+table { border-collapse: collapse; margin: 12px 0; }
+th { background-color: #1E3A5F; color: white; padding: 8px 14px; text-align: left; font-size: 10pt; }
+td { border: 1px solid #ddd; padding: 8px 14px; font-size: 10pt; }
+tr:nth-child(even) td { background-color: #f8f9fa; }
+.done { color: #999; text-decoration: line-through; }
+.highlight { background-color: #f0f4f8; padding: 12px 16px; border-left: 4px solid #1E3A5F; margin: 12px 0; }
+ul { margin: 4px 0; padding-left: 20px; }
+li { margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<p>Hoi Ilona,</p>
+
+<p>Goed nieuws: we hebben een eerste prototype van het Vlootbeheer Dashboard klaar op basis van jullie C-Track data. Hieronder vind je de link en een korte toelichting.</p>
+
+<h2>Dashboard bekijken</h2>
+
+<div class="highlight">
+<strong>Link:</strong> <a href="https://tools-en-analyses-7mgqsyomdninewudrskup8.streamlit.app/">https://tools-en-analyses-7mgqsyomdninewudrskup8.streamlit.app/</a><br>
+<strong>Wachtwoord:</strong> WLGt9pLJbgBVO7@L
+</div>
+
+<p>Het dashboard bevat:</p>
+<ul>
+<li><strong>Home</strong> =E2=80=93 KPI=E2=80=99s, dagelijkse kilometers, top voertuigen en bestuurders</li>
+<li><strong>Vlootoverzicht</strong> =E2=80=93 Statistieken per voertuig met detailweergave</li>
+<li><strong>Kilometerregistratie</strong> =E2=80=93 Per voertuig of bestuurder, met heatmap en CSV-export</li>
+<li><strong>Rijgedrag</strong> =E2=80=93 Snelheidsovertredingen en stationair draaien per bestuurder</li>
+<li><strong>Kaart</strong> =E2=80=93 Bestemmingen en ritpatronen op een interactieve kaart</li>
+</ul>
+
+<h2>Waar staan we nu</h2>
+
+<p>Het ontsluiten van de C-Track data heeft meer tijd gekost dan verwacht. De API van C-Track bleek in eerste instantie niet toereikend, waardoor Dolf drie dagen extra technisch werk heeft moeten verrichten om de voertuig- en ritdata op de juiste manier beschikbaar te krijgen. Die vertraging lag aan de C-Track kant.</p>
+
+<p>Het dashboard werkt nu op een momentopname van de data (1-12 februari, ruim 3.100 ritten, 62 voertuigen, 59 bestuurders). In een productieversie wordt dit uiteraard automatisch bijgewerkt.</p>
+
+<p>De data komt op dit moment stand-alone uit C-Track. De echte meerwaarde ontstaat wanneer we dit gaan koppelen aan de Syntess ERP-data. Dan worden inzichten mogelijk als:</p>
+<ul>
+<li><strong>Reistijd vs. productieve tijd</strong> =E2=80=93 Klopt de geboekte reistijd met wat GPS laat zien?</li>
+<li><strong>Werkbon-verificatie</strong> =E2=80=93 Is een monteur daadwerkelijk op de werklocatie geweest?</li>
+<li><strong>Reisafstand validatie</strong> =E2=80=93 Komen de vastgelegde reisafstanden overeen met de werkelijkheid?</li>
+</ul>
+
+<h2>Vervolgstappen</h2>
+
+<table>
+<tr>
+<th>Fase</th>
+<th>Omschrijving</th>
+<th>Inspanning</th>
+</tr>
+<tr>
+<td class="done">Fase 0</td>
+<td class="done">Technische ontsluiting C-Track API</td>
+<td class="done">Afgerond (3 dagen)</td>
+</tr>
+<tr>
+<td class="done">Fase 1</td>
+<td class="done">Dashboard prototype bouwen en delen</td>
+<td class="done">Afgerond</td>
+</tr>
+<tr>
+<td><strong>Fase 2</strong></td>
+<td>Automatische data-verversing vanuit C-Track</td>
+<td>1 dag</td>
+</tr>
+<tr>
+<td><strong>Fase 3</strong></td>
+<td>Koppeling met Syntess (medewerkers, werkbonnen, uren)</td>
+<td>2 dagen</td>
+</tr>
+<tr>
+<td><strong>Fase 4</strong></td>
+<td>Productie-inrichting en oplevering</td>
+<td>1 dag</td>
+</tr>
+</table>
+
+<p><strong>Resterende inspanning: 4 dagen</strong></p>
+
+<p>We raden aan om te starten met fase 2 en 3 gecombineerd, zodat het dashboard niet alleen actuele data toont maar ook direct de koppeling met Syntess laat zien.</p>
+
+<p>Mocht je het interessant vinden, dan kunnen we op korte termijn even een half uurtje via Teams inplannen om het prototype samen door te lopen en de vervolgstappen te bespreken.</p>
+
+<p>Met vriendelijke groet,<br>
+Tobias</p>
+
+</body>
+</html>

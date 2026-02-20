@@ -1,0 +1,59 @@
+# Systemd service voor Contract Checker Streamlit Pilot
+#
+# INSTALLATIE:
+# 1. Kopieer naar VPS4:
+#    scp contract-checker-pilot.service root@vps4:/etc/systemd/system/
+#
+# 2. Pas environment variables aan (zie onder)
+#
+# 3. Enable en start:
+#    systemctl daemon-reload
+#    systemctl enable contract-checker-pilot
+#    systemctl start contract-checker-pilot
+#
+# 4. Check status:
+#    systemctl status contract-checker-pilot
+#    journalctl -u contract-checker-pilot -f
+#
+# ============================================================================
+
+[Unit]
+Description=Contract Checker Pilot (Streamlit)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/notifica/contract-checker
+
+# === ENVIRONMENT VARIABLES - PAS DEZE AAN ===
+
+# Database connectie naar DWH 1210 op VPS3
+# Format: postgresql://user:password@host:port/database
+Environment="DATABASE_URL=postgresql://user:password@10.0.0.3:5432/dwh_1210"
+
+# Anthropic API key voor Claude
+Environment="ANTHROPIC_API_KEY=sk-ant-..."
+
+# Confidence threshold voor classificatie
+Environment="CONFIDENCE_THRESHOLD=0.7"
+
+# === EINDE ENVIRONMENT VARIABLES ===
+
+# Start commando
+ExecStart=/opt/notifica/contract-checker/venv/bin/streamlit run Home.py \
+    --server.port 8501 \
+    --server.address 127.0.0.1 \
+    --server.headless true \
+    --browser.gatherUsageStats false
+
+# Restart policy
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

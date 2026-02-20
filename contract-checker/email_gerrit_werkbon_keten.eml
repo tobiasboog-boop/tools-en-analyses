@@ -1,0 +1,67 @@
+MIME-Version: 1.0
+Subject: RE: Oplevering demo AI tool contractchecker tussenstand
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+X-Unsent: 1
+
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #333;">
+
+<p>Hoi Gerrit,</p>
+
+<p>Goed dat je dit checkt! Ik zie wat er aan de hand is =E2=80=94 het klopt dat je teksten ziet die je niet in W2547010 zelf terugvindt.</p>
+
+<h3 style="color: #16136F; margin-top: 20px;">Wat er gebeurt</h3>
+
+<p>De AI analyseert niet alleen de hoofdwerkbon (W2547010), maar de <b>hele werkbon-keten</b>:</p>
+
+<ol style="line-height: 1.6;">
+<li><b>W2547010</b> - GEEN CV en WW (hoofdwerkbon)<br>
+<span style="color: #888;">Oorzaak: 950 - Niet thuis</span></li>
+
+<li><b>W2549002</b> - =3Dvervolg-GEEN CV en WW (vervolgbon 1)<br>
+<span style="color: #888;">Oorzaak: 100 - Toestel storing</span></li>
+
+<li><b>W2549873</b> - =3Dmeenemen-Hydroblok rechts/driewegklep/manometer... (vervolgbon 2)<br>
+<span style="color: #888;">Oorzaak: 100 - Toestel storing</span></li>
+</ol>
+
+<p>Als je in Syntess alleen W2547010 opent, zie je inderdaad alleen &ldquo;Niet thuis&rdquo;. Maar de AI heeft ook de <b>vervolgbonnen</b> meegelezen waar het werk w=C3=A9l is uitgevoerd.</p>
+
+<p>Daarom zie je in de AI-uitvoer teksten die niet in de hoofdwerkbon zelf staan =E2=80=94 die komen uit de vervolgbonnen.</p>
+
+<h3 style="color: #16136F; margin-top: 20px;">Waarom doen we dit?</h3>
+
+<p>In de praktijk wordt een storing vaak over meerdere bonnen afgehandeld:</p>
+<ul style="line-height: 1.6;">
+<li>Eerste bezoek: niet thuis</li>
+<li>Tweede bezoek: ketel ontlucht en gevuld</li>
+<li>Derde bezoek: onderdeel vervangen</li>
+</ul>
+
+<p>Als de AI alleen naar de hoofdwerkbon kijkt, mist hij belangrijke informatie. Door de hele keten te analyseren, krijgt de AI het <b>complete verhaal</b> en kan hij een betere beoordeling maken.</p>
+
+<h3 style="color: #16136F; margin-top: 20px;">Hoe kun je dit checken?</h3>
+
+<p>Als je een classificatie wilt controleren:</p>
+<ol style="line-height: 1.6;">
+<li>Zoek in Syntess naar de hoofdwerkbon (bijv. W2547010)</li>
+<li>Kijk onder <b>Gekoppelde werkbonnen</b> of er vervolgbonnen zijn</li>
+<li>Open die vervolgbonnen ook =E2=80=94 daar vind je de teksten terug die de AI heeft gebruikt</li>
+</ol>
+
+<p>In de AI-output staat altijd welke werkbonnen zijn meegenomen:</p>
+<div style="background: #F3F4F6; padding: 12px; border-left: 4px solid #16136F; margin: 16px 0; font-family: 'Courier New', monospace; font-size: 10pt;">
+=F0=9F=93=8B WERKBON: W2547010<br>
+=F0=9F=94=97 VERVOLGBON 1: W2549002<br>
+=F0=9F=94=97 VERVOLGBON 2: W2549873
+</div>
+
+<p>Klopt dit met wat je in Syntess ziet? Of staan er andere vervolgbonnen gekoppeld?</p>
+
+<p>Groet,<br>Tobias</p>
+
+</body>
+</html>

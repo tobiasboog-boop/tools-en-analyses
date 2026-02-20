@@ -3,3 +3,4 @@ pandas
 requests
 google-analytics-data
 google-auth
+tomli

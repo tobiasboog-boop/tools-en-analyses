@@ -1,4 +1,4 @@
-# Minimal requirements voor Action Dashboard alleen
+# Minimal requirements - only MailerLite dashboard (NO GA4)
 streamlit==1.31.0
 pandas==2.2.0
 requests==2.32.0

@@ -1,0 +1,13 @@
+# Contract Checker - Simple Version (Ollama + Database)
+
+# Core
+python-dotenv>=1.0.0
+streamlit>=1.37.0
+pandas>=2.2.0
+
+# Database
+psycopg[binary]>=3.2.0
+SQLAlchemy>=2.0.23
+
+# LLM (lokaal via Ollama, geen cloud API nodig)
+requests>=2.31.0
