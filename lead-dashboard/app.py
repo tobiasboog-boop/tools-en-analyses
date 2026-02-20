@@ -181,6 +181,42 @@ def extract_phone(phone_data):
         return phone_data[0].get('value')
     return None
 
+def fuzzy_match_company(pipedrive_org, web_visitors_mapping):
+    """Probeer company name te matchen met fuzzy logic."""
+    if not pipedrive_org:
+        return 0
+
+    pipedrive_key = str(pipedrive_org).strip().lower()
+
+    # 1. Exacte match
+    if pipedrive_key in web_visitors_mapping:
+        return web_visitors_mapping[pipedrive_key]
+
+    # 2. Partial match - check of Pipedrive naam IN Web Visitors naam zit
+    # Bijv: "Hoogendoorn" matches "Sanitair Installatie Hoogendoorn BV"
+    for visitor_key, score in web_visitors_mapping.items():
+        if pipedrive_key in visitor_key or visitor_key in pipedrive_key:
+            # Check minimale lengte om false positives te voorkomen
+            if len(pipedrive_key) >= 4 and len(visitor_key) >= 4:
+                return score
+
+    # 3. Word-based match - check of belangrijke woorden matchen
+    # Bijv: "Van den Buijs" matches "vdBuijsInstall"
+    pipedrive_words = set(pipedrive_key.split())
+    pipedrive_words = {w for w in pipedrive_words if len(w) > 3}  # Skip "bv", "de", etc.
+
+    for visitor_key, score in web_visitors_mapping.items():
+        visitor_words = set(visitor_key.split())
+        visitor_words = {w for w in visitor_words if len(w) > 3}
+
+        # Als 50%+ van de belangrijke woorden matchen
+        if pipedrive_words and visitor_words:
+            overlap = len(pipedrive_words & visitor_words)
+            if overlap > 0 and overlap / min(len(pipedrive_words), len(visitor_words)) >= 0.5:
+                return score
+
+    return 0
+
 def enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data=None, web_visitors_mapping=None):
     """Match MailerLite subscribers with Pipedrive persons and add phone numbers + website visit scores."""
     # Create email lookup dict
@@ -195,6 +231,7 @@ def enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data=None, we
             }
 
     # Enrich subscribers
+    matched_count = 0
     for sub in subscribers:
         email = sub.get('email', '').lower()
         if email in pipedrive_by_email:
@@ -203,13 +240,12 @@ def enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data=None, we
             sub['pipedrive_name'] = pd_data['name']
             sub['company'] = pd_data['org_name']
 
-            # Match website visits from Web Visitors export (by company name)
+            # Match website visits from Web Visitors export (fuzzy matching)
             if web_visitors_mapping and pd_data['org_name']:
-                company_key = str(pd_data['org_name']).strip().lower()
-                if company_key in web_visitors_mapping:
-                    sub['website_visits_score'] = web_visitors_mapping[company_key]
-                else:
-                    sub['website_visits_score'] = 0
+                score = fuzzy_match_company(pd_data['org_name'], web_visitors_mapping)
+                sub['website_visits_score'] = score
+                if score > 0:
+                    matched_count += 1
             else:
                 sub['website_visits_score'] = 0
         else:
@@ -223,6 +259,10 @@ def enrich_with_pipedrive(subscribers, pipedrive_persons, ga4_user_data=None, we
             sub['website_visits'] = ga4_user_data[email]['visits']
         else:
             sub['website_visits'] = 0
+
+    # Debug: log matching success
+    if web_visitors_mapping:
+        st.sidebar.info(f"🔗 {matched_count} leads gekoppeld aan Web Visitors")
 
     return subscribers
 
