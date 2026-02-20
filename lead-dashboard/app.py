@@ -10,6 +10,47 @@ st.set_page_config(
     layout="wide"
 )
 
+# ==================== AUTHENTICATION ====================
+
+def check_password():
+    """Returns True if the user has entered the correct password."""
+
+    def password_entered():
+        """Callback for password input."""
+        if st.session_state["password"] == st.secrets.get("APP_PASSWORD", ""):
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store password
+        else:
+            st.session_state["password_correct"] = False
+
+    # First run or password not correct
+    if "password_correct" not in st.session_state:
+        # Show password input
+        st.text_input(
+            "Wachtwoord",
+            type="password",
+            on_change=password_entered,
+            key="password"
+        )
+        st.info("🔒 Voer het dashboard wachtwoord in")
+        return False
+    elif not st.session_state["password_correct"]:
+        # Password incorrect
+        st.text_input(
+            "Wachtwoord",
+            type="password",
+            on_change=password_entered,
+            key="password"
+        )
+        st.error("❌ Onjuist wachtwoord")
+        return False
+    else:
+        # Password correct
+        return True
+
+if not check_password():
+    st.stop()
+
 # ==================== CONFIG ====================
 
 MAIN_GROUP_ID = 177296943307818341  # MailerLite actieve inschrijvingen
