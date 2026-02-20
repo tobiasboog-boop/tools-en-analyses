@@ -475,10 +475,11 @@ try:
     else:
         st.sidebar.info("ℹ️ GA4 integratie uitgeschakeld")
 
-    # Segment leads (nieuwe thresholds voor 0-40 score range)
-    hot_leads = [s for s in subscribers if s['engagement_score'] >= 25]
-    warm_leads = [s for s in subscribers if 12 <= s['engagement_score'] < 25]
-    cold_leads = [s for s in subscribers if s['engagement_score'] < 12]
+    # Segment leads (gematigde thresholds voor 0-40 score range)
+    # HOT ≥18 (45%), Warm 9-17 (22-42%), Cold <9 (<22%)
+    hot_leads = [s for s in subscribers if s['engagement_score'] >= 18]
+    warm_leads = [s for s in subscribers if 9 <= s['engagement_score'] < 18]
+    cold_leads = [s for s in subscribers if s['engagement_score'] < 9]
 
     # ==================== METRICS ====================
     col1, col2, col3, col4 = st.columns(4)
