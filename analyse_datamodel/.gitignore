@@ -1,0 +1,19 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.ipynb_checkpoints/
+
+# Data exports
+*.csv
+*.xlsx
+!example_*.csv
+
+# IDE
+.vscode/
+.idea/
