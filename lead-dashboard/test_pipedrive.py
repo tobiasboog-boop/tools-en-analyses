@@ -1,7 +1,8 @@
 """Test Pipedrive API - minimale calls"""
+import os
 import requests
 
-PIPEDRIVE_API_TOKEN = "55e6c216918898cafd9687971a9945813b4dcd2f"
+PIPEDRIVE_API_TOKEN = os.getenv("PIPEDRIVE_API_TOKEN")
 PIPEDRIVE_DOMAIN = "notifica"
 
 # Test 1: Get one person to check structure

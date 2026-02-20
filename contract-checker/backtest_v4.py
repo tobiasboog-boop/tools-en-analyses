@@ -6,6 +6,7 @@ Vergelijkt V4 AI classificatie met Gerrit's handmatige beoordeling
 om te bepalen of de accuracy verbeterd is t.o.v. V3 (72.5%).
 """
 import json
+import os
 import re
 import sys
 import time
@@ -290,8 +291,7 @@ def main():
     # For simplicity: we compare V4 result against V3 + Gerrit's correction
 
     # API client
-    api_key = "***REMOVED***"
-    client = anthropic.Anthropic(api_key=api_key)
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
     results = []
     for i, (_, row) in enumerate(df_test.iterrows()):
