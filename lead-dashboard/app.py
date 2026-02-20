@@ -97,11 +97,11 @@ def load_web_visitors_mapping():
         csv_path = os.path.join(os.path.dirname(__file__), 'web_visitors_mapping.csv')
         if os.path.exists(csv_path):
             df = pd.read_csv(csv_path, encoding='utf-8-sig')
-            # Create dict: company_name -> website_score
+            # Create dict: company_name -> website_visits_score
             mapping = {}
             for _, row in df.iterrows():
                 company = str(row['company_name']).strip().lower()
-                score = int(row['website_score'])
+                score = int(row['website_visits_score'])
                 mapping[company] = score
             return mapping
         return {}
