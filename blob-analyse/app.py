@@ -675,59 +675,41 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary", disabled=not opdr
 
         # ====================================================================
         # STAP 6: KOLOMMEN TRANSFORMEREN
+        # Kolomvolgorde matcht Zenith Storingslijst (24 kolommen)
         # ====================================================================
 
         result_df = pd.DataFrame()
 
-        # --- Basisgegevens ---
-        result_df['Werkbon nummer'] = df['Werkboncode']
-        result_df['Week'] = pd.to_datetime(df['MeldDatum']).dt.isocalendar().week.values
+        # --- STORINGSLIJST KOLOMMEN (1-24, exact matching Zenith) ---
+
+        # 1. Werkbonnummer
+        result_df['Werkbonnummer'] = df['Werkboncode']
+
+        # 2. Gerelateerde werkbon
+        result_df['Gerelateerde werkbon'] = df['ParentWerkbonDocumentKey'].fillna('')
+
+        # 3-4. Datum/tijd aanmaak
         result_df['Datum aanmaak'] = pd.to_datetime(df['MeldDatum']).dt.date
         result_df['Tijd aanmaak'] = pd.to_datetime(df['MeldTijd']).dt.time
-        result_df['Maand'] = pd.to_datetime(df['MeldDatum']).dt.month
 
-        # Locatie naam - extract na ' - '
+        # 5. Locatie naam (extract na ' - ')
         result_df['Locatie naam'] = df['Klant'].apply(
             lambda x: x.split(' - ', 1)[1].strip() if pd.notna(x) and ' - ' in x else x
         )
 
-        # Locatie soort - heuristic (bewerkbaar in UI na data ophalen)
-        result_df['Locatie soort'] = result_df['Locatie naam'].apply(guess_location_type)
-
-        # Installatie soort
-        result_df['Installatie soort'] = df['Installatiesoort'].apply(map_installatie_soort)
-
-        # Categorie Melding - LEEG (handmatig, A-E)
-        result_df['Categorie Melding'] = ''
-
-        result_df['Titel'] = df['Werkbon titel']
+        # 6. Storing omschrijving (uit BLOB notities)
         result_df['Storing omschrijving'] = df['notitie'].apply(extract_storing_omschrijving)
 
-        # --- SLA & Reactie ---
-        result_df['Prio volgens SLA'] = df['Prioriteit'].apply(map_priority)
-        result_df['Reactie datum'] = pd.to_datetime(df['reactie_datetime']).dt.date
-        result_df['Reactie tijd'] = pd.to_datetime(df['reactie_datetime']).dt.time
+        # 7. Locatie soort (heuristic, bewerkbaar in UI)
+        result_df['Locatie soort'] = result_df['Locatie naam'].apply(guess_location_type)
 
-        # Contact CB - best-effort uit BLOB notities
-        result_df['Contact CB'] = df['notitie'].apply(extract_contact_cb)
+        # 8. Installatie soort
+        result_df['Installatie soort'] = df['Installatiesoort'].apply(map_installatie_soort)
 
-        # Prio na overleg CB - LEEG (handmatig)
-        result_df['Prio na overleg CB'] = ''
-
-        # --- Quickfix / Definitief (leeg, toekomst) ---
-        result_df['Restore quickfix datum'] = ''
-        result_df['Restore quickfix tijd'] = ''
-
-        # Datum/tijd oplossing (= restore definitief)
-        result_df['Datum oplossing'] = pd.to_datetime(df['datum_oplossing']).dt.date
-        result_df['Tijd oplossing'] = pd.to_datetime(df['tijd_oplossing']).dt.time
-
-        result_df['Restore definitief datum'] = ''
-        result_df['Restore definitief tijd'] = ''
-
-        # --- Overige ---
+        # 9. Onderaannemer (Ja/Nee)
         result_df['Onderaannemer'] = df['Betreft onderaannemer']
 
+        # 10. Welke onder aannemer?
         def fill_onderaannemer(onderaannemer, betreft_onderaannemer):
             if pd.isna(onderaannemer) or onderaannemer == '' or '000000 - Zenith' in str(onderaannemer):
                 if pd.notna(betreft_onderaannemer) and str(betreft_onderaannemer).lower() == 'nee':
@@ -735,16 +717,47 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary", disabled=not opdr
                 return ''
             return onderaannemer
 
-        result_df['Welke onderaannemer?'] = df.apply(
+        result_df['Welke onder aannemer?'] = df.apply(
             lambda row: fill_onderaannemer(row['Onderaannemer'], row['Betreft onderaannemer']), axis=1
         )
 
+        # 11. Categorie Melding (leeg, handmatig A-E)
+        result_df['Categorie Melding'] = ''
+
+        # 12. Prio volgens SLA / input CB
+        result_df['Prio volgens SLA / input CB'] = df['Prioriteit'].apply(map_priority)
+
+        # 13-14. Reactie datum/tijd
+        result_df['Reactie datum'] = pd.to_datetime(df['reactie_datetime']).dt.date
+        result_df['Reactie tijd'] = pd.to_datetime(df['reactie_datetime']).dt.time
+
+        # 15. Contact CB (best-effort uit BLOB notities)
+        result_df['Contact CB'] = df['notitie'].apply(extract_contact_cb)
+
+        # 16-17. Tijdelijke oplossing (leeg, handmatig/toekomst)
+        result_df['Tijdelijke oplossing datum (indien van toepassing)'] = ''
+        result_df['Tijdelijke oplossing tijd (indien van toepassing)'] = ''
+
+        # 18-19. Datum/tijd oplossing (definitief)
+        result_df['Datum oplossing'] = pd.to_datetime(df['datum_oplossing']).dt.date
+        result_df['Tijd oplossing'] = pd.to_datetime(df['tijd_oplossing']).dt.time
+
+        # 20. Geannuleerd?
         result_df['Geannuleerd?'] = df['Status'].apply(
             lambda x: 'Ja' if pd.notna(x) and 'Geannuleerd' in str(x) else 'Nee'
         )
+
+        # 21. Toelichting (volledige BLOB notitie)
         result_df['Toelichting'] = df['notitie'].apply(strip_rtf)
-        result_df['Ouderdom systeem'] = ''
-        result_df['Gerelateerde werkbon'] = df['ParentWerkbonDocumentKey'].fillna('-').replace('', '-')
+
+        # 22. Ouderdom systeem / Garantie (leeg)
+        result_df['Ouderdom systeem / Garantie'] = ''
+
+        # 23. Maand
+        result_df['Maand'] = pd.to_datetime(df['MeldDatum']).dt.month
+
+        # 24. Toelichting bij Niet Behaald (wordt gevuld na SLA berekening)
+        result_df['Toelichting bij Niet Behaald'] = ''
 
         # Sla basis data op in session_state voor bewerkbare locatie soort
         st.session_state['result_df'] = result_df
@@ -796,65 +809,69 @@ if st.session_state.get('data_ready', False) and 'result_df' in st.session_state
         result_df['Locatie soort'] = result_df['Locatie naam'].map(st.session_state['locatie_mapping'])
 
         # ====================================================================
-        # BEREKENDE VELDEN
+        # BEREKENDE VELDEN (matching Syntess kolommen 39-57)
         # ====================================================================
+
+        # Week
+        result_df['Week'] = pd.to_datetime(result_df['Datum aanmaak']).dt.isocalendar().week.values
 
         # Datetimes combineren
         result_df['aanmaak d+t'] = pd.to_datetime(
             result_df['Datum aanmaak'].astype(str) + ' ' + result_df['Tijd aanmaak'].astype(str),
             errors='coerce'
         )
-        result_df['reactie d+t'] = pd.to_datetime(
+        result_df['Response d+t'] = pd.to_datetime(
             result_df['Reactie datum'].astype(str) + ' ' + result_df['Reactie tijd'].astype(str),
             errors='coerce'
         )
-        result_df['response d+t'] = pd.to_datetime(
+        result_df['Restore quickfix'] = ''
+        result_df['Restore definitief'] = pd.to_datetime(
             result_df['Datum oplossing'].astype(str) + ' ' + result_df['Tijd oplossing'].astype(str),
             errors='coerce'
         )
 
         # Tijdsverschillen
-        result_df['reactietijd'] = result_df['reactie d+t'] - result_df['aanmaak d+t']
-        result_df['response tijd'] = result_df['response d+t'] - result_df['aanmaak d+t']
+        result_df['Response tijd'] = result_df['Response d+t'] - result_df['aanmaak d+t']
+        result_df['Restore tijd'] = result_df['Restore definitief'] - result_df['aanmaak d+t']
+        result_df['Def fix tijd'] = ''
+
+        # NBD check
+        result_df['Controle NBD'] = result_df.apply(
+            lambda row: check_nbd(row['aanmaak d+t'], row['Restore definitief']), axis=1
+        )
 
         # Prio numeriek
         prio_map = {'Urgent': 1, 'Medium': 2, 'Low': 3}
-        result_df['Prio'] = result_df['Prio volgens SLA'].map(prio_map)
+        result_df['Prio'] = result_df['Prio volgens SLA / input CB'].map(prio_map)
 
         # Uren (ceiling)
-        result_df['responsetijd uren'] = result_df['reactietijd'].apply(
+        result_df['responsetijd uren'] = result_df['Response tijd'].apply(
             lambda x: np.ceil(x.total_seconds() / 3600) if pd.notna(x) else None
         )
-        result_df['restoretijd uren'] = result_df['response tijd'].apply(
+        result_df['restoretijd uren'] = result_df['Restore tijd'].apply(
             lambda x: np.ceil(x.total_seconds() / 3600) if pd.notna(x) else None
         )
+        result_df['Restore def uren'] = ''
 
         # KPI lookup (locatie-afhankelijk)
         result_df['KPI response'] = result_df.apply(
-            lambda row: get_kpi(row['Prio volgens SLA'], row['Locatie soort'])['response'], axis=1
+            lambda row: get_kpi(row['Prio volgens SLA / input CB'], row['Locatie soort'])['response'], axis=1
         )
         result_df['KPI restore'] = result_df.apply(
-            lambda row: get_kpi(row['Prio volgens SLA'], row['Locatie soort'])['restore'], axis=1
+            lambda row: get_kpi(row['Prio volgens SLA / input CB'], row['Locatie soort'])['restore'], axis=1
         )
 
         # SLA check (ondersteunt uren, NBD en BE)
         result_df['SLA response'] = result_df.apply(
-            lambda row: check_sla(row['responsetijd uren'], row['reactie d+t'], row['aanmaak d+t'], row['KPI response']),
+            lambda row: check_sla(row['responsetijd uren'], row['Response d+t'], row['aanmaak d+t'], row['KPI response']),
             axis=1
         )
         result_df['SLA restore'] = result_df.apply(
-            lambda row: check_sla(row['restoretijd uren'], row['response d+t'], row['aanmaak d+t'], row['KPI restore']),
+            lambda row: check_sla(row['restoretijd uren'], row['Restore definitief'], row['aanmaak d+t'], row['KPI restore']),
             axis=1
         )
 
-        # NBD check
-        result_df['Controle NBD'] = result_df.apply(
-            lambda row: check_nbd(row['aanmaak d+t'], row['response d+t']), axis=1
-        )
-
-        # Overige berekende velden
-        result_df['responsetijd range'] = result_df['responsetijd uren'].apply(categorize_response_time)
-        result_df['Dag binnenkomst'] = pd.to_datetime(result_df['Datum aanmaak']).dt.dayofweek + 1
+        # Toelichting bij Niet Behaald - vullen na SLA berekening
         result_df['Toelichting bij Niet Behaald'] = result_df.apply(
             lambda row: '-' if row['SLA response'] == 'Behaald' and row['SLA restore'] == 'Behaald' else '',
             axis=1
@@ -878,9 +895,14 @@ if st.session_state.get('data_ready', False) and 'result_df' in st.session_state
             # Formaten
             red_format = workbook.add_format({'bg_color': '#FEE2E2'})
             yellow_format = workbook.add_format({'bg_color': '#FEF3C7'})
+            header_format = workbook.add_format({'bg_color': '#D6E4F0', 'bold': True, 'border': 1})
             date_format = workbook.add_format({'num_format': 'dd-mm-yyyy'})
             time_format = workbook.add_format({'num_format': 'hh:mm:ss'})
             datetime_format = workbook.add_format({'num_format': 'dd-mm-yyyy hh:mm:ss'})
+
+            # Lichtblauwe headers
+            for col_num, col_name in enumerate(columns):
+                worksheet.write(0, col_num, col_name, header_format)
 
             # Kolom indexen dynamisch opzoeken
             def col_idx(name):
@@ -888,10 +910,14 @@ if st.session_state.get('data_ready', False) and 'result_df' in st.session_state
 
             # Rode kolommen (handmatig invullen)
             red_cols = [
-                'Categorie Melding', 'Prio na overleg CB',
-                'Restore quickfix datum', 'Restore quickfix tijd',
-                'Restore definitief datum', 'Restore definitief tijd',
-                'Ouderdom systeem', 'Toelichting bij Niet Behaald',
+                'Categorie Melding',
+                'Tijdelijke oplossing datum (indien van toepassing)',
+                'Tijdelijke oplossing tijd (indien van toepassing)',
+                'Ouderdom systeem / Garantie',
+                'Toelichting bij Niet Behaald',
+                'Restore quickfix',
+                'Def fix tijd',
+                'Restore def uren',
             ]
 
             # Gele kolommen (automatisch afgeleid, controleren)
@@ -900,7 +926,7 @@ if st.session_state.get('data_ready', False) and 'result_df' in st.session_state
             # Datum kolommen
             date_cols = ['Datum aanmaak', 'Reactie datum', 'Datum oplossing']
             time_cols = ['Tijd aanmaak', 'Reactie tijd', 'Tijd oplossing']
-            datetime_cols = ['aanmaak d+t', 'reactie d+t', 'response d+t']
+            datetime_cols = ['aanmaak d+t', 'Response d+t', 'Restore definitief']
 
             for row_num in range(1, len(result_df) + 1):
                 row_data = result_df.iloc[row_num - 1]
@@ -942,20 +968,11 @@ if st.session_state.get('data_ready', False) and 'result_df' in st.session_state
                 ('Categorie Melding', 'ROOD', 'Handmatig: A=Technische storing, B=Operationele spoed, C=Bouwkundig, D=Wijzigingsverzoek, E=Gebruikerssupport'),
                 ('Locatie soort', 'GEEL', 'Automatisch afgeleid, bewerkbaar in app. Bepaalt SLA-normen.'),
                 ('Contact CB', 'GEEL', 'Best-effort uit notities. Controleer en vul aan indien nodig.'),
-                ('Prio na overleg CB', 'ROOD', 'Handmatig invullen na overleg met Coolblue'),
-                ('Restore quickfix datum/tijd', 'ROOD', 'Handmatig: tijdelijke oplossing. Later via Syntess Externe Notitie.'),
-                ('Restore definitief datum/tijd', 'ROOD', 'Handmatig: definitieve oplossing. Later via Syntess Externe Notitie.'),
-                ('Ouderdom systeem', 'ROOD', 'Voorlopig leeg. Later: datum oplevering uit Syntess.'),
+                ('Tijdelijke oplossing datum/tijd', 'ROOD', 'Handmatig: quickfix. Later via Syntess Externe Notitie timestamps.'),
+                ('Ouderdom systeem / Garantie', 'ROOD', 'Voorlopig leeg. Later: datum oplevering uit Syntess.'),
                 ('Toelichting bij Niet Behaald', 'ROOD', 'Handmatig: toelichting als SLA niet behaald. "-" als beide SLAs behaald.'),
             ]
             instructies = pd.DataFrame(instr_data, columns=['Kolom', 'Kleur', 'Toelichting'])
-
-            # Classificatie info
-            classificatie = pd.DataFrame([
-                ('Prioriteit 1', 'Urgent', ''),
-                ('Prioriteit 2', 'Medium', 'Alleen Warehouse'),
-                ('Prioriteit 3', 'Low', ''),
-            ], columns=['Prioriteit', 'Naam', 'Opmerking'])
 
             sla_response_info = pd.DataFrame([
                 ('Warehouse', '4 uur', '12 uur', 'NBD'),
@@ -989,10 +1006,10 @@ if st.session_state.get('data_ready', False) and 'result_df' in st.session_state
         # PREVIEW & DOWNLOAD
         # ====================================================================
 
-        # Preview eerste 10 rijen
+        # Preview eerste 10 rijen (storingslijst kolommen)
         st.subheader("Preview (eerste 10 werkbonnen)")
-        preview_cols = [c for c in columns if c not in ('aanmaak d+t', 'reactie d+t', 'response d+t', 'reactietijd', 'response tijd')]
-        st.dataframe(result_df[preview_cols].head(10))
+        storingslijst_cols = columns[:24]  # Eerste 24 = storingslijst
+        st.dataframe(result_df[storingslijst_cols].head(10))
 
         # Stats
         col1, col2, col3, col4 = st.columns(4)
