@@ -1,9 +1,9 @@
 """
-Zenith Werkbon Rapportage
-==========================
-Complete versie met alle 37 kolommen en Excel export
+Zenith Werkbon Rapportage v2.0
+===============================
+Complete export met locatie-afhankelijke SLA KPIs (Classificatie-matrix)
 
-Laatste update: 2026-02-19
+Laatste update: 2026-02-23
 """
 import streamlit as st
 import pandas as pd
@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import re
 from io import BytesIO
 import numpy as np
+from pandas.tseries.offsets import BDay
 
 # Load environment
 try:
@@ -39,6 +40,33 @@ st.set_page_config(
 )
 
 KLANTNUMMER = 1229  # Zenith
+
+# ============================================================================
+# KPI CLASSIFICATIE-MATRIX (uit Zenith Classificatie tab)
+# ============================================================================
+# Response en Restore tijden per locatie soort + prioriteit
+# Waarden: uren (int), "NBD" (Next Business Day), "BE" (Best Effort), None (n.v.t.)
+
+LOCATIE_SOORTEN = ['Warehouse', 'Store', 'Depot', 'Fietshub', 'Office']
+
+KPI_RESPONSE = {
+    'Warehouse': {'Urgent': 4,  'Medium': 12,   'Low': 'NBD'},
+    'Store':     {'Urgent': 12, 'Medium': None,  'Low': 'NBD'},
+    'Depot':     {'Urgent': 12, 'Medium': None,  'Low': 'NBD'},
+    'Fietshub':  {'Urgent': 24, 'Medium': None,  'Low': 'NBD'},
+    'Office':    {'Urgent': 12, 'Medium': None,  'Low': 'NBD'},
+}
+
+KPI_RESTORE = {
+    'Warehouse': {'Urgent': 12,   'Medium': 'NBD', 'Low': 'BE'},
+    'Store':     {'Urgent': 24,   'Medium': 'NBD', 'Low': 'NBD'},
+    'Depot':     {'Urgent': 24,   'Medium': 'NBD', 'Low': 'NBD'},
+    'Fietshub':  {'Urgent': 'BE', 'Medium': 'BE',  'Low': 'BE'},
+    'Office':    {'Urgent': 24,   'Medium': 24,    'Low': 'NBD'},
+}
+
+# Bekende contactpersonen Coolblue (uit Classificatie tab)
+BEKENDE_CONTACTEN = ['Carlo', 'Ricardo', 'Rick', 'Sven', 'Giorno', 'Mariska']
 
 # ============================================================================
 # PASSWORD AUTHENTICATION
@@ -190,35 +218,34 @@ def map_installatie_soort(inst_raw):
         return inst_raw
 
 def guess_location_type(location_name):
-    """Heuristic to guess location type based on name"""
+    """Heuristic to guess location type based on name (Coolblue/Zenith specific)"""
     if pd.isna(location_name):
-        return ''
+        return 'Store'  # Default fallback
 
     name_lower = str(location_name).lower()
 
-    # Retail ketens met nummers (bijv. "Zeeman 1234 Amsterdam") = Store
-    retail_chains = ['zeeman', 'coolblue', 'hema', 'action', 'kruidvat', 'etos', 'ah', 'jumbo', 'aldi', 'lidl']
-    for chain in retail_chains:
-        if chain in name_lower:
-            # Check of het een nummer bevat (winkel nummer) → Store
-            if any(char.isdigit() for char in location_name):
-                return 'Store'
+    # Fietshub (Coolblue specific)
+    if 'fietshub' in name_lower or 'fiets hub' in name_lower:
+        return 'Fietshub'
 
-    # Expliciete keywords
-    if 'winkel' in name_lower or 'store' in name_lower or 'shop' in name_lower:
-        return 'Store'
-    elif 'dc' in name_lower or 'distributie' in name_lower or 'warehouse' in name_lower or 'magazijn' in name_lower:
+    # Depot (Coolblue specific)
+    if 'depot' in name_lower:
+        return 'Depot'
+
+    # Warehouse / DC
+    if any(kw in name_lower for kw in ['dc', 'distributie', 'warehouse', 'magazijn', 'fulfilment']):
         return 'Warehouse'
-    elif 'kantoor' in name_lower or 'office' in name_lower or 'hoofdkantoor' in name_lower:
-        return 'Office'
-    elif 'hoofdkantoor' in name_lower or 'hq' in name_lower:
+
+    # Office
+    if any(kw in name_lower for kw in ['kantoor', 'office', 'hoofdkantoor', 'hq']):
         return 'Office'
 
-    # Default voor retail met plaatsnaam → Store
-    if any(chain in name_lower for chain in retail_chains):
+    # Explicit store keywords
+    if any(kw in name_lower for kw in ['winkel', 'store', 'shop', 'filiaal']):
         return 'Store'
 
-    return ''
+    # Default: Store (most common, safest SLA assumption)
+    return 'Store'
 
 def extract_storing_omschrijving(notitie_text):
     """Extract storing description from BLOB notitie - intelligente extractie"""
@@ -272,16 +299,71 @@ def extract_storing_omschrijving(notitie_text):
         return clean[:197] + "..."
     return clean
 
-def calculate_kpi_hours(prio):
-    """Get KPI hours for priority"""
-    if prio == 'Urgent':
-        return {'response': 12, 'restore': 24}
-    elif prio == 'Medium':
-        return {'response': 24, 'restore': 48}
-    elif prio == 'Low':
-        return {'response': 48, 'restore': 72}
-    else:
-        return {'response': 24, 'restore': 48}
+def get_kpi(prio, locatie_soort):
+    """
+    Get KPI values based on priority + location type (Classificatie-matrix).
+
+    Returns dict with 'response' and 'restore' values:
+    - int: hours (e.g. 4, 12, 24)
+    - "NBD": Next Business Day
+    - "BE": Best Effort (always passes)
+    - None: combination doesn't exist
+    """
+    loc = locatie_soort if locatie_soort in KPI_RESPONSE else 'Store'
+    prio_key = prio if prio in ('Urgent', 'Medium', 'Low') else 'Medium'
+
+    return {
+        'response': KPI_RESPONSE.get(loc, KPI_RESPONSE['Store']).get(prio_key),
+        'restore': KPI_RESTORE.get(loc, KPI_RESTORE['Store']).get(prio_key),
+    }
+
+
+def next_business_day_end(dt):
+    """Calculate end of next business day (23:59:59) after given datetime."""
+    if pd.isna(dt):
+        return None
+    next_bd = (pd.Timestamp(dt) + BDay(1)).normalize() + pd.Timedelta(hours=23, minutes=59, seconds=59)
+    return next_bd
+
+
+def check_sla(actual_hours, actual_dt, start_dt, kpi_value):
+    """
+    Check SLA against a KPI value.
+
+    Returns: "Behaald", "Niet Behaald", "BE" (Best Effort), or "" (n.v.t.)
+    """
+    if kpi_value is None:
+        return ''  # combination doesn't exist
+    if kpi_value == 'BE':
+        return 'BE'
+    if kpi_value == 'NBD':
+        if pd.isna(actual_dt) or pd.isna(start_dt):
+            return ''
+        nbd_end = next_business_day_end(start_dt)
+        return 'Behaald' if pd.Timestamp(actual_dt) <= nbd_end else 'Niet Behaald'
+    # Numeric hours
+    if pd.isna(actual_hours):
+        return ''
+    return 'Behaald' if actual_hours <= kpi_value else 'Niet Behaald'
+
+
+def check_nbd(start_dt, end_dt):
+    """Check if end_dt falls within the next business day after start_dt."""
+    if pd.isna(start_dt) or pd.isna(end_dt):
+        return ''
+    nbd_end = next_business_day_end(start_dt)
+    return 'Ja' if pd.Timestamp(end_dt) <= nbd_end else 'Nee'
+
+
+def extract_contact_cb(notitie_text):
+    """Try to extract contact person name from BLOB notes (best-effort)."""
+    if not notitie_text or not isinstance(notitie_text, str):
+        return ''
+    for naam in BEKENDE_CONTACTEN:
+        if naam.lower() in notitie_text.lower():
+            return naam
+    return ''
+
 
 def categorize_response_time(hours):
     """Categorize response time into ranges"""
@@ -302,8 +384,8 @@ def categorize_response_time(hours):
 # STREAMLIT APP
 # ============================================================================
 
-st.title("📊 Zenith Werkbon Rapportage - Complete Export")
-st.markdown("**Status:** Alle 37 kolommen - Data ophalen en exporteren naar Excel met kleurcodering")
+st.title("Zenith Werkbon Rapportage v2.0")
+st.markdown("**Werkbonnen export met locatie-afhankelijke SLA KPIs (Classificatie-matrix)**")
 
 # Filters
 with st.sidebar:
@@ -591,169 +673,201 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             st.stop()
 
         # ====================================================================
-        # STAP 6: KOLOMMEN TRANSFORMEREN (1-21)
+        # STAP 6: KOLOMMEN TRANSFORMEREN
         # ====================================================================
 
         result_df = pd.DataFrame()
 
-        # 1. Werkbon nummer
+        # --- Basisgegevens ---
         result_df['Werkbon nummer'] = df['Werkboncode']
-
-        # 2. Gerelateerde werkbon (fill met "-" als leeg)
-        result_df['Gerelateerde werkbon'] = df['ParentWerkbonDocumentKey'].fillna('-').replace('', '-')
-
-        # 3. Datum aanmaak (alleen datum, geen tijd)
+        result_df['Week'] = pd.to_datetime(df['MeldDatum']).dt.isocalendar().week.values
         result_df['Datum aanmaak'] = pd.to_datetime(df['MeldDatum']).dt.date
-
-        # 4. Tijd aanmaak - extract tijd uit datetime
         result_df['Tijd aanmaak'] = pd.to_datetime(df['MeldTijd']).dt.time
+        result_df['Maand'] = pd.to_datetime(df['MeldDatum']).dt.month
 
-        # 5. Locatie naam - extract na ' - '
+        # Locatie naam - extract na ' - '
         result_df['Locatie naam'] = df['Klant'].apply(
             lambda x: x.split(' - ', 1)[1].strip() if pd.notna(x) and ' - ' in x else x
         )
 
-        # 6. Titel
-        result_df['Titel'] = df['Werkbon titel']
-
-        # 7. Storing omschrijving - eerste zin uit BLOB notitie
-        result_df['Storing omschrijving'] = df['notitie'].apply(extract_storing_omschrijving)
-
-        # 8. Locatie soort - NIET IN DATABASE (heuristic)
+        # Locatie soort - heuristic (bewerkbaar in UI na data ophalen)
         result_df['Locatie soort'] = result_df['Locatie naam'].apply(guess_location_type)
 
-        # 9. Installatie soort - mapping
+        # Installatie soort
         result_df['Installatie soort'] = df['Installatiesoort'].apply(map_installatie_soort)
 
-        # 10. Onderaannemer
+        # Categorie Melding - LEEG (handmatig, A-E)
+        result_df['Categorie Melding'] = ''
+
+        result_df['Titel'] = df['Werkbon titel']
+        result_df['Storing omschrijving'] = df['notitie'].apply(extract_storing_omschrijving)
+
+        # --- SLA & Reactie ---
+        result_df['Prio volgens SLA'] = df['Prioriteit'].apply(map_priority)
+        result_df['Reactie datum'] = pd.to_datetime(df['reactie_datetime']).dt.date
+        result_df['Reactie tijd'] = pd.to_datetime(df['reactie_datetime']).dt.time
+
+        # Contact CB - best-effort uit BLOB notities
+        result_df['Contact CB'] = df['notitie'].apply(extract_contact_cb)
+
+        # Prio na overleg CB - LEEG (handmatig)
+        result_df['Prio na overleg CB'] = ''
+
+        # --- Quickfix / Definitief (leeg, toekomst) ---
+        result_df['Restore quickfix datum'] = ''
+        result_df['Restore quickfix tijd'] = ''
+
+        # Datum/tijd oplossing (= restore definitief)
+        result_df['Datum oplossing'] = pd.to_datetime(df['datum_oplossing']).dt.date
+        result_df['Tijd oplossing'] = pd.to_datetime(df['tijd_oplossing']).dt.time
+
+        result_df['Restore definitief datum'] = ''
+        result_df['Restore definitief tijd'] = ''
+
+        # --- Overige ---
         result_df['Onderaannemer'] = df['Betreft onderaannemer']
 
-        # 11. Welke onderaannemer? - filter Zenith, fill met "Niet van toepassing" als leeg
         def fill_onderaannemer(onderaannemer, betreft_onderaannemer):
             if pd.isna(onderaannemer) or onderaannemer == '' or '000000 - Zenith' in str(onderaannemer):
-                # Check of het wel een onderaannemer betreft
                 if pd.notna(betreft_onderaannemer) and str(betreft_onderaannemer).lower() == 'nee':
                     return 'Niet van toepassing'
                 return ''
             return onderaannemer
 
-        result_df['Welke onderaannemer? (indien bekend)'] = df.apply(
+        result_df['Welke onderaannemer?'] = df.apply(
             lambda row: fill_onderaannemer(row['Onderaannemer'], row['Betreft onderaannemer']), axis=1
         )
 
-        # 12. Prio volgens SLA - mapping
-        result_df['Prio volgens SLA'] = df['Prioriteit'].apply(map_priority)
-
-        # 13-14. Reactie datum & tijd - split logboek datetime
-        result_df['Reactie datum'] = pd.to_datetime(df['reactie_datetime']).dt.date
-        result_df['Reactie tijd'] = pd.to_datetime(df['reactie_datetime']).dt.time
-
-        # 15. Contact CB - NIET IN DATABASE
-        result_df['Contact CB'] = ''
-
-        # 16. Prio na overleg CB - assumptie: zelfde
-        result_df['Prio na overleg CB'] = result_df['Prio volgens SLA']
-
-        # 17-18. Datum & tijd oplossing
-        result_df['Datum oplossing'] = pd.to_datetime(df['datum_oplossing']).dt.date
-        result_df['Tijd oplossing'] = pd.to_datetime(df['tijd_oplossing']).dt.time
-
-        # 19. Geannuleerd?
         result_df['Geannuleerd?'] = df['Status'].apply(
             lambda x: 'Ja' if pd.notna(x) and 'Geannuleerd' in str(x) else 'Nee'
         )
-
-        # 20. Toelichting - volledige BLOB notitie (RTF stripped)
         result_df['Toelichting'] = df['notitie'].apply(strip_rtf)
-
-        # 21. Ouderdom systeem - VAAK LEEG
         result_df['Ouderdom systeem'] = ''
+        result_df['Gerelateerde werkbon'] = df['ParentWerkbonDocumentKey'].fillna('-').replace('', '-')
+
+        # Sla basis data op in session_state voor bewerkbare locatie soort
+        st.session_state['result_df'] = result_df
+        st.session_state['data_ready'] = True
+
+        status_container.success(f"Data opgehaald - {len(result_df)} werkbonnen klaar")
+
+# ============================================================================
+# LOCATIE SOORT BEWERKBAAR (na data ophalen)
+# ============================================================================
+
+if st.session_state.get('data_ready', False) and 'result_df' in st.session_state:
+    result_df = st.session_state['result_df']
+
+    st.subheader("Locatie soort toewijzing")
+    st.markdown("Controleer en pas de locatie soorten aan. **Dit bepaalt de SLA-normen.**")
+
+    # Bouw bewerkbare tabel met unieke locaties + telling
+    loc_counts = result_df.groupby(['Locatie naam', 'Locatie soort']).size().reset_index(name='Aantal')
+    loc_counts = loc_counts.sort_values('Locatie naam')
+
+    # Bewerkbare tabel met dropdown voor Locatie soort
+    edited_locs = st.data_editor(
+        loc_counts,
+        column_config={
+            "Locatie naam": st.column_config.TextColumn("Locatie", disabled=True),
+            "Locatie soort": st.column_config.SelectboxColumn(
+                "Locatie soort",
+                options=LOCATIE_SOORTEN,
+                required=True,
+            ),
+            "Aantal": st.column_config.NumberColumn("Aantal", disabled=True),
+        },
+        hide_index=True,
+        use_container_width=True,
+        key="locatie_editor",
+    )
+
+    # Sla de mapping op
+    st.session_state['locatie_mapping'] = dict(zip(edited_locs['Locatie naam'], edited_locs['Locatie soort']))
+
+    # ====================================================================
+    # EXPORT KNOP (na locatie soort bewerkbaar)
+    # ====================================================================
+
+    if st.button("Exporteren naar Excel", type="primary"):
+
+        # Pas bewerkbare locatie soorten toe
+        result_df['Locatie soort'] = result_df['Locatie naam'].map(st.session_state['locatie_mapping'])
 
         # ====================================================================
-        # BEREKENDE VELDEN (22-37)
+        # BEREKENDE VELDEN
         # ====================================================================
 
-        # 22. Maand (extract from date object)
-        result_df['Maand'] = pd.to_datetime(result_df['Datum aanmaak']).dt.month
-
-        # 23. aanmaak d+t - combineer datum + tijd
+        # Datetimes combineren
         result_df['aanmaak d+t'] = pd.to_datetime(
             result_df['Datum aanmaak'].astype(str) + ' ' + result_df['Tijd aanmaak'].astype(str),
             errors='coerce'
         )
-
-        # 24. reactie d+t - combineer reactie datum + tijd
         result_df['reactie d+t'] = pd.to_datetime(
             result_df['Reactie datum'].astype(str) + ' ' + result_df['Reactie tijd'].astype(str),
             errors='coerce'
         )
-
-        # 25. response d+t - combineer oplossing datum + tijd
         result_df['response d+t'] = pd.to_datetime(
             result_df['Datum oplossing'].astype(str) + ' ' + result_df['Tijd oplossing'].astype(str),
             errors='coerce'
         )
 
-        # 26. reactietijd - verschil tussen reactie en aanmaak
+        # Tijdsverschillen
         result_df['reactietijd'] = result_df['reactie d+t'] - result_df['aanmaak d+t']
-
-        # 27. response tijd - verschil tussen oplossing en aanmaak
         result_df['response tijd'] = result_df['response d+t'] - result_df['aanmaak d+t']
 
-        # 28. Prio - mapping naar nummer
+        # Prio numeriek
         prio_map = {'Urgent': 1, 'Medium': 2, 'Low': 3}
         result_df['Prio'] = result_df['Prio volgens SLA'].map(prio_map)
 
-        # 29. reasponsetijd uren - ceiling van reactietijd in uren
-        result_df['reasponsetijd uren'] = result_df['reactietijd'].apply(
+        # Uren (ceiling)
+        result_df['responsetijd uren'] = result_df['reactietijd'].apply(
             lambda x: np.ceil(x.total_seconds() / 3600) if pd.notna(x) else None
         )
-
-        # 30. restoretijd uren - ceiling van response tijd in uren
         result_df['restoretijd uren'] = result_df['response tijd'].apply(
             lambda x: np.ceil(x.total_seconds() / 3600) if pd.notna(x) else None
         )
 
-        # 31-32. KPI response & restore - lookup op basis van prio
-        result_df['KPI response'] = result_df['Prio volgens SLA'].apply(
-            lambda x: calculate_kpi_hours(x)['response']
+        # KPI lookup (locatie-afhankelijk)
+        result_df['KPI response'] = result_df.apply(
+            lambda row: get_kpi(row['Prio volgens SLA'], row['Locatie soort'])['response'], axis=1
         )
-        result_df['KPI restore'] = result_df['Prio volgens SLA'].apply(
-            lambda x: calculate_kpi_hours(x)['restore']
+        result_df['KPI restore'] = result_df.apply(
+            lambda row: get_kpi(row['Prio volgens SLA'], row['Locatie soort'])['restore'], axis=1
         )
 
-        # 33-34. SLA response & restore - behaald/niet behaald
+        # SLA check (ondersteunt uren, NBD en BE)
         result_df['SLA response'] = result_df.apply(
-            lambda row: 'Behaald' if pd.notna(row['reasponsetijd uren']) and row['reasponsetijd uren'] <= row['KPI response'] else 'Niet Behaald',
+            lambda row: check_sla(row['responsetijd uren'], row['reactie d+t'], row['aanmaak d+t'], row['KPI response']),
             axis=1
         )
         result_df['SLA restore'] = result_df.apply(
-            lambda row: 'Behaald' if pd.notna(row['restoretijd uren']) and row['restoretijd uren'] <= row['KPI restore'] else 'Niet Behaald',
+            lambda row: check_sla(row['restoretijd uren'], row['response d+t'], row['aanmaak d+t'], row['KPI restore']),
             axis=1
         )
 
-        # 35. responsetijd range - categorisering
-        result_df['responsetijd range'] = result_df['reasponsetijd uren'].apply(categorize_response_time)
+        # NBD check
+        result_df['Controle NBD'] = result_df.apply(
+            lambda row: check_nbd(row['aanmaak d+t'], row['response d+t']), axis=1
+        )
 
-        # 36. Dag binnenkomst - weekday (1=Monday, 7=Sunday)
+        # Overige berekende velden
+        result_df['responsetijd range'] = result_df['responsetijd uren'].apply(categorize_response_time)
         result_df['Dag binnenkomst'] = pd.to_datetime(result_df['Datum aanmaak']).dt.dayofweek + 1
-
-        # 37. Toelichting bij Niet Behaald - fill met "-" als beide SLA's behaald zijn
         result_df['Toelichting bij Niet Behaald'] = result_df.apply(
             lambda row: '-' if row['SLA response'] == 'Behaald' and row['SLA restore'] == 'Behaald' else '',
             axis=1
         )
 
-        status_container.success(f"✓ Data getransformeerd - {len(result_df)} werkbonnen klaar")
+        st.success(f"Data getransformeerd - {len(result_df)} werkbonnen")
 
         # ====================================================================
         # EXCEL EXPORT MET KLEURCODERING
         # ====================================================================
-        status_container.info("Stap 6/6: Excel bestand maken met kleurcodering...")
 
         output = BytesIO()
+        columns = list(result_df.columns)
 
-        # Ensure proper UTF-8 encoding for special characters (é, ç, etc.)
         with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'strings_to_urls': False}}) as writer:
             result_df.to_excel(writer, sheet_name='Werkbonnen', index=False)
 
@@ -761,73 +875,112 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
             worksheet = writer.sheets['Werkbonnen']
 
             # Formaten
-            red_format = workbook.add_format({'bg_color': '#FEE2E2'})  # Rood - niet in database
-            yellow_format = workbook.add_format({'bg_color': '#FEF3C7'})  # Geel - automatisch afgeleid
-            date_format = workbook.add_format({'num_format': 'dd-mm-yyyy'})  # Datum formaat
-            time_format = workbook.add_format({'num_format': 'hh:mm:ss'})  # Tijd formaat
-            datetime_format = workbook.add_format({'num_format': 'dd-mm-yyyy hh:mm:ss'})  # Datetime formaat
+            red_format = workbook.add_format({'bg_color': '#FEE2E2'})
+            yellow_format = workbook.add_format({'bg_color': '#FEF3C7'})
+            date_format = workbook.add_format({'num_format': 'dd-mm-yyyy'})
+            time_format = workbook.add_format({'num_format': 'hh:mm:ss'})
+            datetime_format = workbook.add_format({'num_format': 'dd-mm-yyyy hh:mm:ss'})
 
-            # Kolom indexen (0-based)
-            col_datum_aanmaak = 2  # Kolom C
-            col_tijd_aanmaak = 3  # Kolom D
-            col_locatie_soort = 7  # Kolom H - Locatie soort
-            col_reactie_datum = 12  # Kolom M
-            col_reactie_tijd = 13  # Kolom N
-            col_contact_cb = 14  # Kolom O - Contact CB
-            col_datum_oplossing = 16  # Kolom Q
-            col_tijd_oplossing = 17  # Kolom R
-            col_ouderdom = 20  # Kolom U - Ouderdom systeem
-            col_aanmaak_dt = 22  # Kolom W
-            col_reactie_dt = 23  # Kolom X
-            col_response_dt = 24  # Kolom Y
+            # Kolom indexen dynamisch opzoeken
+            def col_idx(name):
+                return columns.index(name) if name in columns else -1
 
-            # Datum/tijd opmaak toepassen op alle rijen
+            # Rode kolommen (handmatig invullen)
+            red_cols = [
+                'Categorie Melding', 'Prio na overleg CB',
+                'Restore quickfix datum', 'Restore quickfix tijd',
+                'Restore definitief datum', 'Restore definitief tijd',
+                'Ouderdom systeem', 'Toelichting bij Niet Behaald',
+            ]
+
+            # Gele kolommen (automatisch afgeleid, controleren)
+            yellow_cols = ['Locatie soort', 'Contact CB']
+
+            # Datum kolommen
+            date_cols = ['Datum aanmaak', 'Reactie datum', 'Datum oplossing']
+            time_cols = ['Tijd aanmaak', 'Reactie tijd', 'Tijd oplossing']
+            datetime_cols = ['aanmaak d+t', 'reactie d+t', 'response d+t']
+
             for row_num in range(1, len(result_df) + 1):
-                # Datum kolommen
-                worksheet.write(row_num, col_datum_aanmaak, result_df.iloc[row_num - 1]['Datum aanmaak'], date_format)
-                worksheet.write(row_num, col_reactie_datum, result_df.iloc[row_num - 1]['Reactie datum'], date_format)
-                worksheet.write(row_num, col_datum_oplossing, result_df.iloc[row_num - 1]['Datum oplossing'], date_format)
+                row_data = result_df.iloc[row_num - 1]
 
-                # Tijd kolommen
-                worksheet.write(row_num, col_tijd_aanmaak, result_df.iloc[row_num - 1]['Tijd aanmaak'], time_format)
-                worksheet.write(row_num, col_reactie_tijd, result_df.iloc[row_num - 1]['Reactie tijd'], time_format)
-                worksheet.write(row_num, col_tijd_oplossing, result_df.iloc[row_num - 1]['Tijd oplossing'], time_format)
+                # Datum/tijd opmaak
+                for col_name in date_cols:
+                    idx = col_idx(col_name)
+                    if idx >= 0:
+                        worksheet.write(row_num, idx, row_data[col_name], date_format)
 
-                # Datetime kolommen
-                worksheet.write(row_num, col_aanmaak_dt, result_df.iloc[row_num - 1]['aanmaak d+t'], datetime_format)
-                worksheet.write(row_num, col_reactie_dt, result_df.iloc[row_num - 1]['reactie d+t'], datetime_format)
-                worksheet.write(row_num, col_response_dt, result_df.iloc[row_num - 1]['response d+t'], datetime_format)
+                for col_name in time_cols:
+                    idx = col_idx(col_name)
+                    if idx >= 0:
+                        worksheet.write(row_num, idx, row_data[col_name], time_format)
 
-            # Kleurcodering toepassen
-            for row_num in range(1, len(result_df) + 1):
-                # Rood - niet in database
-                worksheet.write(row_num, col_contact_cb, result_df.iloc[row_num - 1]['Contact CB'], red_format)
-                worksheet.write(row_num, col_ouderdom, result_df.iloc[row_num - 1]['Ouderdom systeem'], red_format)
+                for col_name in datetime_cols:
+                    idx = col_idx(col_name)
+                    if idx >= 0:
+                        worksheet.write(row_num, idx, row_data[col_name], datetime_format)
 
-                # Geel - automatisch afgeleid (heuristic)
-                loc_soort = result_df.iloc[row_num - 1]['Locatie soort']
-                if loc_soort:  # Alleen als er een waarde is ingevuld
-                    worksheet.write(row_num, col_locatie_soort, loc_soort, yellow_format)
+                # Rode kolommen
+                for col_name in red_cols:
+                    idx = col_idx(col_name)
+                    if idx >= 0:
+                        worksheet.write(row_num, idx, row_data.get(col_name, ''), red_format)
 
-            # Instructies sheet
-            instructies = pd.DataFrame({
-                'Kolom': [
-                    'Contact CB',
-                    'Locatie soort',
-                    'Ouderdom systeem'
-                ],
-                'Status': [
-                    'ROOD - Niet in database',
-                    'GEEL - Automatisch afgeleid',
-                    'ROOD - Niet in database'
-                ],
-                'Actie': [
-                    'Handmatig invullen (bijv. Carlo, Emma)',
-                    'Controleren en aanpassen indien nodig',
-                    'Handmatig invullen indien bekend'
-                ]
-            })
-            instructies.to_excel(writer, sheet_name='Instructies', index=False)
+                # Gele kolommen
+                for col_name in yellow_cols:
+                    idx = col_idx(col_name)
+                    if idx >= 0:
+                        val = row_data.get(col_name, '')
+                        if val:
+                            worksheet.write(row_num, idx, val, yellow_format)
+
+            # ====================================================================
+            # INSTRUCTIES SHEET
+            # ====================================================================
+            instr_data = [
+                ('Categorie Melding', 'ROOD', 'Handmatig: A=Technische storing, B=Operationele spoed, C=Bouwkundig, D=Wijzigingsverzoek, E=Gebruikerssupport'),
+                ('Locatie soort', 'GEEL', 'Automatisch afgeleid, bewerkbaar in app. Bepaalt SLA-normen.'),
+                ('Contact CB', 'GEEL', 'Best-effort uit notities. Controleer en vul aan indien nodig.'),
+                ('Prio na overleg CB', 'ROOD', 'Handmatig invullen na overleg met Coolblue'),
+                ('Restore quickfix datum/tijd', 'ROOD', 'Handmatig: tijdelijke oplossing. Later via Syntess Externe Notitie.'),
+                ('Restore definitief datum/tijd', 'ROOD', 'Handmatig: definitieve oplossing. Later via Syntess Externe Notitie.'),
+                ('Ouderdom systeem', 'ROOD', 'Voorlopig leeg. Later: datum oplevering uit Syntess.'),
+                ('Toelichting bij Niet Behaald', 'ROOD', 'Handmatig: toelichting als SLA niet behaald. "-" als beide SLAs behaald.'),
+            ]
+            instructies = pd.DataFrame(instr_data, columns=['Kolom', 'Kleur', 'Toelichting'])
+
+            # Classificatie info
+            classificatie = pd.DataFrame([
+                ('Prioriteit 1', 'Urgent', ''),
+                ('Prioriteit 2', 'Medium', 'Alleen Warehouse'),
+                ('Prioriteit 3', 'Low', ''),
+            ], columns=['Prioriteit', 'Naam', 'Opmerking'])
+
+            sla_response_info = pd.DataFrame([
+                ('Warehouse', '4 uur', '12 uur', 'NBD'),
+                ('Store', '12 uur', 'n.v.t.', 'NBD'),
+                ('Depot', '12 uur', 'n.v.t.', 'NBD'),
+                ('Fietshub', '24 uur', 'n.v.t.', 'NBD'),
+                ('Office', '12 uur', 'n.v.t.', 'NBD'),
+            ], columns=['Locatie', 'Urgent', 'Medium', 'Low'])
+
+            sla_restore_info = pd.DataFrame([
+                ('Warehouse', '12 uur', 'NBD', 'BE'),
+                ('Store', '24 uur', 'NBD', 'NBD'),
+                ('Depot', '24 uur', 'NBD', 'NBD'),
+                ('Fietshub', 'BE', 'BE', 'BE'),
+                ('Office', '24 uur', '24 uur', 'NBD'),
+            ], columns=['Locatie', 'Urgent', 'Medium', 'Low'])
+
+            instructies.to_excel(writer, sheet_name='Instructies', index=False, startrow=0)
+            row_offset = len(instructies) + 3
+            writer.sheets['Instructies'].write(row_offset - 1, 0, 'SLA RESPONSE TIJDEN (uren)')
+            sla_response_info.to_excel(writer, sheet_name='Instructies', index=False, startrow=row_offset)
+            row_offset += len(sla_response_info) + 2
+            writer.sheets['Instructies'].write(row_offset - 1, 0, 'SLA RESTORE TIJDEN (uren)')
+            sla_restore_info.to_excel(writer, sheet_name='Instructies', index=False, startrow=row_offset)
+            row_offset += len(sla_restore_info) + 2
+            writer.sheets['Instructies'].write(row_offset - 1, 0, 'NBD = Next Business Day | BE = Best Effort (geen harde norm)')
 
         output.seek(0)
 
@@ -835,11 +988,10 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # PREVIEW & DOWNLOAD
         # ====================================================================
 
-        status_container.success("✅ Export klaar!")
-
         # Preview eerste 10 rijen
         st.subheader("Preview (eerste 10 werkbonnen)")
-        st.dataframe(result_df.head(10))
+        preview_cols = [c for c in columns if c not in ('aanmaak d+t', 'reactie d+t', 'response d+t', 'reactietijd', 'response tijd')]
+        st.dataframe(result_df[preview_cols].head(10))
 
         # Stats
         col1, col2, col3, col4 = st.columns(4)
@@ -858,10 +1010,10 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary"):
         # Download button
         filename = f"zenith_werkbonnen_{start_date}_{end_date}.xlsx"
         st.download_button(
-            label="📥 Download Excel",
+            label="Download Excel",
             data=output,
             file_name=filename,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        st.info("💡 **Let op:** Rode cellen moeten handmatig worden ingevuld. Gele cellen zijn automatisch afgeleid en kunnen worden gecontroleerd.")
+        st.info("**Let op:** Rode cellen = handmatig invullen. Gele cellen = automatisch afgeleid (controleren). Zie tabblad 'Instructies' voor details.")
