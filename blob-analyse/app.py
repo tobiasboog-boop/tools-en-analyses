@@ -479,8 +479,12 @@ with st.sidebar:
     st.markdown("🔴 Rood = Niet in database (handmatig invullen)")
     st.markdown("🟡 Geel = Automatisch afgeleid (controleren)")
 
-# Main button
-if st.button("📥 Data Ophalen & Exporteren", type="primary"):
+# Guard: opdrachtgever moet geselecteerd zijn
+if not opdrachtgever_filter:
+    st.warning("⬅️ Selecteer eerst een opdrachtgever (debiteur) in de sidebar. Klik 'Ververs filters' als de lijst nog leeg is.")
+
+# Main button (disabled als geen opdrachtgever geselecteerd)
+if st.button("📥 Data Ophalen & Exporteren", type="primary", disabled=not opdrachtgever_filter):
     client = NotificaClient()
 
     # Compacte status indicator (update in plaats van nieuwe messages)
