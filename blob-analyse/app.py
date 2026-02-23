@@ -664,13 +664,10 @@ if st.button("📥 Data Ophalen & Exporteren", type="primary", disabled=not opdr
             # Voeg lege notitie kolom toe
             df['notitie'] = None
 
-        # Filter 3: alleen werkbonnen met BLOB notities (voor >95% data kwaliteit)
-        # Dit voorkomt werkbonnen met lege Storing omschrijving en Toelichting
-        before_filter3 = len(df)
-        df = df[df['notitie'].notna() & (df['notitie'] != '')]
-        after_filter3 = len(df)
-        if before_filter3 > after_filter3:
-            status_container.info(f"ℹ️ {before_filter3 - after_filter3} werkbonnen zonder BLOB notities uitgefilterd")
+        # Info: werkbonnen zonder BLOB notities (Storing omschrijving en Toelichting zijn dan leeg)
+        zonder_blob = df['notitie'].isna() | (df['notitie'] == '')
+        if zonder_blob.sum() > 0:
+            st.info(f"ℹ️ {zonder_blob.sum()} werkbonnen zonder BLOB notities (Storing omschrijving en Toelichting zijn leeg)")
 
         if df.empty:
             st.warning("Geen werkbonnen over na filtering. Verlaag de filters.")
