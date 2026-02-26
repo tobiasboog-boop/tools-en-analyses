@@ -398,73 +398,149 @@ st.dataframe(
 
 
 # =====================================================================
-# SYNTESS MEERWAARDE PREVIEW
+# DWH KOPPELING: WAT WORDT ER MOGELIJK?
 # =====================================================================
 
 st.markdown("---")
-st.subheader("Na Syntess DWH-koppeling")
+st.subheader("Na DWH-koppeling: Syntess SSM + C-Track")
 
-st.markdown("""
-Met de Syntess-koppeling worden de volgende verbeteringen mogelijk:
-""")
+st.markdown(
+    "Het Syntess SSM datamodel bevat standaard tabellen voor medewerker- en "
+    "ritregistratie. Door deze te koppelen aan de C-Track GPS-data "
+    "ontstaat een **sluitende verantwoording** richting de Belastingdienst."
+)
 
+# SSM Views tabel
+with st.expander("Syntess SSM views beschikbaar voor koppeling", expanded=True):
+    ssm_views = pd.DataFrame({
+        'SSM View': [
+            'SSM Bedrijfsmedewerkers',
+            'SSM Medewerker mobiliteit',
+            'Mobiele uitvoersessies',
+            'Tijdregistraties mobiele uitvoersessies',
+            'SSM Geboekte uren',
+            'SSM Werkbonparagraaf kosten en geboekte uren',
+        ],
+        'Schema': [
+            'notifica', 'notifica', 'werkbonnen',
+            'werkbonnen', 'notifica', 'notifica',
+        ],
+        'Relevante velden': [
+            'Medewerker Code, Volledige naam, Functie, '
+            'Datum in dienst, Afdeling, Type medewerker',
+            'Afstand (woon-werk km), Weekdagnummer, Vervoermiddel, '
+            'Brandstoftype, Reistype, Begin-/Einddatum',
+            'Reistijd, Werktijd, Datum, Tijdstip, Meegereden (J/N), '
+            'DocumentKey (werkbon), MedewerkerKey',
+            'Status (Begin/Vertrek/Pauze/Gereed), Datum/tijd, '
+            'MobieleuitvoersessieRegelKey',
+            'Aantal (uren), Uitvoeringsdatum, Begintijd, Eindtijd, '
+            'MedewerkerKey, WerkbonKey, Kostenbron',
+            'Arbeid begintijd, Arbeid eindtijd, Uitvoeringsdatum, '
+            'MedewerkerKey, WerkbonDocumentKey',
+        ],
+        'Vergelijking met C-Track': [
+            'Koppel bestuurdersnaam aan personeelsnummer + functie '
+            '(Projectmonteur vs Servicemonteur)',
+            'Vergelijk opgegeven woon-werk km met GPS-gemeten afstand '
+            'per medewerker per weekdag',
+            'Vergelijk geboekte reistijd per werkbon met GPS-rijtijd '
+            'op dezelfde dag',
+            'Vergelijk exacte vertrek-/aankomsttijden uit app met '
+            'GPS start-/eindtijd per rit',
+            'Vergelijk geboekte uren per dag met GPS-activiteit '
+            '(was medewerker daadwerkelijk onderweg?)',
+            'Vergelijk werkbon arbeidstijden met GPS-aanwezigheid '
+            'op projectlocatie',
+        ],
+    })
+    st.dataframe(ssm_views, use_container_width=True, hide_index=True)
+
+# Drie pijlers meerwaarde
 mw1, mw2, mw3 = st.columns(3)
 
 with mw1:
-    st.markdown("##### Personeelsnummer")
+    st.markdown("##### 1. Belastingdienst-export")
     st.markdown("""
-    **Bron:** `stam.Medewerkers`
+    **SSM View:** `SSM Bedrijfsmedewerkers`
 
-    Koppeling van C-Track bestuurdersnaam
-    aan Syntess medewerkercode. Vereist
-    voor de Belastingdienst-export.
+    - **Medewerker Code** op elke rit
+    - **Functie** bepaalt controlevenster
+    - Projectmonteur: 7:00-15:45
+    - Servicemonteur: 8:00-17:00
+
+    *Vereist voor aangifte.*
     """)
 
 with mw2:
-    st.markdown("##### Functie-classificatie")
+    st.markdown("##### 2. Woon-werk verificatie")
     st.markdown("""
-    **Bron:** `stam.Medewerkers`
+    **SSM View:** `SSM Medewerker mobiliteit`
 
-    Automatisch onderscheid tussen
-    **Projectmonteur** (7:00-15:45) en
-    **Servicemonteur** (8:00-17:00).
-    Juiste controle-tijdvensters per type.
+    - **Afstand**: opgegeven woon-werk km
+    - Per **Weekdagnummer** (ma-vr)
+    - **Reistype** en **Vervoermiddel**
+
+    Vergelijk Syntess-opgave met
+    C-Track GPS = afwijkingen zichtbaar.
     """)
 
 with mw3:
-    st.markdown("##### Reistijd-verificatie")
+    st.markdown("##### 3. Reistijd-controle")
     st.markdown("""
-    **Bron:** `stam.Werkbonnen` / `stam.Uren`
+    **SSM View:** `Mobiele uitvoersessies`
 
-    Vergelijk geboekte reistijd met
-    GPS-gemeten rijtijd. Signaleer
-    afwijkingen automatisch.
+    - **Reistijd** per werkbon-sessie
+    - **Werktijd** apart geboekt
+    - **Meegereden** vlag (carpooling)
+
+    Vergelijk met GPS-rijtijd =
+    signaleer afwijkingen automatisch.
     """)
 
-# Voorbeeld tabel van wat het oplevert
-st.markdown("**Voorbeeld: hoe de export eruitziet na koppeling**")
-voorbeeld = pd.DataFrame({
-    'Personeelsnr': ['W-1234', 'W-1234', 'W-5678', 'W-5678'],
-    'Naam': ['Thomas Sievers', 'Thomas Sievers', 'Gerton Vlastuin', 'Gerton Vlastuin'],
+# Concrete voorbeelden
+st.markdown("---")
+st.markdown("**Voorbeeld 1: Woon-werk km - Syntess opgave vs C-Track GPS**")
+st.caption("SSM Medewerker mobiliteit.Afstand vs C-Track GPS afstand_km")
+vb_ww = pd.DataFrame({
+    'Pers.nr': ['W-1234', 'W-1234', 'W-5678', 'W-5678'],
+    'Medewerker': ['Thomas Sievers', 'Thomas Sievers', 'Gerton Vlastuin', 'Gerton Vlastuin'],
     'Functie': ['Servicemonteur', 'Servicemonteur', 'Projectmonteur', 'Projectmonteur'],
-    'Starttijd': ['07:48', '17:22', '06:45', '15:30'],
-    'Startpunt': ['Thuis', 'Vestiging Winterswijk', 'Thuis', 'Project Elver'],
-    'Eindpunt': ['Vestiging Winterswijk', 'Thuis', 'Project Elver', 'Thuis'],
-    'Km': [46.1, 53.7, 12.3, 12.3],
-    'Type': ['Woon-werk', 'Woon-werk', 'Woon-werk', 'Woon-werk'],
-    'Controlevenster': ['7:30-8:30 ✓', '16:30-17:30 ✓', '5:45-7:30 ✓', '15:15-17:00 ✓'],
-    'Geboekte reistijd': ['45 min', '50 min', '20 min', '20 min'],
-    'GPS reistijd': ['45 min', '49 min', '18 min', '19 min'],
-    'LB km': [46.1, 53.7, 12.3, 12.3],
-    'OB km': [0, 0, 0, 0],
+    'Syntess woon-werk km': ['46 km (ma-vr)', '46 km (ma-vr)', '12 km (ma-vr)', '12 km (ma-vr)'],
+    'C-Track GPS km': ['46.1 km', '53.7 km', '12.3 km', '12.3 km'],
+    'Route': ['Thuis > Vestiging', 'Vestiging > Thuis', 'Thuis > Project', 'Project > Thuis'],
+    'Afwijking': ['+ 0.1 km', '+ 7.7 km (!)', '+ 0.3 km', '+ 0.3 km'],
 })
+st.dataframe(vb_ww, use_container_width=True, hide_index=True)
 
-st.dataframe(voorbeeld, use_container_width=True, hide_index=True)
+st.markdown("**Voorbeeld 2: Werkbon reistijd vs GPS rijtijd**")
+st.caption("Mobiele uitvoersessies.Reistijd vs C-Track GPS drivingtime")
+vb_rt = pd.DataFrame({
+    'Pers.nr': ['W-1234', 'W-1234', 'W-5678'],
+    'Medewerker': ['Thomas Sievers', 'Thomas Sievers', 'Gerton Vlastuin'],
+    'Datum': ['03-02', '03-02', '04-02'],
+    'Werkbon reistijd (Syntess)': ['1:30 uur', '0:45 uur', '0:20 uur'],
+    'GPS rijtijd (C-Track)': ['1:25 uur', '0:48 uur', '0:18 uur'],
+    'Verschil': ['-5 min', '+3 min', '-2 min'],
+    'Status': ['OK', 'OK', 'OK'],
+})
+st.dataframe(vb_rt, use_container_width=True, hide_index=True)
+
+st.markdown("**Voorbeeld 3: Kloktijd werkbon-app vs GPS vertrek/aankomst**")
+st.caption("Tijdregistraties mobiele uitvoersessies vs C-Track tripstartutc/tripendutc")
+vb_klok = pd.DataFrame({
+    'Medewerker': ['Thomas Sievers', 'Thomas Sievers', 'Thomas Sievers'],
+    'Werkbon-app': ['Begin: 07:48', 'Vertrek: 08:44', 'Gereed: 09:24'],
+    'C-Track GPS': ['Rit start: 07:47', 'Rit start: 08:44', 'Rit eind: 09:24'],
+    'Verschil': ['1 min', '0 min', '0 min'],
+    'Conclusie': ['Klopt', 'Klopt', 'Klopt'],
+})
+st.dataframe(vb_klok, use_container_width=True, hide_index=True)
 
 st.info(
-    "De kolommen **Personeelsnr**, **Functie**, **Controlevenster**, "
-    "**Geboekte reistijd** en **GPS reistijd** komen beschikbaar "
-    "na koppeling met het Syntess Data Warehouse."
+    "Bovenstaande voorbeelden zijn illustratief. Na DWH-koppeling worden de "
+    "SSM views automatisch vergeleken met de C-Track GPS-metingen. "
+    "Het SSM datamodel is beschikbaar bij elke Syntess-klant."
 )
 
 
