@@ -5,6 +5,16 @@ import os
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
 
+def _fix_double_utf8(s):
+    """Fix double-encoded UTF-8 strings (e.g. Ã© -> é)."""
+    if pd.isna(s) or not isinstance(s, str):
+        return s
+    try:
+        return s.encode('latin-1').decode('utf-8')
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return s
+
+
 @st.cache_data(ttl=600)
 def load_vehicles() -> pd.DataFrame:
     """Load vehicle master data from Parquet."""
@@ -36,5 +46,10 @@ def load_trips() -> pd.DataFrame:
     # Idle time in minutes
     df['stationair_min'] = df['excessidletime'].fillna(0) / 60.0
     df['overspeed_min'] = df['overspeedduration'].fillna(0) / 60.0
+
+    # Fix double-encoded UTF-8 in text columns
+    for col in ['startlocation', 'endlocation', 'bestuurder']:
+        if col in df.columns:
+            df[col] = df[col].apply(_fix_double_utf8)
 
     return df
