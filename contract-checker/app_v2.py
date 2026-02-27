@@ -827,10 +827,16 @@ Deze informatie is CRUCIAAL en weegt ZWAARDER dan storingscodes of kostenregels.
 
 📌 REGEL 2 - KETELONDERDELEN = BINNEN DE MANTEL (ALTIJD JA):
 De volgende onderdelen zitten fysiek IN de cv-ketel (binnen de mantel) en vallen ALTIJD binnen contract:
-- Hydroblok, driewegklep, manometer, automatisch vulsysteem, vulset
-- Expansievat, warmtewisselaar, branderunit, gasblok, ventilator
-- Printplaat, ontstekingselektrode, ionisatie-electrode
-- Pompje (cv-pomp in de ketel), overloopbeveiliging, veiligheidsklep
+- Hydroblok, driewegklep (3-wegklep), manometer, automatisch vulsysteem, vulset
+- Expansievat, warmtewisselaar (platenwisselaar), branderunit, brander, waakvlambrander
+- Gasblok, gasregelblok, ventilator, ventilatormotor
+- Printplaat, branderautomaat, display/LCD, opentherm interface
+- Ontstekingselektrode, ionisatie-electrode, ontstekingstransformator, thermokoppel
+- Pomp (cv-pomp in de ketel), overloopbeveiliging, veiligheidsklep, overstortventiel
+- Sensor, NTC (temperatuursensor), doorstroomsensor, druksensor
+- Luchtdrukschakelaar, waterdrukschakelaar, maximaalthermostaat
+- Sifon, condensafvoer, condensbak, dompelbuis
+- Aansluitblok, kabelboom, O-ringen, pakkingen, afdichtingen (ketel-intern)
 Als de werkbon (of een vervolgbon/meenemen-bon) deze onderdelen noemt → JA.
 
 📌 REGEL 3 - CONTRACTTEKST IS LEIDEND:
