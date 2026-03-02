@@ -1,6 +1,5 @@
 streamlit
 pandas
 requests
-google-analytics-data
-google-auth
-tomli
+openpyxl
+python-dotenv

@@ -1,1 +1,10 @@
+# Secrets - nooit in git
 lead-dashboard/.streamlit/secrets.toml
+lead-dashboard/.env
+**/.env
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Data exports met persoonlijke gegevens
+lead-dashboard/docs/mailerlite_export/

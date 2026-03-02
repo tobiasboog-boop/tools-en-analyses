@@ -1,33 +1,86 @@
 """
-Lead Dashboard - Notifica
-Combineert MailerLite engagement, Pipedrive CRM en website bezoekdata
-tot een unified lead scoring dashboard.
+Notifica Sales Dashboard
+========================
+Leads bellen, klanten bellen, campagneresultaten bekijken.
 """
 import streamlit as st
 import pandas as pd
-import requests
+import os
 from datetime import datetime
+from dotenv import load_dotenv
 
-st.set_page_config(page_title="Lead Dashboard", page_icon="🎯", layout="wide")
+from config import FUNNEL_CONFIG, INTERNE_MEDEWERKERS
+from data import (
+    get_secret, generate_nid,
+    fetch_emailoctopus_subscribers, fetch_pipedrive_persons,
+    fetch_pipedrive_deals, fetch_emailoctopus_campaign_activity,
+    load_web_visitors, load_powerbi_data, validate_powerbi_data,
+    build_leads_df, calculate_customer_health, get_customer_contacts,
+    load_campaign_data, load_campaign_activity, fetch_leadfeeder_leads,
+    POWERBI_EXCEL_DEFAULT,
+)
+
+load_dotenv()
+
+st.set_page_config(
+    page_title="Notifica Sales Dashboard",
+    page_icon="N",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# --- Custom CSS ---
+st.markdown("""
+<style>
+    .main .block-container { padding-top: 1.5rem; }
+
+    /* Metric cards */
+    [data-testid="metric-container"] {
+        background: linear-gradient(135deg, #f8f9fc 0%, #fff 100%);
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 0.8rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    [data-testid="metric-container"] [data-testid="stMetricValue"] {
+        font-size: 1.6rem;
+        font-weight: 700;
+    }
+
+    /* Status dots */
+    .status-rood { color: #dc2626; font-weight: bold; }
+    .status-oranje { color: #ea580c; font-weight: bold; }
+    .status-groen { color: #16a34a; font-weight: bold; }
+
+</style>
+""", unsafe_allow_html=True)
+
 
 # --- Authentication ---
 
 def check_password():
-    """Wachtwoordbeveiliging via session state."""
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
-
     if st.session_state.authenticated:
         return True
 
-    st.title("🔒 Lead Dashboard")
-    password = st.text_input("Wachtwoord", type="password")
-    if st.button("Inloggen"):
-        if password == st.secrets.get("APP_PASSWORD", ""):
-            st.session_state.authenticated = True
-            st.rerun()
-        else:
-            st.error("Onjuist wachtwoord")
+    st.markdown("""
+    <div style="text-align: center; padding: 60px 0 20px 0;">
+        <h1 style="color: #16136F;">Notifica Sales Dashboard</h1>
+        <p style="color: #666; font-size: 1.1rem;">Login om verder te gaan</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        password = st.text_input("Wachtwoord", type="password")
+        if st.button("Inloggen", use_container_width=True):
+            expected = get_secret("APP_PASSWORD")
+            if expected and password == expected:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Onjuist wachtwoord")
     return False
 
 
@@ -35,482 +88,808 @@ if not check_password():
     st.stop()
 
 
-# --- Data Fetching Functions ---
-
-MAILERLITE_GROUP_ID = 177296943307818341
-
-
-@st.cache_data(ttl=600)
-def fetch_mailerlite_subscribers():
-    """Haal alle subscribers op uit de hoofdgroep met engagement data."""
-    token = st.secrets.get("MAILERLITE_API_TOKEN", "")
-    if not token:
-        return pd.DataFrame()
-
-    headers = {"X-MailerLite-ApiKey": token}
-    all_subscribers = []
-    offset = 0
-    limit = 100
-
-    while True:
-        try:
-            response = requests.get(
-                f"https://api.mailerlite.com/api/v2/groups/{MAILERLITE_GROUP_ID}/subscribers",
-                headers=headers,
-                params={"limit": limit, "offset": offset},
-                timeout=30,
-            )
-            if response.status_code != 200:
-                break
-            batch = response.json()
-            if not batch:
-                break
-            all_subscribers.extend(batch)
-            if len(batch) < limit:
-                break
-            offset += limit
-        except Exception:
-            break
-
-    if not all_subscribers:
-        return pd.DataFrame()
-
-    records = []
-    for sub in all_subscribers:
-        email = sub.get("email", "")
-        name = sub.get("name", "") or ""
-        last_name = sub.get("last_name", "") or ""
-        full_name = f"{name} {last_name}".strip()
-        company = ""
-
-        # Zoek bedrijfsnaam in custom fields
-        for field in sub.get("fields", []):
-            if field.get("key") == "company":
-                company = field.get("value", "") or ""
-                break
-
-        records.append({
-            "email": email,
-            "name": full_name,
-            "company": company,
-            "opened": int(sub.get("opened", 0) or 0),
-            "clicked": int(sub.get("clicked", 0) or 0),
-            "date_subscribe": sub.get("date_subscribe", ""),
-            "type": sub.get("type", ""),
-        })
-
-    return pd.DataFrame(records)
-
-
-@st.cache_data(ttl=600)
-def fetch_pipedrive_persons():
-    """Haal alle personen op uit Pipedrive met organisatie-info."""
-    token = st.secrets.get("PIPEDRIVE_API_TOKEN", "")
-    if not token:
-        return pd.DataFrame()
-
-    all_persons = []
-    start = 0
-    limit = 500
-
-    while True:
-        try:
-            response = requests.get(
-                "https://notifica.pipedrive.com/v1/persons",
-                params={"api_token": token, "limit": limit, "start": start},
-                timeout=30,
-            )
-            if response.status_code != 200:
-                break
-            data = response.json()
-            persons = data.get("data") or []
-            if not persons:
-                break
-            all_persons.extend(persons)
-            pagination = data.get("additional_data", {}).get("pagination", {})
-            if not pagination.get("more_items_in_collection"):
-                break
-            start = pagination.get("next_start", start + limit)
-        except Exception:
-            break
-
-    if not all_persons:
-        return pd.DataFrame()
-
-    records = []
-    for p in all_persons:
-        org = p.get("org_name") or ""
-        emails = p.get("email", [])
-        email = emails[0].get("value", "") if emails else ""
-        records.append({
-            "pipedrive_name": (p.get("name") or "").strip(),
-            "pipedrive_email": email.lower().strip(),
-            "pipedrive_org": org.strip(),
-            "pipedrive_last_activity": p.get("last_activity_date", ""),
-        })
-
-    return pd.DataFrame(records)
-
-
-@st.cache_data(ttl=300)
-def fetch_visitor_data_from_api(days=30):
-    """Haal bezoekdata op via Cloudflare Workers API."""
-    api_url = "https://notifica.nl/api/visitor-data"
-    api_key = st.secrets.get("VISITOR_ADMIN_KEY", "")
-    if not api_key:
-        return None, None
-    try:
-        response = requests.get(
-            api_url,
-            params={"key": api_key, "days": days, "format": "json"},
-            timeout=15,
-        )
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("success"):
-                return pd.DataFrame(data["visitors"]), data.get("summary", {})
-        return None, None
-    except Exception:
-        return None, None
-
-
-def load_web_visitors():
-    """Laad web visitors: eerst API, dan CSV fallback. Geeft mapping dict + bron."""
-    # Probeer Cloudflare API
-    df, summary = fetch_visitor_data_from_api()
-    if df is not None and not df.empty:
-        mapping = {}
-        for _, row in df.iterrows():
-            key = str(row["company_name"]).strip().lower()
-            score = int(row.get("website_visits_score", 0))
-            # Houd hoogste score per bedrijf (kan dubbel voorkomen)
-            if key not in mapping or score > mapping[key]:
-                mapping[key] = score
-        return mapping, "api", summary, df
-
-    # Fallback: CSV bestand
-    try:
-        csv_df = pd.read_csv("web_visitors_mapping.csv")
-        mapping = {}
-        for _, row in csv_df.iterrows():
-            key = str(row["company_name"]).strip().lower()
-            score = int(row["website_visits_score"])
-            if key not in mapping or score > mapping[key]:
-                mapping[key] = score
-        return mapping, "csv", None, csv_df
-    except Exception:
-        return {}, "none", None, pd.DataFrame()
-
-
-# --- Matching & Scoring ---
-
-def fuzzy_match_company(name, mapping_keys):
-    """Match bedrijfsnaam tegen web visitors mapping.
-    Probeert: exact → contains → woord-match.
-    Returns: (matched_key, score) of (None, 0).
-    """
-    if not name:
-        return None, 0
-
-    name_lower = name.strip().lower()
-
-    # 1. Exact match
-    if name_lower in mapping_keys:
-        return name_lower, mapping_keys[name_lower]
-
-    # 2. Bevat-match (Pipedrive naam bevat visitor naam of omgekeerd)
-    for key, score in mapping_keys.items():
-        if len(key) >= 4 and (key in name_lower or name_lower in key):
-            return key, score
-
-    # 3. Woord-overlap (minimaal 1 significant woord)
-    stop_words = {"bv", "b.v.", "nv", "n.v.", "holding", "groep", "group",
-                  "nederland", "netherlands", "international", "the", "de",
-                  "het", "van", "en"}
-    name_words = set(name_lower.split()) - stop_words
-    # Verwijder te korte woorden
-    name_words = {w for w in name_words if len(w) >= 3}
-
-    best_match = None
-    best_score = 0
-    best_overlap = 0
-
-    for key, score in mapping_keys.items():
-        key_words = set(key.split()) - stop_words
-        key_words = {w for w in key_words if len(w) >= 3}
-        overlap = name_words & key_words
-        if len(overlap) >= 1 and len(overlap) > best_overlap:
-            best_overlap = len(overlap)
-            best_match = key
-            best_score = score
-
-    if best_match:
-        return best_match, best_score
-
-    return None, 0
-
-
-def calculate_engagement_score(opened, clicked):
-    """Bereken engagement score op basis van opens en clicks.
-    Opens: 0-15 punten, Clicks: 0-15 punten.
-    """
-    # Opens scoring (max 15)
-    if opened >= 20:
-        open_score = 15
-    elif opened >= 10:
-        open_score = 12
-    elif opened >= 5:
-        open_score = 9
-    elif opened >= 3:
-        open_score = 6
-    elif opened >= 1:
-        open_score = 3
-    else:
-        open_score = 0
-
-    # Clicks scoring (max 15)
-    if clicked >= 10:
-        click_score = 15
-    elif clicked >= 5:
-        click_score = 12
-    elif clicked >= 3:
-        click_score = 9
-    elif clicked >= 2:
-        click_score = 6
-    elif clicked >= 1:
-        click_score = 3
-    else:
-        click_score = 0
-
-    return open_score, click_score
-
-
-def classify_lead(total_score):
-    """Classificeer lead op basis van totaalscore."""
-    if total_score >= 18:
-        return "🔥 HOT"
-    elif total_score >= 9:
-        return "🟠 Warm"
-    else:
-        return "🔵 Cold"
-
-
-# --- Main Dashboard ---
-
-st.title("🎯 Lead Dashboard")
-st.caption("Notifica - MailerLite × Pipedrive × Website Tracking")
-
-# Data laden
-with st.spinner("Data ophalen..."):
-    ml_df = fetch_mailerlite_subscribers()
-    pd_df = fetch_pipedrive_persons()
-    web_mapping, web_source, web_summary, web_df = load_web_visitors()
-
-# Status indicators
-col1, col2, col3 = st.columns(3)
-with col1:
-    if not ml_df.empty:
-        st.success(f"✅ MailerLite: {len(ml_df)} subscribers")
-    else:
-        st.warning("⚠️ MailerLite: geen data")
-with col2:
-    if not pd_df.empty:
-        st.success(f"✅ Pipedrive: {len(pd_df)} personen")
-    else:
-        st.warning("⚠️ Pipedrive: geen data")
-with col3:
-    source_label = {"api": "Cloudflare API", "csv": "CSV fallback", "none": "geen data"}
-    if web_mapping:
-        st.success(f"✅ Web Visitors: {len(web_mapping)} bedrijven ({source_label[web_source]})")
-    else:
-        st.warning(f"⚠️ Web Visitors: {source_label[web_source]}")
-
-st.divider()
-
-# --- Build unified lead table ---
-
-if ml_df.empty:
-    st.error("Kan dashboard niet opbouwen zonder MailerLite data.")
-    st.stop()
-
-leads = []
-
-for _, sub in ml_df.iterrows():
-    email = sub["email"].lower().strip()
-    name = sub["name"]
-    company = sub["company"]
-    opened = sub["opened"]
-    clicked = sub["clicked"]
-
-    # Engagement score
-    open_score, click_score = calculate_engagement_score(opened, clicked)
-
-    # Match met Pipedrive (op email)
-    pipedrive_org = ""
-    pipedrive_match = False
-    if not pd_df.empty:
-        match = pd_df[pd_df["pipedrive_email"] == email]
-        if not match.empty:
-            pipedrive_org = match.iloc[0]["pipedrive_org"]
-            pipedrive_match = True
-
-    # Bepaal bedrijfsnaam (Pipedrive > MailerLite company field)
-    display_company = pipedrive_org or company or ""
-
-    # Web visitors score via fuzzy match
-    web_score = 0
-    if web_mapping and display_company:
-        _, web_score = fuzzy_match_company(display_company, web_mapping)
-
-    # Totaal score
-    total_score = open_score + click_score + web_score
-    segment = classify_lead(total_score)
-
-    leads.append({
-        "Naam": name,
-        "Email": email,
-        "Bedrijf": display_company,
-        "Opens": opened,
-        "Clicks": clicked,
-        "Open Score": open_score,
-        "Click Score": click_score,
-        "Web Score": web_score,
-        "Totaal": total_score,
-        "Segment": segment,
-        "In Pipedrive": "✅" if pipedrive_match else "❌",
-    })
-
-leads_df = pd.DataFrame(leads)
-leads_df = leads_df.sort_values("Totaal", ascending=False).reset_index(drop=True)
-
-# --- Metrics ---
-
-hot_count = len(leads_df[leads_df["Segment"] == "🔥 HOT"])
-warm_count = len(leads_df[leads_df["Segment"] == "🟠 Warm"])
-cold_count = len(leads_df[leads_df["Segment"] == "🔵 Cold"])
-in_pipedrive = len(leads_df[leads_df["In Pipedrive"] == "✅"])
-
-m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("Totaal Leads", len(leads_df))
-m2.metric("🔥 HOT", hot_count)
-m3.metric("🟠 Warm", warm_count)
-m4.metric("🔵 Cold", cold_count)
-m5.metric("In Pipedrive", f"{in_pipedrive}/{len(leads_df)}")
-
-st.divider()
-
-# --- Tabs ---
-
-tab_all, tab_hot, tab_warm, tab_cold, tab_web = st.tabs(
-    ["Alle Leads", "🔥 HOT Leads", "🟠 Warm Leads", "🔵 Cold Leads", "Website Bezoekers"]
-)
-
-# Display columns
-display_cols = ["Naam", "Email", "Bedrijf", "Opens", "Clicks",
-                "Open Score", "Click Score", "Web Score", "Totaal",
-                "Segment", "In Pipedrive"]
-
-with tab_all:
-    st.subheader(f"Alle leads ({len(leads_df)})")
-
-    # Filter
-    filter_segment = st.multiselect(
-        "Filter op segment", ["🔥 HOT", "🟠 Warm", "🔵 Cold"],
-        default=["🔥 HOT", "🟠 Warm", "🔵 Cold"],
+# --- Microsoft Clarity ---
+st.components.v1.html("""
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "vmymrfb2j3");
+</script>
+""", height=0)
+
+
+# ============================================================
+#  SIDEBAR
+# ============================================================
+
+with st.sidebar:
+    st.markdown("""
+    <div style="text-align: center; padding: 10px 0 20px 0;">
+        <h2 style="color: #16136F; margin: 0;">Notifica</h2>
+        <p style="color: #666; font-size: 0.85rem; margin: 4px 0 0 0;">Sales Dashboard</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.divider()
+
+    rol = st.radio(
+        "Wie ben je?",
+        ["Tobias", "Arthur", "Overzicht"],
+        index=0,
+        key="rol_sidebar",
     )
-    filtered = leads_df[leads_df["Segment"].isin(filter_segment)]
 
-    search = st.text_input("Zoek op naam, email of bedrijf")
-    if search:
-        mask = (
-            filtered["Naam"].str.contains(search, case=False, na=False) |
-            filtered["Email"].str.contains(search, case=False, na=False) |
-            filtered["Bedrijf"].str.contains(search, case=False, na=False)
-        )
-        filtered = filtered[mask]
+    st.divider()
+
+    pagina = st.radio(
+        "Pagina",
+        ["Mijn Week", "Overzicht", "Data & Details"],
+        index=0,
+        key="pagina_sidebar",
+    )
+
+    st.divider()
+
+    # Compacte data status
+    st.caption("Databronnen")
+
+
+# ============================================================
+#  LOAD DATA
+# ============================================================
+
+with st.spinner("Data ophalen..."):
+    ml_df, ml_status = fetch_emailoctopus_subscribers()
+    pd_df = fetch_pipedrive_persons()
+    deals_dict = fetch_pipedrive_deals()
+    web_mapping, web_source, web_summary, web_df, identified_df = load_web_visitors()
+    pbi_df, pbi_source, pbi_api_status = load_powerbi_data()
+    lf_df = fetch_leadfeeder_leads(days=30)
+
+# Status in sidebar
+with st.sidebar:
+    status_items = [
+        ("EmailOctopus", ml_status == "ok", f"{len(ml_df)}" if ml_status == "ok" else ml_status),
+        ("Pipedrive", not pd_df.empty, f"{len(pd_df)}" if not pd_df.empty else "geen"),
+        ("Power BI", pbi_df is not None and not pbi_df.empty,
+         f"{pbi_df['Pipedrive organisatie'].nunique()}" if pbi_df is not None and not pbi_df.empty else "geen"),
+        ("Deals", bool(deals_dict), f"{len(deals_dict)}" if deals_dict else "geen"),
+        ("Leadfeeder", not lf_df.empty, f"{len(lf_df)}" if not lf_df.empty else "geen"),
+    ]
+    for name, ok, detail in status_items:
+        st.caption(f"{'[OK]' if ok else '[--]'} {name}: {detail}")
+
+# Build data
+leads_df = build_leads_df(ml_df, pd_df, web_mapping,
+                          deals_dict=deals_dict,
+                          identified_df=identified_df,
+                          lf_df=lf_df)
+health_df = calculate_customer_health(pbi_df)
+if not health_df.empty:
+    health_df = get_customer_contacts(health_df, pd_df)
+
+
+# ============================================================
+#  PAGINA 1: MIJN WEEK
+# ============================================================
+
+def _split_leads_for_roles(leads_df, n_per_person=5):
+    """Split top leads: even indices voor Tobias, oneven voor Arthur."""
+    if leads_df.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    top = leads_df.head(n_per_person * 2)
+    tobias_leads = top.iloc[0::2].head(n_per_person)
+    arthur_leads = top.iloc[1::2].head(n_per_person)
+    return tobias_leads, arthur_leads
+
+
+def _get_klant_opvolging(health_df, n_per_person=5):
+    """Split klant-opvolging over Tobias en Arthur.
+
+    Mix van twee typen:
+    - Reactiveren: klanten met weinig/dalende views (Rood/Oranje) - meer gebruik stimuleren
+    - Upsell: goed presterende klanten (Groen) met weinig rapporten - verleiden tot meer
+
+    Elke persoon krijgt een mix van beide typen.
+    """
+    if health_df.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    df = health_df.copy()
+
+    # Type 1: Reactiveren (Rood + Oranje - weinig views)
+    reactiveren = df[df["Status"].isin(["Rood", "Oranje"])].sort_values(
+        "Views (recent)", ascending=True
+    ).head(n_per_person)
+    reactiveren = reactiveren.copy()
+    reactiveren["Actie"] = reactiveren["Status"].apply(
+        lambda s: "Reactiveren - geen gebruik" if s == "Rood" else "Reactiveren - dalend"
+    )
+
+    # Type 2: Upsell (Groen met weinig rapporten of hoog gebruik)
+    groen = df[df["Status"] == "Groen"].copy()
+    upsell = groen.sort_values("Rapporten", ascending=True).head(n_per_person)
+    upsell = upsell.copy()
+    upsell["Actie"] = "Upsell - actief maar weinig rapporten"
+
+    # Combineer en verdeel afwisselend
+    combined = pd.concat([reactiveren, upsell], ignore_index=True)
+    combined = combined.drop_duplicates(subset=["Klant"]).head(n_per_person * 2)
+
+    tobias_klanten = combined.iloc[0::2].head(n_per_person)
+    arthur_klanten = combined.iloc[1::2].head(n_per_person)
+    return tobias_klanten, arthur_klanten
+
+
+def _render_call_table(df, label, key_prefix):
+    """Render een bellijst tabel met relevante kolommen incl. signalen."""
+    if df.empty:
+        st.caption(f"Geen {label.lower()} beschikbaar.")
+        return
+
+    display = df.copy()
+
+    # Signalen samenvoegen in één leesbare kolom
+    def _signalen(row):
+        parts = []
+        if row.get("Deal Fase"):
+            parts.append(f"📋 {row['Deal Fase']}")
+        if row.get("NID Bezoeken", 0) > 0:
+            parts.append(f"🌐 {int(row['NID Bezoeken'])}x bezocht")
+        if row.get("LF Bezocht"):
+            parts.append("🔍 Leadfeeder")
+        return " | ".join(parts) if parts else ""
+
+    display["Signalen"] = display.apply(_signalen, axis=1)
+
+    cols = []
+    for c in ["Naam", "Bedrijf", "Telefoon", "Totaal", "Segment", "Signalen"]:
+        if c in display.columns:
+            cols.append(c)
 
     st.dataframe(
-        filtered[display_cols],
+        display[cols],
         use_container_width=True,
         hide_index=True,
-        height=500,
+        column_config={
+            "Totaal": st.column_config.ProgressColumn("Score", min_value=0, max_value=50, format="%d"),
+        }
     )
 
-with tab_hot:
-    hot_df = leads_df[leads_df["Segment"] == "🔥 HOT"]
-    st.subheader(f"🔥 HOT Leads ({len(hot_df)})")
-    if hot_df.empty:
-        st.info("Geen HOT leads gevonden.")
+
+def _render_klant_table(df, key_prefix):
+    """Render een klant-opvolging tabel met actie-type."""
+    if df.empty:
+        st.caption("Geen klantdata beschikbaar.")
+        return
+    display_cols = []
+    for c in ["Klant", "Actie", "Status", "Views (recent)", "Trend", "Gebruikers", "Contact", "Contact Telefoon"]:
+        if c in df.columns:
+            display_cols.append(c)
+    st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
+
+
+if pagina == "Mijn Week":
+
+    tobias_leads, arthur_leads = _split_leads_for_roles(leads_df, 5)
+    tobias_klanten, arthur_klanten = _get_klant_opvolging(health_df, 5)
+
+    if rol in ("Tobias", "Overzicht"):
+        st.subheader("Tobias")
+
+        st.markdown("**Leads bellen**")
+        if not tobias_leads.empty:
+            _render_call_table(tobias_leads, "leads", "t_leads")
+        else:
+            st.info("Geen leads beschikbaar.")
+
+        st.markdown("**Klanten bellen**")
+        if not tobias_klanten.empty:
+            _render_klant_table(tobias_klanten, "t_klant")
+        else:
+            st.info("Geen klant health data. Upload Power BI Excel in Data & Details.")
+
+        if rol == "Overzicht":
+            st.divider()
+
+    if rol in ("Arthur", "Overzicht"):
+        st.subheader("Arthur")
+
+        st.markdown("**Leads bellen**")
+        if not arthur_leads.empty:
+            _render_call_table(arthur_leads, "leads", "a_leads")
+        else:
+            st.info("Geen leads beschikbaar.")
+
+        st.markdown("**Klanten bellen**")
+        if not arthur_klanten.empty:
+            _render_klant_table(arthur_klanten, "a_klant")
+        else:
+            st.info("Geen klant health data beschikbaar.")
+
+
+# ============================================================
+#  PAGINA 2: FUNNEL COCKPIT
+# ============================================================
+
+elif pagina == "Overzicht":
+
+    # --- PIPELINE OVERZICHT ---
+    st.subheader("Pipeline")
+
+    if not leads_df.empty:
+        pipe_cols = st.columns(3)
+        hot_count = len(leads_df[leads_df["Segment"] == "HOT"])
+        warm_count = len(leads_df[leads_df["Segment"] == "Warm"])
+        cold_count = len(leads_df[leads_df["Segment"] == "Cold"])
+
+        pipe_cols[0].metric("HOT leads (18+)", hot_count)
+        pipe_cols[1].metric("Warm (9-17)", warm_count)
+        pipe_cols[2].metric("Cold (<9)", cold_count)
     else:
-        st.caption("Score ≥ 18 — Hoge engagement + website activiteit")
-        st.dataframe(hot_df[display_cols], use_container_width=True, hide_index=True)
+        st.info("Geen lead data beschikbaar.")
 
-with tab_warm:
-    warm_df = leads_df[leads_df["Segment"] == "🟠 Warm"]
-    st.subheader(f"🟠 Warm Leads ({len(warm_df)})")
-    if warm_df.empty:
-        st.info("Geen Warm leads gevonden.")
+    st.divider()
+
+    # --- KLANT HEALTH ---
+    st.subheader("Klant Health (compact)")
+
+    if not health_df.empty:
+        rood = health_df[health_df["Status"] == "Rood"]
+        oranje = health_df[health_df["Status"] == "Oranje"]
+        groen = health_df[health_df["Status"] == "Groen"]
+
+        h_cols = st.columns(3)
+        h_cols[0].metric("At-risk", len(rood), help="Geen views in laatste periode")
+        h_cols[1].metric("Aandacht", len(oranje), help="Dalende trend of 1 gebruiker")
+        h_cols[2].metric("Gezond", len(groen), help="Stabiel of stijgend gebruik")
+
+        # Top 12 status
+        top12_names = FUNNEL_CONFIG["top_12"]
+        top12_health = health_df[
+            health_df["Klant"].apply(
+                lambda k: any(t.lower() in str(k).lower() for t in top12_names)
+            )
+        ]
+        if not top12_health.empty:
+            st.markdown("**Top 12 klanten**")
+            top12_display = top12_health[["Klant", "Status", "Views (recent)", "Trend", "Gebruikers"]].copy()
+            st.dataframe(top12_display, use_container_width=True, hide_index=True)
+
+        # At-risk detail
+        if not rood.empty:
+            with st.expander(f"At-risk klanten ({len(rood)})"):
+                risk_cols = ["Klant", "Status", "Views (recent)", "Trend"]
+                if "Contact Telefoon" in rood.columns:
+                    risk_cols.append("Contact Telefoon")
+                st.dataframe(rood[risk_cols], use_container_width=True, hide_index=True)
+
+        # Upsell kansen
+        if not groen.empty:
+            low_reports = groen[groen["Rapporten"] <= 3].head(5)
+            if not low_reports.empty:
+                with st.expander("Upsell-kansen (actief maar weinig rapporten)"):
+                    st.dataframe(
+                        low_reports[["Klant", "Rapporten", "Views (recent)", "Gebruikers"]],
+                        use_container_width=True, hide_index=True,
+                    )
     else:
-        st.caption("Score 9-17 — Matige engagement")
-        st.dataframe(warm_df[display_cols], use_container_width=True, hide_index=True)
+        st.info("Geen Power BI data. Upload een Excel in Data & Details.")
 
-with tab_cold:
-    cold_df = leads_df[leads_df["Segment"] == "🔵 Cold"]
-    st.subheader(f"🔵 Cold Leads ({len(cold_df)})")
-    if cold_df.empty:
-        st.info("Geen Cold leads gevonden.")
-    else:
-        st.caption("Score < 9 — Lage engagement")
-        st.dataframe(cold_df[display_cols], use_container_width=True, hide_index=True)
 
-with tab_web:
-    st.subheader("Website Bezoekers")
+# ============================================================
+#  PAGINA 3: DATA & DETAILS
+# ============================================================
 
-    if web_source == "api":
-        st.success("Data via Cloudflare Workers API (live)")
-        if web_summary:
-            wc1, wc2, wc3 = st.columns(3)
-            wc1.metric("🟢 Actief (recent)", web_summary.get("groen", 0))
-            wc2.metric("🟠 Matig", web_summary.get("oranje", 0))
-            wc3.metric("🔴 Inactief", web_summary.get("rood", 0))
-    elif web_source == "csv":
-        st.info("Data via CSV fallback (voeg VISITOR_ADMIN_KEY toe aan secrets voor live data)")
-    else:
-        st.warning("Geen web visitors data beschikbaar")
+elif pagina == "Data & Details":
 
-    if not web_df.empty:
-        st.dataframe(
-            web_df.sort_values(
-                "website_visits_score" if "website_visits_score" in web_df.columns else web_df.columns[0],
-                ascending=False,
-            ),
-            use_container_width=True,
-            hide_index=True,
-            height=400,
-        )
+    tab_leads, tab_health, tab_revenue, tab_analyse = st.tabs([
+        "Lead Details",
+        "Klant Health",
+        "Revenue",
+        "Campagnes & Analyse",
+    ])
 
-# --- Scoring uitleg ---
+    # --- TAB: LEAD DETAILS ---
+    with tab_leads:
+        st.header("Lead Analyse")
 
-with st.expander("📊 Scoring Uitleg"):
-    st.markdown("""
+        if leads_df.empty:
+            st.info("Geen lead data beschikbaar.")
+        else:
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Totaal Leads", len(leads_df))
+            m2.metric("HOT", len(leads_df[leads_df["Segment"] == "HOT"]))
+            m3.metric("Warm", len(leads_df[leads_df["Segment"] == "Warm"]))
+            m4.metric("Cold", len(leads_df[leads_df["Segment"] == "Cold"]))
+
+            st.divider()
+
+            col_f1, col_f2 = st.columns([1, 2])
+            with col_f1:
+                filter_seg = st.multiselect(
+                    "Segment", ["HOT", "Warm", "Cold"],
+                    default=["HOT", "Warm", "Cold"],
+                    key="lead_filter_seg",
+                )
+            with col_f2:
+                search = st.text_input("Zoek op naam, email of bedrijf", key="lead_search")
+
+            filtered = leads_df[leads_df["Segment"].isin(filter_seg)]
+            if search:
+                mask = (
+                    filtered["Naam"].str.contains(search, case=False, na=False) |
+                    filtered["Email"].str.contains(search, case=False, na=False) |
+                    filtered["Bedrijf"].str.contains(search, case=False, na=False)
+                )
+                filtered = filtered[mask]
+
+            # Doelgroep indicator
+            top12_names = FUNNEL_CONFIG["top_12"]
+            klant_names = health_df["Klant"].tolist() if not health_df.empty else []
+
+            def classify_doelgroep(bedrijf):
+                if not bedrijf:
+                    return "Lead"
+                b = str(bedrijf).lower()
+                if any(t.lower() in b for t in top12_names):
+                    return "Top 12"
+                if any(k.lower() in b or b in k.lower() for k in klant_names if k):
+                    return "Klant"
+                return "Lead"
+
+            filtered = filtered.copy()
+            filtered["Doelgroep"] = filtered["Bedrijf"].apply(classify_doelgroep)
+
+            display_cols = ["Naam", "Email", "Bedrijf", "Doelgroep", "Telefoon",
+                            "Opens", "Clicks", "Open Score", "Click Score",
+                            "Web Score", "Totaal", "Segment"]
+            st.dataframe(
+                filtered[display_cols],
+                use_container_width=True, hide_index=True, height=500,
+            )
+
+            csv_all = filtered[display_cols].to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "Download leads (CSV)", csv_all,
+                f"leads_{datetime.now().strftime('%Y%m%d')}.csv",
+                "text/csv", key="download_leads",
+            )
+
+            with st.expander("Scoring uitleg"):
+                st.markdown("""
 **Lead Score: 0-40 punten** (Opens + Clicks + Website)
 
 | Component | Max | Bereik |
 |-----------|-----|--------|
-| E-mail Opens | 15 | 0 opens=0, 1+=3, 3+=6, 5+=9, 10+=12, 20+=15 |
-| E-mail Clicks | 15 | 0 clicks=0, 1+=3, 2+=6, 3+=9, 5+=12, 10+=15 |
+| E-mail Opens | 15 | 0=0, 1+=3, 3+=6, 5+=9, 10+=12, 20+=15 |
+| E-mail Clicks | 15 | 0=0, 1+=3, 2+=6, 3+=9, 5+=12, 10+=15 |
 | Website Bezoeken | 10 | 0-10 op basis van recente bezoekactiviteit |
 
-**Segmentatie:**
-- 🔥 **HOT** (≥18 punten): Hoge engagement, klaar voor opvolging
-- 🟠 **Warm** (9-17 punten): Interesse, maar nog niet urgent
-- 🔵 **Cold** (<9 punten): Lage engagement, nurturing nodig
+**Segmentatie:** HOT (>=18) | Warm (9-17) | Cold (<9)
+                """)
 
-**Databronnen:**
-- **MailerLite**: E-mail opens en clicks per subscriber
-- **Pipedrive**: Bedrijfskoppeling en CRM status
-- **Website Tracking**: IP-naar-bedrijf herkenning via Cloudflare Workers + IPinfo.io
-    """)
+    # --- TAB: KLANT HEALTH ---
+    with tab_health:
+        st.header("Klant Health - Power BI Gebruik")
 
+        uploaded = st.file_uploader(
+            "Upload Power BI Activity Report Views (Excel)",
+            type=["xlsx", "xls"],
+            key="pbi_upload",
+        )
+        if uploaded is not None:
+            st.session_state.powerbi_uploaded = uploaded
+            pbi_df = pd.read_excel(uploaded)
+            health_df = calculate_customer_health(pbi_df)
+            if not health_df.empty:
+                health_df = get_customer_contacts(health_df, pd_df)
+            st.success(f"Excel geladen: {len(pbi_df)} rijen, {pbi_df['Pipedrive organisatie'].nunique()} klanten")
+
+        if health_df.empty:
+            st.info(
+                "Geen Power BI data. Upload een Excel bestand hierboven, "
+                f"of plaats het bestand op: `{POWERBI_EXCEL_DEFAULT}`"
+            )
+        else:
+            top12_names = FUNNEL_CONFIG["top_12"]
+            health_df["Top 12"] = health_df["Klant"].apply(
+                lambda k: "***" if any(t.lower() in str(k).lower() for t in top12_names) else ""
+            )
+
+            rood = health_df[health_df["Status"] == "Rood"]
+            oranje = health_df[health_df["Status"] == "Oranje"]
+            groen = health_df[health_df["Status"] == "Groen"]
+            top12_count = len(health_df[health_df["Top 12"] == "***"])
+
+            hc1, hc2, hc3, hc4, hc5 = st.columns(5)
+            hc1.metric("Totaal Klanten", len(health_df))
+            hc2.metric("Rood (at-risk)", len(rood))
+            hc3.metric("Oranje (aandacht)", len(oranje))
+            hc4.metric("Groen (gezond)", len(groen))
+            hc5.metric("Top 12", top12_count)
+
+            st.divider()
+
+            fc1, fc2 = st.columns(2)
+            with fc1:
+                status_filter = st.multiselect(
+                    "Filter op status",
+                    ["Rood", "Oranje", "Groen"],
+                    default=["Rood", "Oranje", "Groen"],
+                    key="health_status_filter",
+                )
+            with fc2:
+                top12_only = st.checkbox("Alleen Top 12 klanten", key="top12_filter")
+
+            health_filtered = health_df[health_df["Status"].isin(status_filter)]
+            if top12_only:
+                health_filtered = health_filtered[health_filtered["Top 12"] == "***"]
+
+            health_cols = ["Top 12", "Klant", "Status", "Views (totaal)", "Views (recent)",
+                           "Views (vorig)", "Trend", "Trend %", "Gebruikers",
+                           "Rapporten", "Contact", "Contact Telefoon"]
+            health_cols = [c for c in health_cols if c in health_filtered.columns]
+
+            st.dataframe(
+                health_filtered[health_cols],
+                use_container_width=True, hide_index=True, height=500,
+            )
+
+            csv_health = health_filtered[health_cols].to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                "Download klant health (CSV)", csv_health,
+                f"klant_health_{datetime.now().strftime('%Y%m%d')}.csv",
+                "text/csv", key="download_health",
+            )
+
+            with st.expander("Klant detail (views per gebruiker)"):
+                if pbi_df is not None:
+                    klant_keuze = st.selectbox(
+                        "Selecteer klant",
+                        health_df["Pipedrive organisatie"].tolist(),
+                        key="klant_detail",
+                    )
+                    if klant_keuze:
+                        detail = pbi_df[pbi_df["Pipedrive organisatie"] == klant_keuze]
+                        detail = detail[~detail["Name"].str.lower().apply(
+                            lambda n: any(intern in str(n).lower() for intern in INTERNE_MEDEWERKERS)
+                        )]
+                        st.dataframe(
+                            detail[["Name", "Report name", "Aantal activity reportviews",
+                                    "Maand", "Jaar"]].sort_values(
+                                "Aantal activity reportviews", ascending=False
+                            ),
+                            use_container_width=True, hide_index=True,
+                        )
+
+            with st.expander("Data Validatie: API vs Excel"):
+                if pbi_source and pbi_source.startswith("api"):
+                    validation = validate_powerbi_data(pbi_df)
+                    if validation:
+                        st.markdown("**Vergelijking Power BI API data met lokale Excel export:**")
+                        vc1, vc2, vc3 = st.columns(3)
+                        vc1.metric("API rijen", validation["api_total_rows"])
+                        vc2.metric("Excel rijen", validation["excel_total_rows"])
+                        vc3.metric("Gedeelde orgs", validation["shared_orgs"])
+
+                        if not validation["comparison"].empty:
+                            st.dataframe(validation["comparison"], use_container_width=True,
+                                         hide_index=True, height=300)
+                    else:
+                        st.info(f"Validatie niet mogelijk. Excel nodig op: `{POWERBI_EXCEL_DEFAULT}`")
+                elif pbi_source == "excel":
+                    st.info("Data komt uit Excel. Validatie beschikbaar wanneer Power BI API actief is.")
+                else:
+                    st.info("Geen data beschikbaar voor validatie.")
+
+            with st.expander("Health Scoring uitleg"):
+                st.markdown("""
+**Status op basis van Power BI rapport-gebruik:**
+
+| Status | Criteria |
+|--------|----------|
+| **Rood** | Geen views in de laatste periode |
+| **Oranje** | Dalende trend (>25% minder) of 1 gebruiker |
+| **Groen** | Stabiel of stijgend gebruik, meerdere gebruikers |
+
+**Acties per status:**
+- **Rood**: Direct bellen - waarom geen gebruik meer?
+- **Oranje**: Proactief contact - hulp nodig?
+- **Groen**: Upsell-kansen identificeren
+                """)
+
+    # --- TAB: REVENUE ---
+    with tab_revenue:
+        st.header("Klantomzet 2025 (WeFact)")
+
+        omzet_data = FUNNEL_CONFIG.get("klant_omzet", {})
+        omzet_totalen = FUNNEL_CONFIG.get("omzet_totalen", {})
+
+        if omzet_data:
+            ot1, ot2, ot3, ot4 = st.columns(4)
+            ot1.metric("Consultancy", f"\u20ac{omzet_totalen.get('consultancy', 0):,.0f}")
+            ot2.metric("Projecten", f"\u20ac{omzet_totalen.get('projecten', 0):,.0f}")
+            ot3.metric("Abonnementen", f"\u20ac{omzet_totalen.get('abonnement', 0):,.0f}")
+            ot4.metric("Totaal", f"\u20ac{omzet_totalen.get('totaal', 0):,.0f}")
+
+            # Build omzet DataFrame
+            top12_names = FUNNEL_CONFIG["top_12"]
+            omzet_rows = []
+            for naam, bedragen in omzet_data.items():
+                cons = bedragen["consultancy"]
+                proj = bedragen["projecten"]
+                abo = bedragen["abonnement"]
+                omzet = cons + proj
+                totaal = cons + proj + abo
+                is_top12 = any(t.lower() in naam.lower() for t in top12_names)
+                omzet_rows.append({
+                    "Top 12": "***" if is_top12 else "",
+                    "Klant": naam,
+                    "Consultancy": cons,
+                    "Projecten": proj,
+                    "Omzet": omzet,
+                    "Abonnement": abo,
+                    "Totaal": totaal,
+                })
+            omzet_df = pd.DataFrame(omzet_rows).sort_values("Omzet", ascending=False).reset_index(drop=True)
+
+            st.markdown("**Top 12 klanten** (consultancy + projecten)")
+            top12_df = omzet_df[omzet_df["Top 12"] == "***"].copy()
+            top12_df.index = range(1, len(top12_df) + 1)
+
+            st.dataframe(
+                top12_df[["Klant", "Consultancy", "Projecten", "Omzet", "Abonnement", "Totaal"]],
+                use_container_width=True,
+                column_config={
+                    "Consultancy": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                    "Projecten": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                    "Omzet": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                    "Abonnement": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                    "Totaal": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                },
+            )
+
+            with st.expander(f"Alle {len(omzet_df)} klanten"):
+                omzet_df.index = range(1, len(omzet_df) + 1)
+                st.dataframe(
+                    omzet_df,
+                    use_container_width=True, height=600,
+                    column_config={
+                        "Consultancy": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                        "Projecten": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                        "Omzet": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                        "Abonnement": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                        "Totaal": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                    },
+                )
+
+            with st.expander("Abonnementsinkomsten detail"):
+                abo_df = omzet_df[omzet_df["Abonnement"] > 0].sort_values("Abonnement", ascending=False).copy()
+                abo_df.index = range(1, len(abo_df) + 1)
+                st.caption(f"{len(abo_df)} klanten met abonnement, totaal \u20ac{abo_df['Abonnement'].sum():,.0f} per jaar")
+                st.dataframe(
+                    abo_df[["Top 12", "Klant", "Abonnement"]],
+                    use_container_width=True, height=400,
+                    column_config={
+                        "Abonnement": st.column_config.NumberColumn(format="\u20ac%,.0f"),
+                    },
+                )
+        else:
+            st.info("Geen omzetdata beschikbaar.")
+
+    # --- TAB: CAMPAGNES & ANALYSE ---
+    with tab_analyse:
+
+        st.header("Campagnes & Score Herleiding")
+
+        # Data laden
+        camp_df = load_campaign_data()
+        act_df = load_campaign_activity()
+
+        analyse_sub1, analyse_sub2, analyse_sub3 = st.tabs([
+            "E-mailcampagnes",
+            "Website Bezoekers",
+            "Score Herleiding",
+        ])
+
+        # ── SUB-TAB 1: E-MAILCAMPAGNES ─────────────────────────
+
+        with analyse_sub1:
+
+            if camp_df.empty:
+                st.info("Geen campagnedata gevonden. Check docs/mailerlite_export/campaigns.csv")
+            else:
+                st.subheader("Campagne Performance")
+
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Campagnes", len(camp_df))
+                if "Verstuurd" in camp_df.columns:
+                    m2.metric("Totaal verstuurd", f"{camp_df['Verstuurd'].sum():,.0f}")
+                if "Opens" in camp_df.columns:
+                    m3.metric("Totaal opens", f"{camp_df['Opens'].sum():,.0f}")
+                if "Clicks" in camp_df.columns:
+                    m4.metric("Totaal clicks", f"{camp_df['Clicks'].sum():,.0f}")
+
+                display_cols = [c for c in [
+                    "Campagne", "Verzonden", "Verstuurd",
+                    "Unieke Opens", "Open Rate", "Unieke Clicks", "Click Rate",
+                    "Hard Bounces", "Soft Bounces", "Uitschrijvingen",
+                ] if c in camp_df.columns]
+
+                st.dataframe(
+                    camp_df[display_cols],
+                    use_container_width=True, hide_index=True, height=400,
+                    column_config={
+                        "Verzonden": st.column_config.DatetimeColumn(format="DD-MM-YYYY HH:mm"),
+                    },
+                )
+
+                if not act_df.empty:
+                    st.subheader("Detail per campagne")
+                    camp_names = camp_df["Campagne"].tolist() if "Campagne" in camp_df.columns else []
+                    selected_camp = st.selectbox("Selecteer campagne", camp_names, key="camp_select")
+
+                    if selected_camp and "Campagne" in act_df.columns:
+                        camp_detail = act_df[act_df["Campagne"] == selected_camp].copy()
+
+                        detail_openers, detail_clickers, detail_all = st.tabs([
+                            f"Geopend ({len(camp_detail[camp_detail['Opens'] > 0])})",
+                            f"Geklikt ({len(camp_detail[camp_detail['Clicks'] > 0])})",
+                            f"Alle ontvangers ({len(camp_detail)})",
+                        ])
+
+                        detail_cols = [c for c in ["Naam", "Email", "Bedrijf", "Opens", "Clicks"] if c in camp_detail.columns]
+
+                        with detail_openers:
+                            openers = camp_detail[camp_detail["Opens"] > 0].sort_values("Opens", ascending=False)
+                            if not openers.empty:
+                                st.dataframe(openers[detail_cols], use_container_width=True, hide_index=True, height=400)
+                            else:
+                                st.info("Niemand heeft deze campagne geopend.")
+
+                        with detail_clickers:
+                            clickers = camp_detail[camp_detail["Clicks"] > 0].sort_values("Clicks", ascending=False)
+                            if not clickers.empty:
+                                st.dataframe(clickers[detail_cols], use_container_width=True, hide_index=True, height=400)
+                            else:
+                                st.info("Niemand heeft op een link geklikt.")
+
+                        with detail_all:
+                            st.dataframe(
+                                camp_detail[detail_cols].sort_values("Opens", ascending=False),
+                                use_container_width=True, hide_index=True, height=400,
+                            )
+
+        # ── SUB-TAB 2: WEBSITE BEZOEKERS (Leadfeeder) ──────────
+
+        with analyse_sub2:
+            st.subheader("Website Bezoekers — Leadfeeder")
+            st.caption("Bedrijven die notifica.nl bezochten, geïdentificeerd via Leadfeeder (Dealfront).")
+
+            lf_days = st.selectbox("Periode", [7, 14, 30, 60], index=1, key="lf_days", format_func=lambda d: f"Laatste {d} dagen")
+
+            with st.spinner("Leadfeeder data ophalen..."):
+                lf_df = fetch_leadfeeder_leads(days=lf_days)
+
+            if lf_df.empty:
+                st.warning("Geen Leadfeeder data. Controleer API token in .env (LEADFEEDER_API_TOKEN).")
+            else:
+                # Metrics
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Bedrijven", len(lf_df))
+                m2.metric("Totaal bezoeken", int(lf_df["Bezoeken"].sum()))
+
+                bouw_mask = lf_df["Industrie"].str.contains("Construct|Install|Bouw|Build", case=False, na=False)
+                m3.metric("Bouwbedrijven", int(bouw_mask.sum()))
+                m4.metric("Gem. kwaliteitsscore", f"{lf_df['Kwaliteit'].mean():.1f}")
+
+                # Filter
+                col_filter1, col_filter2 = st.columns([2, 1])
+                with col_filter1:
+                    industrie_filter = st.multiselect(
+                        "Filter op industrie",
+                        options=sorted(lf_df["Industrie"].dropna().unique()),
+                        default=[],
+                        key="lf_industrie",
+                    )
+                with col_filter2:
+                    alleen_bouw = st.checkbox("Alleen bouw/installatie", value=False, key="lf_bouw")
+
+                filtered = lf_df.copy()
+                if industrie_filter:
+                    filtered = filtered[filtered["Industrie"].isin(industrie_filter)]
+                if alleen_bouw:
+                    filtered = filtered[filtered["Industrie"].str.contains(
+                        "Construct|Install|Bouw|Build", case=False, na=False
+                    )]
+
+                # Tabel
+                display_cols = [c for c in ["Bedrijf", "Industrie", "Stad", "Bezoeken", "Laatste Bezoek", "Kwaliteit", "Bron", "Website"] if c in filtered.columns]
+                st.dataframe(
+                    filtered[display_cols].reset_index(drop=True),
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Kwaliteit": st.column_config.ProgressColumn("Kwaliteit", min_value=0, max_value=5, format="%d"),
+                        "Bezoeken": st.column_config.NumberColumn("Bezoeken"),
+                        "Website": st.column_config.LinkColumn("Website"),
+                    }
+                )
+
+                st.caption(f"Data via [Leadfeeder/Dealfront](https://app.dealfront.com) — {len(filtered)} bedrijven weergegeven")
+
+        # ── SUB-TAB 3: SCORE HERLEIDING ────────────────────────
+
+        with analyse_sub3:
+            st.subheader("Score Herleiding per Lead")
+            st.caption("Selecteer een lead om te zien waar de score vandaan komt.")
+
+            if not leads_df.empty:
+                lead_options = leads_df.sort_values("Totaal", ascending=False).apply(
+                    lambda r: f"{r['Naam']} ({r.get('Bedrijf', '-')}) - Score: {r['Totaal']}", axis=1
+                ).tolist()
+                selected_lead = st.selectbox("Selecteer lead", lead_options, key="score_lead_select")
+
+                if selected_lead:
+                    idx = lead_options.index(selected_lead)
+                    lead = leads_df.sort_values("Totaal", ascending=False).iloc[idx]
+
+                    # NID + Clarity link
+                    lead_email = str(lead.get("Email", "")).lower().strip()
+                    nid = generate_nid(lead_email) if lead_email else ""
+                    if nid:
+                        clarity_url = f"https://clarity.microsoft.com/projects/view/vmymrfb2j3/recordings?CustomUserId={nid}"
+                        st.markdown(
+                            f"**NID:** `{nid}` &nbsp;&nbsp; "
+                            f"[🎥 Bekijk Clarity sessies]({clarity_url})",
+                            unsafe_allow_html=True,
+                        )
+
+                    col1, col2, col3 = st.columns(3)
+                    col1.metric("Open Score", f"{int(lead.get('Open Score', 0))}/15")
+                    col2.metric("Click Score", f"{int(lead.get('Click Score', 0))}/15")
+                    col3.metric("TOTAAL", f"{int(lead.get('Totaal', 0))}/30", delta=lead.get("Segment", ""))
+
+                    st.markdown("---")
+
+                    opens = int(lead.get("Opens", 0))
+                    clicks = int(lead.get("Clicks", 0))
+                    open_score = int(lead.get("Open Score", 0))
+                    click_score = int(lead.get("Click Score", 0))
+
+                    st.markdown(f"""
+| Metric | Waarde | Score |
+|--------|--------|-------|
+| Campagne opens | {opens}x geopend | {open_score}/15 |
+| Link clicks | {clicks}x geklikt | {click_score}/15 |
+| **Totaal** | | **{open_score + click_score}/30** |
+""")
+                    st.caption("Schaal opens: 0=0pt, 1+=3, 3+=6, 5+=9, 10+=12, 20+=15 | Schaal clicks: 1+=3, 2+=6, 3+=9, 5+=12, 10+=15")
+
+                    # Campagne-detail voor deze lead
+                    if not act_df.empty and "Email" in act_df.columns:
+                        lead_camps = act_df[act_df["Email"].str.lower().str.strip() == lead_email]
+                        if not lead_camps.empty:
+                            active_camps = lead_camps[
+                                (lead_camps["Opens"] > 0) | (lead_camps["Clicks"] > 0)
+                            ]
+                            if not active_camps.empty:
+                                st.markdown("**Campagnes met activiteit:**")
+                                camp_cols = [c for c in ["Campagne", "Opens", "Clicks"] if c in active_camps.columns]
+                                st.dataframe(active_camps[camp_cols], use_container_width=True, hide_index=True)
+                            else:
+                                st.info("Geen campagne-interactie gevonden voor deze lead.")
+
+            else:
+                st.info("Geen lead data beschikbaar.")
+
+
+# --- Footer ---
 st.divider()
-st.caption(f"Laatste update: {datetime.now().strftime('%d-%m-%Y %H:%M')} | Databronnen: MailerLite, Pipedrive, Cloudflare Workers")
+st.caption(
+    f"Laatste update: {datetime.now().strftime('%d-%m-%Y %H:%M')} | "
+    "Databronnen: EmailOctopus, Pipedrive, Power BI"
+)
