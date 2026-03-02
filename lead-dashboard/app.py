@@ -443,9 +443,11 @@ elif pagina == "Data & Details":
             filtered = filtered.copy()
             filtered["Doelgroep"] = filtered["Bedrijf"].apply(classify_doelgroep)
 
-            display_cols = ["Naam", "Email", "Bedrijf", "Doelgroep", "Telefoon",
+            all_possible = ["Naam", "Email", "Bedrijf", "Doelgroep", "Telefoon",
                             "Opens", "Clicks", "Open Score", "Click Score",
-                            "Web Score", "Totaal", "Segment"]
+                            "NID Score", "LF Score", "Deal Fase", "Deal Bonus",
+                            "Totaal", "Segment"]
+            display_cols = [c for c in all_possible if c in filtered.columns]
             st.dataframe(
                 filtered[display_cols],
                 use_container_width=True, hide_index=True, height=500,
