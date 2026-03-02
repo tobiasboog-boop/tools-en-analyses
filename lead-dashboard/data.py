@@ -453,20 +453,22 @@ GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 
 def _get_graph_token():
-    """Haal OAuth2 access token op voor Microsoft Graph via client credentials."""
-    tenant_id = get_secret("POWERBI_TENANT_ID")
-    client_id = get_secret("POWERBI_CLIENT_ID")
-    client_secret = get_secret("POWERBI_CLIENT_SECRET")
-    if not all([tenant_id, client_id, client_secret]):
+    """Haal OAuth2 access token op voor Microsoft Graph via ROPC (username + password)."""
+    tenant_id = get_secret("MAIL_TENANT_ID")
+    client_id = get_secret("MAIL_CLIENT_ID")
+    username = get_secret("MAIL_USERNAME")
+    password = get_secret("MAIL_PASSWORD")
+    if not all([tenant_id, client_id, username, password]):
         return None
     try:
         r = requests.post(
             f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
             data={
-                "grant_type": "client_credentials",
+                "grant_type": "password",
                 "client_id": client_id,
-                "client_secret": client_secret,
-                "scope": "https://graph.microsoft.com/.default",
+                "username": username,
+                "password": password,
+                "scope": "https://graph.microsoft.com/Mail.Read offline_access",
             },
             timeout=15,
         )
