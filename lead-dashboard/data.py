@@ -669,9 +669,24 @@ def load_web_visitors():
         return {}, "none", None, pd.DataFrame(), pd.DataFrame()
 
 
-@st.cache_data(ttl=14400)
-def fetch_powerbi_api_data():
-    """Haal Power BI report views op via Admin API. Returns (DataFrame, status)."""
+_NL_MAANDEN = {
+    1: "januari", 2: "februari", 3: "maart", 4: "april",
+    5: "mei", 6: "juni", 7: "juli", 8: "augustus",
+    9: "september", 10: "oktober", 11: "november", 12: "december",
+}
+
+
+@st.cache_data(ttl=3600)
+def fetch_powerbi_sql_data():
+    """Haal Power BI report views op via Azure SQL (bisqq/notificaRAAS/Notifica.[Power BI activities]).
+    Vereist: ODBC Driver 17 for SQL Server + service principal met db_datareader op notificaRAAS.
+    Returns (DataFrame, status)."""
+    import struct
+    try:
+        import pyodbc
+    except ImportError:
+        return None, "no_pyodbc"
+
     tenant_id = get_secret("POWERBI_TENANT_ID")
     client_id = get_secret("POWERBI_CLIENT_ID")
     client_secret = get_secret("POWERBI_CLIENT_SECRET")
@@ -679,111 +694,93 @@ def fetch_powerbi_api_data():
     if not all([tenant_id, client_id, client_secret]):
         return None, "no_credentials"
 
+    # Azure AD token voor Azure SQL (andere scope dan Power BI API)
     try:
-        token_url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
-        r = requests.post(token_url, data={
-            "grant_type": "client_credentials",
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "scope": "https://analysis.windows.net/powerbi/api/.default",
-        }, timeout=15)
+        r = requests.post(
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scope": "https://database.windows.net/.default",
+            },
+            timeout=15,
+        )
         if r.status_code != 200:
             return None, "auth_failed"
-        access_token = r.json()["access_token"]
+        token = r.json()["access_token"]
     except Exception:
         return None, "auth_error"
 
-    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
-    base_url = "https://api.powerbi.com/v1.0/myorg"
+    token_bytes = token.encode("utf-16-le")
+    token_struct = struct.pack(f"<I{len(token_bytes)}s", len(token_bytes), token_bytes)
 
-    all_events = []
-    start_date = (datetime.now() - timedelta(days=29)).strftime("%Y-%m-%d")
-    end_date = datetime.now().strftime("%Y-%m-%d")
+    conn_str = (
+        "Driver={ODBC Driver 17 for SQL Server};"
+        "Server=bisqq.database.windows.net;"
+        "Database=notificaRAAS;"
+        "Encrypt=yes;TrustServerCertificate=no;Connection Timeout=15;"
+    )
 
     try:
-        params = {
-            "startDateTime": f"'{start_date}T00:00:00.000Z'",
-            "endDateTime": f"'{end_date}T23:59:59.999Z'",
-        }
-        continuation = None
-        while True:
-            if continuation:
-                params["continuationToken"] = f"'{continuation}'"
-            r = requests.get(f"{base_url}/admin/activityevents",
-                             headers=headers, params=params, timeout=30)
-            if r.status_code != 200:
-                break
-            data = r.json()
-            events = data.get("activityEventEntities", [])
-            all_events.extend(events)
-            continuation = data.get("continuationToken")
-            if not continuation:
-                break
-    except Exception:
-        if not all_events:
-            return None, "fetch_error"
+        conn = pyodbc.connect(conn_str, attrs_before={1256: token_struct})
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                a.[Workspace name]    AS org_name,
+                a.[Report name]       AS report_name,
+                a.[Name]              AS user_name,
+                COUNT(*)              AS views,
+                YEAR(a.[Activity Datum])   AS jaar,
+                MONTH(a.[Activity Datum])  AS maand_nr
+            FROM Notifica.[Power BI activities] a
+            WHERE a.[Activity Datum] >= CAST(DATEADD(month, -3, GETDATE()) AS date)
+            GROUP BY a.[Workspace name], a.[Report name], a.[Name],
+                     YEAR(a.[Activity Datum]), MONTH(a.[Activity Datum])
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+    except Exception as e:
+        return None, f"sql_error: {str(e)[:120]}"
 
-    if not all_events:
+    if not rows:
         return None, "no_data"
 
-    events_df = pd.DataFrame(all_events)
-
-    if "Activity" in events_df.columns:
-        views = events_df[events_df["Activity"] == "ViewReport"].copy()
-    else:
-        views = events_df.copy()
-
-    if views.empty:
-        return None, "no_views"
-
-    result = pd.DataFrame({
-        "Pipedrive organisatie": views.get("WorkspaceName", views.get("workspaceName", "")),
-        "Report name": views.get("ReportName", views.get("reportName", "")),
-        "Name": views.get("UserKey", views.get("userKey", "")),
-        "Aantal activity reportviews": 1,
-    })
-
-    if "CreationTime" in views.columns or "creationTime" in views.columns:
-        ts = pd.to_datetime(views.get("CreationTime", views.get("creationTime", "")))
-        result["Jaar"] = ts.dt.year
-        result["Maand"] = ts.dt.month_name().str.lower()
-    else:
-        result["Jaar"] = datetime.now().year
-        result["Maand"] = datetime.now().strftime("%B").lower()
-
-    result = result.groupby(
-        ["Pipedrive organisatie", "Report name", "Name", "Jaar", "Maand"],
-        as_index=False
-    ).agg({"Aantal activity reportviews": "sum"})
-
+    result = pd.DataFrame(
+        rows,
+        columns=["Pipedrive organisatie", "Report name", "Name",
+                 "Aantal activity reportviews", "Jaar", "_maand_nr"],
+    )
+    result["Maand"] = result["_maand_nr"].map(_NL_MAANDEN)
+    result = result.drop(columns=["_maand_nr"])
     return result, "ok"
 
 
 def load_powerbi_data():
-    """Laad Power BI data: eerst uploaded, dan API, dan Excel.
-    Returns (DataFrame, source_label, api_status)."""
+    """Laad Power BI data: eerst uploaded, dan Azure SQL, dan Excel fallback.
+    Returns (DataFrame, source_label, sql_status)."""
     if "powerbi_uploaded" in st.session_state and st.session_state.powerbi_uploaded is not None:
         try:
             return pd.read_excel(st.session_state.powerbi_uploaded), "upload", None
         except Exception:
             pass
 
-    api_df, api_status = fetch_powerbi_api_data()
-    if api_df is not None and not api_df.empty:
-        return api_df, f"api ({api_status})", api_status
+    sql_df, sql_status = fetch_powerbi_sql_data()
+    if sql_df is not None and not sql_df.empty:
+        return sql_df, "sql", sql_status
 
     if os.path.exists(POWERBI_EXCEL_DEFAULT):
         try:
-            return pd.read_excel(POWERBI_EXCEL_DEFAULT), "excel", api_status
+            return pd.read_excel(POWERBI_EXCEL_DEFAULT), "excel", sql_status
         except Exception:
             pass
 
-    return None, "none", api_status
+    return None, "none", sql_status
 
 
-def validate_powerbi_data(api_df, excel_path=POWERBI_EXCEL_DEFAULT):
+def validate_powerbi_data(pbi_df, excel_path=POWERBI_EXCEL_DEFAULT):
     """Vergelijk Power BI API data met Excel export."""
-    if api_df is None or api_df.empty:
+    if pbi_df is None or pbi_df.empty:
         return None
     if not os.path.exists(excel_path):
         return None
@@ -792,39 +789,39 @@ def validate_powerbi_data(api_df, excel_path=POWERBI_EXCEL_DEFAULT):
     except Exception:
         return None
 
-    api_orgs = set(api_df["Pipedrive organisatie"].dropna().unique())
+    sql_orgs = set(pbi_df["Pipedrive organisatie"].dropna().unique())
     excel_orgs = set(excel_df["Pipedrive organisatie"].dropna().unique())
 
-    api_views = api_df.groupby("Pipedrive organisatie")["Aantal activity reportviews"].sum()
+    sql_views = pbi_df.groupby("Pipedrive organisatie")["Aantal activity reportviews"].sum()
     excel_views = excel_df.groupby("Pipedrive organisatie")["Aantal activity reportviews"].sum()
 
-    shared_orgs = api_orgs & excel_orgs
-    only_api = api_orgs - excel_orgs
-    only_excel = excel_orgs - api_orgs
+    shared_orgs = sql_orgs & excel_orgs
+    only_sql = sql_orgs - excel_orgs
+    only_excel = excel_orgs - sql_orgs
 
     comparison = []
     for org in sorted(shared_orgs):
-        api_v = int(api_views.get(org, 0))
+        sql_v = int(sql_views.get(org, 0))
         excel_v = int(excel_views.get(org, 0))
-        diff = api_v - excel_v
+        diff = sql_v - excel_v
         diff_pct = (diff / excel_v * 100) if excel_v > 0 else 0
         comparison.append({
             "Organisatie": org,
-            "Views (API)": api_v,
+            "Views (SQL)": sql_v,
             "Views (Excel)": excel_v,
             "Verschil": diff,
             "Verschil %": round(diff_pct, 1),
         })
 
     return {
-        "api_total_rows": len(api_df),
+        "sql_total_rows": len(pbi_df),
         "excel_total_rows": len(excel_df),
-        "api_total_views": int(api_df["Aantal activity reportviews"].sum()),
+        "sql_total_views": int(pbi_df["Aantal activity reportviews"].sum()),
         "excel_total_views": int(excel_df["Aantal activity reportviews"].sum()),
-        "api_orgs": len(api_orgs),
+        "sql_orgs": len(sql_orgs),
         "excel_orgs": len(excel_orgs),
         "shared_orgs": len(shared_orgs),
-        "only_api": sorted(only_api),
+        "only_sql": sorted(only_sql),
         "only_excel": sorted(only_excel),
         "comparison": pd.DataFrame(comparison).sort_values("Verschil %", ascending=False, key=abs) if comparison else pd.DataFrame(),
     }

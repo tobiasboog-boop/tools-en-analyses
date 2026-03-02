@@ -149,7 +149,7 @@ with st.spinner("Data ophalen..."):
     deals_dict = fetch_pipedrive_deals()
     stages_dict = fetch_pipedrive_stages()  # {stage_id: stage_name}
     web_mapping, web_source, web_summary, web_df, identified_df = load_web_visitors()
-    pbi_df, pbi_source, pbi_api_status = load_powerbi_data()
+    pbi_df, pbi_source, pbi_sql_status = load_powerbi_data()
     lf_df = fetch_leadfeeder_leads(days=30)
 
 # Status in sidebar
@@ -660,13 +660,13 @@ elif pagina == "Data & Details":
                             use_container_width=True, hide_index=True,
                         )
 
-            with st.expander("Data Validatie: API vs Excel"):
-                if pbi_source and pbi_source.startswith("api"):
+            with st.expander("Data Validatie: SQL vs Excel"):
+                if pbi_source == "sql":
                     validation = validate_powerbi_data(pbi_df)
                     if validation:
-                        st.markdown("**Vergelijking Power BI API data met lokale Excel export:**")
+                        st.markdown("**Vergelijking Azure SQL data met lokale Excel export:**")
                         vc1, vc2, vc3 = st.columns(3)
-                        vc1.metric("API rijen", validation["api_total_rows"])
+                        vc1.metric("SQL rijen", validation["sql_total_rows"])
                         vc2.metric("Excel rijen", validation["excel_total_rows"])
                         vc3.metric("Gedeelde orgs", validation["shared_orgs"])
 
@@ -676,7 +676,7 @@ elif pagina == "Data & Details":
                     else:
                         st.info(f"Validatie niet mogelijk. Excel nodig op: `{POWERBI_EXCEL_DEFAULT}`")
                 elif pbi_source == "excel":
-                    st.info("Data komt uit Excel. Validatie beschikbaar wanneer Power BI API actief is.")
+                    st.info("Data komt uit Excel. Validatie beschikbaar wanneer Azure SQL verbinding actief is.")
                 else:
                     st.info("Geen data beschikbaar voor validatie.")
 
