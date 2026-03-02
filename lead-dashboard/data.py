@@ -446,7 +446,31 @@ def update_pipedrive_deal_stage(deal_id: int, stage_id: int) -> bool:
 
 
 # ============================================================
-#  MICROSOFT GRAPH — MAIL CONTACT HISTORY
+#  PIPEDRIVE NOTES
+# ============================================================
+
+@st.cache_data(ttl=600)
+def fetch_pipedrive_person_notes(person_id: int):
+    """Haal meest recente notities op voor een Pipedrive persoon (max 5)."""
+    token = get_secret("PIPEDRIVE_API_TOKEN")
+    if not token or not person_id:
+        return []
+    try:
+        r = requests.get(
+            f"{PIPEDRIVE_BASE}/notes",
+            params={"api_token": token, "person_id": int(person_id), "limit": 5,
+                    "sort": "add_time DESC"},
+            timeout=15,
+        )
+        if r.status_code == 200:
+            return r.json().get("data") or []
+    except Exception:
+        pass
+    return []
+
+
+# ============================================================
+#  MICROSOFT GRAPH — MAIL CONTACT HISTORY (UITGESTELD - MFA)
 # ============================================================
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"

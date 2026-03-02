@@ -19,7 +19,7 @@ from data import (
     build_leads_df, calculate_customer_health, get_customer_contacts,
     load_campaign_data, load_campaign_activity, fetch_leadfeeder_leads,
     save_pipedrive_note, update_pipedrive_deal_stage,
-    fetch_mail_contact_history,
+    fetch_pipedrive_person_notes,
     POWERBI_EXCEL_DEFAULT,
 )
 
@@ -151,7 +151,6 @@ with st.spinner("Data ophalen..."):
     web_mapping, web_source, web_summary, web_df, identified_df = load_web_visitors()
     pbi_df, pbi_source, pbi_api_status = load_powerbi_data()
     lf_df = fetch_leadfeeder_leads(days=30)
-    mail_history = fetch_mail_contact_history()  # {email: {last_contact, last_reply, ai_class, ...}}
 
 # Status in sidebar
 with st.sidebar:
@@ -264,22 +263,8 @@ def _render_call_table(df, label, key_prefix, mail_history=None):
     )
 
     # Bel-reden expanders per lead
-    mh = mail_history or {}
     for i, (_, row) in enumerate(df.iterrows()):
-        email_key = (row.get("Email") or "").lower().strip()
-        mail = mh.get(email_key, {})
-        ai_class = mail.get("ai_class", "")
-
-        # Expander label: voeg AI-classificatie toe als die er is
-        label_suffix = ""
-        if ai_class == "Niet-geïnteresseerd":
-            label_suffix = " 🔴"
-        elif ai_class == "Follow-up":
-            label_suffix = " 🟡"
-        elif ai_class == "Geïnteresseerd":
-            label_suffix = " 🟢"
-
-        with st.expander(f"📞 {row['Naam']} — {row.get('Bedrijf', '')}{label_suffix}"):
+        with st.expander(f"📞 {row['Naam']} — {row.get('Bedrijf', '')}"):
             st.markdown("**Waarom bellen?**")
             reasons = []
             if row.get("Opens", 0) > 0:
@@ -291,13 +276,6 @@ def _render_call_table(df, label, key_prefix, mail_history=None):
             if row.get("Deal Fase"):
                 waarde = f" – €{int(row['Deal Waarde']):,}" if row.get("Deal Waarde") else ""
                 reasons.append(f"📋 Open deal: {row['Deal Fase']}{waarde}")
-            # Mail contact history
-            if mail.get("last_contact"):
-                days_ago = (datetime.now().date() - datetime.fromisoformat(mail["last_contact"]).date()).days
-                reasons.append(f"📧 Laatste contact: {days_ago} dagen geleden")
-            if ai_class and ai_class != "Neutraal":
-                kleur = "🔴" if ai_class == "Niet-geïnteresseerd" else "🟡" if ai_class == "Follow-up" else "🟢"
-                reasons.append(f"{kleur} Reactie geclassificeerd: {ai_class}")
 
             if reasons:
                 for r in reasons:
@@ -305,8 +283,17 @@ def _render_call_table(df, label, key_prefix, mail_history=None):
             else:
                 st.caption("Geen specifieke signalen — lead staat in de lijst op basis van algemene score.")
 
-            if mail.get("reply_snippet"):
-                st.caption(f'Laatste reactie: "{mail["reply_snippet"][:250]}"')
+            # Pipedrive notities
+            person_id = row.get("Pipedrive ID")
+            if person_id:
+                notes = fetch_pipedrive_person_notes(int(person_id))
+                if notes:
+                    st.markdown("**Eerdere notities:**")
+                    for note in notes[:3]:
+                        datum = (note.get("add_time") or "")[:10]
+                        tekst = (note.get("content") or "").strip()
+                        if tekst:
+                            st.caption(f"{datum} — {tekst[:300]}")
 
 
 def _render_klant_table(df, key_prefix):
@@ -331,7 +318,7 @@ if pagina == "Mijn Week":
 
         st.markdown("**Leads bellen**")
         if not tobias_leads.empty:
-            _render_call_table(tobias_leads, "leads", "t_leads", mail_history=mail_history)
+            _render_call_table(tobias_leads, "leads", "t_leads")
         else:
             st.info("Geen leads beschikbaar.")
 
@@ -349,7 +336,7 @@ if pagina == "Mijn Week":
 
         st.markdown("**Leads bellen**")
         if not arthur_leads.empty:
-            _render_call_table(arthur_leads, "leads", "a_leads", mail_history=mail_history)
+            _render_call_table(arthur_leads, "leads", "a_leads")
         else:
             st.info("Geen leads beschikbaar.")
 
