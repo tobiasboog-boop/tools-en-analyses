@@ -19,6 +19,9 @@ st.set_page_config(
 if not check_password():
     st.stop()
 
+from src.sidebar import show_logo
+show_logo()
+
 st.title("Wassink Vlootbeheer Dashboard")
 st.caption("C-Track voertuig- en ritdata | Wassink 1225")
 

@@ -7,10 +7,12 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.database import load_trips
 from src.auth import check_password
+from src.sidebar import show_logo
 
 st.set_page_config(page_title="Kilometerregistratie", page_icon="📊", layout="wide")
 if not check_password():
     st.stop()
+show_logo()
 st.title("Kilometerregistratie")
 
 try:

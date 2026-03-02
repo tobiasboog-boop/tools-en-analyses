@@ -6,6 +6,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.database import load_trips
 from src.auth import check_password
+from src.sidebar import show_logo
 
 # OpenStreetMap tile layer (geen Mapbox token nodig)
 MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
@@ -13,6 +14,7 @@ MAP_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
 st.set_page_config(page_title="Kaart", page_icon="🗺️", layout="wide")
 if not check_password():
     st.stop()
+show_logo()
 st.title("Kaartweergave")
 
 try:

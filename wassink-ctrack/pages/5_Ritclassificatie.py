@@ -7,10 +7,12 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from src.database import load_trips
 from src.auth import check_password
+from src.sidebar import show_logo
 
 st.set_page_config(page_title="Ritclassificatie", page_icon="📋", layout="wide")
 if not check_password():
     st.stop()
+show_logo()
 st.title("Ritclassificatie (Woon-werk / Zakelijk)")
 st.caption("Classificatie van ritten voor Belastingdienst: LB km (woon-werk) vs OB km (zakelijk)")
 
@@ -25,6 +27,62 @@ except Exception as e:
 # DATABRONNEN TOELICHTING
 # =====================================================================
 
+with st.expander("Hoe worden ritten geclassificeerd? (LB/OB regelgeving)", expanded=False):
+    st.markdown("""
+    De classificatie bepaalt per rit of kilometers meetellen als **LB km** (Loonbelasting, woon-werk)
+    of **OB km** (Omzetbelasting, zakelijk). Dit gebeurt automatisch op basis van C-Track locatielabels
+    en tijdstip/weekdag.
+    """)
+
+    regels = pd.DataFrame({
+        'Regel': [
+            '1. Thuis collega',
+            '2. Eigen Thuis → eigen Thuis',
+            '3. Eigen Thuis ↔ Vestiging/Project',
+            '4. Tussen werklocaties',
+            '5. Werklocatie ↔ Overig adres',
+            '6. Weekend (geen werklocatie)',
+            '7. Doordeweeks na 18:00',
+            '8. Overig ↔ Overig (werkdag 6-18u)',
+            '9. Eigen Thuis ↔ Overig (werkdag)',
+            '10. Rest',
+        ],
+        'Conditie': [
+            'Start of eind bij Thuis van ANDERE bestuurder',
+            'Start en eind bij eigen Thuis (parkeren/korte rit)',
+            'Eigen Thuis naar vestiging, project of opdrachtgever (en vice versa)',
+            'Vestiging ↔ Project ↔ Opdrachtgever',
+            'Vestiging/Project naar ongelabeld adres (of omgekeerd)',
+            'Za/zo zonder werklocatie in start/eind',
+            'Ma-vr na 18:00 zonder werklocatie',
+            'Twee ongelabelde adressen, doordeweeks 6:00-18:00',
+            'Eigen Thuis naar ongelabeld adres, doordeweeks voor 18:00',
+            'Geen van bovenstaande regels van toepassing',
+        ],
+        'Classificatie': [
+            'Zakelijk (OB) — collega ophalen/afzetten',
+            'Prive',
+            'Woon-werk (LB)',
+            'Zakelijk (OB)',
+            'Zakelijk (OB)',
+            'Prive',
+            'Prive',
+            'Zakelijk (OB) — waarschijnlijk klantbezoek',
+            'Woon-werk (LB) — waarschijnlijk naar klant',
+            'Te beoordelen (handmatig)',
+        ],
+    })
+    st.dataframe(regels, use_container_width=True, hide_index=True)
+
+    st.markdown("""
+    **Belangrijk:** De herkenning van "eigen Thuis" vs "Thuis collega" werkt op basis van naammatching.
+    C-Track labelt thuisadressen als *"Thuis {naam}"*. Als de naam overeenkomt met de bestuurder → eigen woon-werk.
+    Als het een andere naam is → zakelijk (collega ophalen/afzetten).
+
+    **Voorbeeld:** Thomas Sievers rijdt naar *"Thuis Sven S."* → Sven ≠ Thomas → **Zakelijk** (collega ophalen).
+    Thomas Sievers rijdt naar *"Thuis Thomas Sievers"* → Thomas = Thomas → **Woon-werk**.
+    """)
+
 with st.expander("Databronnen & mogelijkheden", expanded=False):
     src_ctrack, src_syntess = st.columns(2)
 
@@ -36,13 +94,17 @@ with st.expander("Databronnen & mogelijkheden", expanded=False):
         - Kilometers per rit (GPS-gemeten)
         - Thuisadres herkenning (C-Track labels)
         - Vestiging- en projectlocaties
-        - Bestuurder naam
+        - Bestuurder naam + eigen Thuis vs Thuis collega
         - Kenteken / voertuig
 
         **Huidige classificatie op basis van:**
-        - Locatietype (Thuis / Vestiging / Project)
+        - Locatietype (eigen Thuis / Thuis collega / Vestiging / Project)
         - Tijdstip en weekdag
         - Ritpatronen per bestuurder
+
+        **Personeelsnummer:** Wassink plant een leeg C-Track veld
+        te gebruiken voor personeelsnummer. Dit maakt directe
+        koppeling met Syntess SSM mogelijk.
         """)
 
     with src_syntess:
@@ -66,12 +128,22 @@ with st.expander("Databronnen & mogelijkheden", expanded=False):
 # CLASSIFICATIELOGICA
 # =====================================================================
 
-def locatie_type(locatie: str) -> str:
-    """Bepaal het type locatie op basis van C-Track labels."""
+def locatie_type(locatie: str, bestuurder: str = '') -> str:
+    """Bepaal het type locatie op basis van C-Track labels.
+
+    Onderscheidt eigen Thuis vs Thuis collega (ophalen/afzetten).
+    """
     if pd.isna(locatie) or locatie.strip() == '':
         return 'Onbekend'
-    loc = locatie.strip()
-    if loc.startswith('Thuis') or loc.startswith("'Thuis"):
+    loc = locatie.strip().lstrip("'")
+    if loc.startswith('Thuis'):
+        thuis_naam = loc.split(';')[0].replace('Thuis ', '', 1).strip()
+        if bestuurder and thuis_naam:
+            driver_parts = bestuurder.lower().split()
+            thuis_parts = thuis_naam.lower().split()
+            if any(p in thuis_parts for p in driver_parts if len(p) > 1):
+                return 'Thuis'
+            return 'Thuis collega'
         return 'Thuis'
     if loc.startswith('Vestiging'):
         return 'Vestiging'
@@ -87,14 +159,16 @@ def classificeer_rit(row: pd.Series) -> str:
     Classificeer een rit als Woon-werk, Zakelijk, of Prive.
 
     Regels:
-    1. Thuis <-> Vestiging/Project/Opdrachtgever = Woon-werk (LB)
-    2. Tussen werklocaties = Zakelijk (OB)
-    3. Werklocatie <-> Overig = Zakelijk (OB) - serviceadres zonder label
-    4. Thuis -> Thuis = Prive
-    5. Weekend zonder werklocatie = Prive
-    6. Doordeweeks na 18:00 zonder werklocatie = Prive
-    7. Overig <-> Overig doordeweeks 6:00-18:00 = Zakelijk (waarschijnlijk)
-    8. Rest = Te beoordelen
+    1. Eigen Thuis <-> Vestiging/Project/Opdrachtgever = Woon-werk (LB)
+    2. Thuis collega = Zakelijk (ophalen/afzetten collega)
+    3. Tussen werklocaties = Zakelijk (OB)
+    4. Werklocatie <-> Overig = Zakelijk (OB) - serviceadres zonder label
+    5. Eigen Thuis -> eigen Thuis = Prive (parkeren/korte rit)
+    6. Weekend zonder werklocatie = Prive
+    7. Doordeweeks na 18:00 zonder werklocatie = Prive
+    8. Overig <-> Overig doordeweeks 6:00-18:00 = Zakelijk (waarschijnlijk)
+    9. Eigen Thuis <-> Overig doordeweeks voor 18:00 = Woon-werk
+    10. Rest = Te beoordelen
     """
     start_type = row['start_type']
     eind_type = row['eind_type']
@@ -103,11 +177,15 @@ def classificeer_rit(row: pd.Series) -> str:
 
     werk_types = {'Vestiging', 'Project', 'Opdrachtgever'}
 
-    # Thuis -> Thuis (parkeren, korte rit)
+    # Thuis collega = altijd zakelijk (ophalen/afzetten collega)
+    if start_type == 'Thuis collega' or eind_type == 'Thuis collega':
+        return 'Zakelijk'
+
+    # Eigen Thuis -> eigen Thuis (parkeren, korte rit)
     if start_type == 'Thuis' and eind_type == 'Thuis':
         return 'Prive'
 
-    # Thuis <-> werklocatie = woon-werk
+    # Eigen Thuis <-> werklocatie = woon-werk
     if start_type == 'Thuis' and eind_type in werk_types:
         return 'Woon-werk'
     if eind_type == 'Thuis' and start_type in werk_types:
@@ -139,7 +217,7 @@ def classificeer_rit(row: pd.Series) -> str:
         if start_type == 'Overig' and eind_type == 'Overig':
             return 'Zakelijk'
 
-    # Thuis <-> Overig doordeweeks voor 18:00 = waarschijnlijk woon-werk
+    # Eigen Thuis <-> Overig doordeweeks voor 18:00 = waarschijnlijk woon-werk
     # (bijv. naar klantadres dat niet gelabeld is)
     if weekdag < 5 and uur < 18:
         if start_type == 'Thuis' and eind_type == 'Overig':
@@ -154,6 +232,10 @@ def bepaal_route_type(row: pd.Series) -> str:
     """Bepaal of rit rechtstreeks naar huis is, via vestiging, of overig."""
     start_type = row['start_type']
     eind_type = row['eind_type']
+
+    # Thuis collega = altijd zakelijk (ophalen/afzetten)
+    if start_type == 'Thuis collega' or eind_type == 'Thuis collega':
+        return 'Collega ophalen'
 
     if start_type == 'Thuis' and eind_type in ('Project', 'Opdrachtgever'):
         return 'Rechtstreeks'
@@ -170,9 +252,13 @@ def bepaal_route_type(row: pd.Series) -> str:
     return ''
 
 
-# Classificatie toepassen
-trips['start_type'] = trips['startlocation'].apply(locatie_type)
-trips['eind_type'] = trips['endlocation'].apply(locatie_type)
+# Classificatie toepassen (met bestuurder voor Thuis eigen vs collega)
+trips['start_type'] = trips.apply(
+    lambda r: locatie_type(r['startlocation'], r['bestuurder']), axis=1
+)
+trips['eind_type'] = trips.apply(
+    lambda r: locatie_type(r['endlocation'], r['bestuurder']), axis=1
+)
 trips['classificatie'] = trips.apply(classificeer_rit, axis=1)
 trips['route_type'] = trips.apply(bepaal_route_type, axis=1)
 
@@ -276,7 +362,16 @@ st.markdown("---")
 st.subheader("Dagoverzicht per bestuurder")
 
 if sel_bestuurder != "Alle":
-    dag_data = data.sort_values('start')
+    # Gebruik ALLE ritten van deze bestuurder (ongeacht classificatie-filter)
+    # zodat de route-keten altijd compleet zichtbaar is
+    alle_ritten_bestuurder = trips[trips['bestuurder'] == sel_bestuurder].copy()
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        alle_ritten_bestuurder = alle_ritten_bestuurder[
+            (alle_ritten_bestuurder['datum'] >= date_range[0]) &
+            (alle_ritten_bestuurder['datum'] <= date_range[1])
+        ]
+
+    dag_data = alle_ritten_bestuurder.sort_values('start')
     dag_overzicht = dag_data.groupby('datum').agg(
         ritten=('afstand_km', 'count'),
         totaal_km=('afstand_km', 'sum'),
@@ -309,6 +404,33 @@ if sel_bestuurder != "Alle":
         use_container_width=True,
         hide_index=True,
     )
+
+    # Toon complete rittenreeks per dag (alle ritten, ook buiten filter)
+    with st.expander("Volledige rittenreeks (route-continuiteit)", expanded=False):
+        if sel_class != "Alle":
+            st.caption(
+                f"Alle ritten worden getoond voor route-continuiteit. "
+                f"Ritten buiten filter '{sel_class}' zijn grijs gemarkeerd."
+            )
+        for datum, dag_trips in dag_data.groupby('datum'):
+            dag_sorted = dag_trips.sort_values('start')
+            st.markdown(f"**{datum}** ({len(dag_sorted)} ritten)")
+            rows = []
+            for _, r in dag_sorted.iterrows():
+                sp = str(r['startlocation']).split(';')[0].strip()
+                ep = str(r['endlocation']).split(';')[0].strip()
+                in_filter = sel_class == "Alle" or r['classificatie'] == sel_class
+                prefix = "" if in_filter else "~~"
+                suffix = "" if in_filter else "~~"
+                rows.append({
+                    'Tijd': f"{r['start'].strftime('%H:%M')}-{r['eind'].strftime('%H:%M')}",
+                    'Startpunt': sp,
+                    'Eindpunt': ep,
+                    'Km': round(r['afstand_km'], 1),
+                    'Type': r['classificatie'],
+                    'Route': r['route_type'],
+                })
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 else:
     per_best = data.groupby('bestuurder').agg(
         ritten=('afstand_km', 'count'),
@@ -415,46 +537,52 @@ with st.expander("Syntess SSM views beschikbaar voor koppeling", expanded=True):
     ssm_views = pd.DataFrame({
         'SSM View': [
             'SSM Bedrijfsmedewerkers',
+            'SSM Werkbonparagraaf kosten en geboekte uren',
             'SSM Medewerker mobiliteit',
             'Mobiele uitvoersessies',
             'Tijdregistraties mobiele uitvoersessies',
-            'SSM Geboekte uren',
-            'SSM Werkbonparagraaf kosten en geboekte uren',
         ],
         'Schema': [
-            'notifica', 'notifica', 'werkbonnen',
-            'werkbonnen', 'notifica', 'notifica',
+            'notifica', 'notifica', 'notifica',
+            'werkbonnen', 'werkbonnen',
         ],
         'Relevante velden': [
             'Medewerker Code, Volledige naam, Functie, '
             'Datum in dienst, Afdeling, Type medewerker',
+            'Arbeid begintijd, Arbeid eindtijd, Uitvoeringsdatum, '
+            'MedewerkerKey, WerkbonDocumentKey',
             'Afstand (woon-werk km), Weekdagnummer, Vervoermiddel, '
             'Brandstoftype, Reistype, Begin-/Einddatum',
             'Reistijd, Werktijd, Datum, Tijdstip, Meegereden (J/N), '
             'DocumentKey (werkbon), MedewerkerKey',
             'Status (Begin/Vertrek/Pauze/Gereed), Datum/tijd, '
             'MobieleuitvoersessieRegelKey',
-            'Aantal (uren), Uitvoeringsdatum, Begintijd, Eindtijd, '
-            'MedewerkerKey, WerkbonKey, Kostenbron',
-            'Arbeid begintijd, Arbeid eindtijd, Uitvoeringsdatum, '
-            'MedewerkerKey, WerkbonDocumentKey',
+        ],
+        'Status': [
+            'Bevestigd',
+            'Bevestigd',
+            'Valideren bij klant (consultancy)',
+            'Valideren bij klant (consultancy)',
+            'Valideren bij klant (consultancy)',
         ],
         'Vergelijking met C-Track': [
             'Koppel bestuurdersnaam aan personeelsnummer + functie '
             '(Projectmonteur vs Servicemonteur)',
+            'Vergelijk werkbon arbeidstijden met GPS-aanwezigheid '
+            'op projectlocatie',
             'Vergelijk opgegeven woon-werk km met GPS-gemeten afstand '
             'per medewerker per weekdag',
             'Vergelijk geboekte reistijd per werkbon met GPS-rijtijd '
             'op dezelfde dag',
             'Vergelijk exacte vertrek-/aankomsttijden uit app met '
             'GPS start-/eindtijd per rit',
-            'Vergelijk geboekte uren per dag met GPS-activiteit '
-            '(was medewerker daadwerkelijk onderweg?)',
-            'Vergelijk werkbon arbeidstijden met GPS-aanwezigheid '
-            'op projectlocatie',
         ],
     })
     st.dataframe(ssm_views, use_container_width=True, hide_index=True)
+    st.caption(
+        "SSM Geboekte uren is niet opgenomen (te breed, bevat ook indirecte uren). "
+        "SSM Werkbonparagraaf bevat de relevante arbeidstijden per werkbon."
+    )
 
 # Drie pijlers meerwaarde
 mw1, mw2, mw3 = st.columns(3)
@@ -462,7 +590,7 @@ mw1, mw2, mw3 = st.columns(3)
 with mw1:
     st.markdown("##### 1. Belastingdienst-export")
     st.markdown("""
-    **SSM View:** `SSM Bedrijfsmedewerkers`
+    **SSM View:** `SSM Bedrijfsmedewerkers` ✅
 
     - **Medewerker Code** op elke rit
     - **Functie** bepaalt controlevenster
@@ -473,29 +601,28 @@ with mw1:
     """)
 
 with mw2:
-    st.markdown("##### 2. Woon-werk verificatie")
+    st.markdown("##### 2. Werkbon vs GPS")
     st.markdown("""
-    **SSM View:** `SSM Medewerker mobiliteit`
+    **SSM View:** `SSM Werkbonparagraaf` ✅
 
-    - **Afstand**: opgegeven woon-werk km
-    - Per **Weekdagnummer** (ma-vr)
-    - **Reistype** en **Vervoermiddel**
+    - **Arbeid begintijd/eindtijd** per werkbon
+    - Vergelijk met GPS aankomst/vertrek
+    - Was monteur daadwerkelijk op locatie?
 
-    Vergelijk Syntess-opgave met
-    C-Track GPS = afwijkingen zichtbaar.
+    *De kern: werkbon reistijd vs GPS.*
     """)
 
 with mw3:
-    st.markdown("##### 3. Reistijd-controle")
+    st.markdown("##### 3. Woon-werk verificatie")
     st.markdown("""
-    **SSM View:** `Mobiele uitvoersessies`
+    **SSM View:** `SSM Medewerker mobiliteit` ⚠️
 
-    - **Reistijd** per werkbon-sessie
-    - **Werktijd** apart geboekt
-    - **Meegereden** vlag (carpooling)
+    - **Afstand**: opgegeven woon-werk km
+    - Per **Weekdagnummer** (ma-vr)
+    - Vergelijk met C-Track GPS km
 
-    Vergelijk met GPS-rijtijd =
-    signaleer afwijkingen automatisch.
+    *⚠️ View moet bij klant gevalideerd
+    worden (consultancy).*
     """)
 
 # Concrete voorbeelden
@@ -514,7 +641,7 @@ vb_ww = pd.DataFrame({
 st.dataframe(vb_ww, use_container_width=True, hide_index=True)
 
 st.markdown("**Voorbeeld 2: Werkbon reistijd vs GPS rijtijd**")
-st.caption("Mobiele uitvoersessies.Reistijd vs C-Track GPS drivingtime")
+st.caption("SSM Werkbonparagraaf.Arbeid begintijd/eindtijd vs C-Track GPS drivingtime")
 vb_rt = pd.DataFrame({
     'Pers.nr': ['W-1234', 'W-1234', 'W-5678'],
     'Medewerker': ['Thomas Sievers', 'Thomas Sievers', 'Gerton Vlastuin'],
@@ -526,8 +653,8 @@ vb_rt = pd.DataFrame({
 })
 st.dataframe(vb_rt, use_container_width=True, hide_index=True)
 
-st.markdown("**Voorbeeld 3: Kloktijd werkbon-app vs GPS vertrek/aankomst**")
-st.caption("Tijdregistraties mobiele uitvoersessies vs C-Track tripstartutc/tripendutc")
+st.markdown("**Voorbeeld 3: Kloktijd werkbon vs GPS vertrek/aankomst**")
+st.caption("SSM Werkbonparagraaf.Arbeid begintijd vs C-Track tripstartutc/tripendutc (⚠️ Tijdregistraties view moet bij klant gevalideerd worden)")
 vb_klok = pd.DataFrame({
     'Medewerker': ['Thomas Sievers', 'Thomas Sievers', 'Thomas Sievers'],
     'Werkbon-app': ['Begin: 07:48', 'Vertrek: 08:44', 'Gereed: 09:24'],
@@ -540,7 +667,8 @@ st.dataframe(vb_klok, use_container_width=True, hide_index=True)
 st.info(
     "Bovenstaande voorbeelden zijn illustratief. Na DWH-koppeling worden de "
     "SSM views automatisch vergeleken met de C-Track GPS-metingen. "
-    "Het SSM datamodel is beschikbaar bij elke Syntess-klant."
+    "SSM Bedrijfsmedewerkers en SSM Werkbonparagraaf zijn bevestigd. "
+    "Overige views (mobiliteit, werksessies) moeten bij de klant gevalideerd worden."
 )
 
 
@@ -672,3 +800,79 @@ st.download_button(
 # Preview
 with st.expander("Preview export (eerste 20 rijen)"):
     st.dataframe(excel_df.head(20), use_container_width=True, hide_index=True)
+
+
+# =====================================================================
+# OVER DEZE TOOL
+# =====================================================================
+
+st.markdown("---")
+with st.expander("Over deze tool — wat is er gebouwd en waarom", expanded=False):
+    st.markdown("""
+    ### Wat is deze tool?
+
+    Dit dashboard analyseert automatisch de C-Track GPS-ritdata van Wassink (1225)
+    en classificeert elke rit als **woon-werk (LB km)**, **zakelijk (OB km)** of **prive**.
+    Het doel is een sluitende rittenregistratie richting de Belastingdienst.
+
+    ### Wat kan de tool nu (alleen C-Track GPS)?
+
+    **5 dashboardpagina's:**
+    1. **Home** — KPI's, dagelijkse km-trend, top voertuigen/bestuurders
+    2. **Vlootoverzicht** — per voertuig: km, ritten, uren, kmstand
+    3. **Kilometerregistratie** — per voertuig of bestuurder, activiteitsheatmap
+    4. **Kaart** — bestemmingen, vertrekpunten en ritlijnen op de kaart
+    5. **Ritclassificatie** — automatische LB/OB classificatie + Excel-export
+
+    **Classificatielogica:** Op basis van C-Track locatielabels (Thuis, Vestiging,
+    Project, Opdrachtgever) + tijdstip en weekdag. Onderscheidt eigen Thuis vs Thuis
+    collega (ophalen/afzetten = zakelijk). Zie "Hoe worden ritten geclassificeerd?"
+    bovenaan deze pagina voor alle regels.
+
+    **Excel-export:** In het exacte kolomformat van Anne Wassink (Belastingdienst-format),
+    met aparte sheets voor controleregels en databronnen.
+
+    ### Wat wordt beter met Syntess DWH-koppeling?
+
+    Door de C-Track GPS-data te combineren met het Syntess SSM datamodel ontstaat:
+
+    - **Personeelsnummer** op elke rit (Belastingdienst-eis) — via `SSM Bedrijfsmedewerkers`
+    - **Functie-specifieke controlevensters** (Projectmonteur 7:00-15:45, Servicemonteur 8:00-17:00)
+    - **Werkbon arbeidstijden vs GPS** — vergelijk geboekte tijden met daadwerkelijke aanwezigheid
+      via `SSM Werkbonparagraaf kosten en geboekte uren`
+    - **Woon-werk km verificatie** — vergelijk Syntess-opgave met GPS-gemeten afstand
+      (view moet bij klant gevalideerd worden)
+
+    De combinatie C-Track + Syntess maakt de rittenregistratie **aantoonbaar sluitend**:
+    wat zegt de werkbon aan reistijd, en wat zegt de GPS?
+
+    ### Updates
+
+    **v2 (2 maart 2026) — Feedback Arthur Gartz verwerkt:**
+    - Classificatie verbeterd: "Thuis collega" (ophalen/afzetten) wordt nu correct
+      als **Zakelijk** geclassificeerd in plaats van Woon-werk
+    - SSM views gecorrigeerd: 2 bevestigd, 3 te valideren bij klant, SSM Geboekte uren
+      verwijderd (te breed). Werkbonparagraaf is leidend.
+    - Classificatieregels volledig gedocumenteerd (10 regels, LB/OB uitleg)
+    - Volledige rittenreeks per dag zichtbaar (route-continuiteit, ook bij filters)
+    - Personeelsnummer: Wassink plant dit via leeg C-Track veld te registreren
+    - Notifica logo toegevoegd aan alle pagina's
+    - UTF-8 encoding gefixed (speciale tekens zoals e, o correct weergegeven)
+
+    **v1 (26 februari 2026) — Eerste versie:**
+    - 5 dashboardpagina's gebouwd op C-Track GPS parquet data
+    - Automatische ritclassificatie (Woon-werk/Zakelijk/Prive)
+    - Excel-export in Belastingdienst-format
+    - DWH-koppeling sectie met SSM datamodel als upsell
+    """)
+
+    # Huidige classificatie verdeling
+    st.markdown("**Huidige classificatie verdeling (alle data):**")
+    totals = trips.groupby('classificatie').agg(
+        ritten=('afstand_km', 'count'),
+        km=('afstand_km', 'sum'),
+    ).reset_index()
+    totals['km'] = totals['km'].round(0).astype(int)
+    totals = totals.sort_values('ritten', ascending=False)
+    totals.columns = ['Classificatie', 'Ritten', 'Kilometers']
+    st.dataframe(totals, use_container_width=True, hide_index=True)
