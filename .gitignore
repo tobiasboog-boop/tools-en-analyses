@@ -6,5 +6,6 @@ lead-dashboard/.env
 *.pyc
 *.pyo
 
-# Data exports met persoonlijke gegevens
-lead-dashboard/docs/mailerlite_export/
+# Data exports - alleen grote binaire bestanden uitsluiten
+lead-dashboard/docs/*.xlsx
+lead-dashboard/docs/*.xls
