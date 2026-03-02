@@ -283,17 +283,27 @@ def _render_call_table(df, label, key_prefix, mail_history=None):
             else:
                 st.caption("Geen specifieke signalen — lead staat in de lijst op basis van algemene score.")
 
-            # Pipedrive notities
+            # Pipedrive notities (HTML strippen, automatische bezoek-notities overslaan)
             person_id = row.get("Pipedrive ID")
             if person_id:
+                import re
                 notes = fetch_pipedrive_person_notes(int(person_id))
-                if notes:
+                handmatige_notities = []
+                for note in notes[:10]:
+                    tekst_raw = (note.get("content") or "").strip()
+                    # HTML tags verwijderen
+                    tekst = re.sub(r'<[^>]+>', ' ', tekst_raw).strip()
+                    tekst = re.sub(r'\s+', ' ', tekst)
+                    # Automatische Leadbooster/bezoek-notities overslaan
+                    if any(kw in tekst_raw.lower() for kw in ["visited the website", "page_table", "leadbooster"]):
+                        continue
+                    datum = (note.get("add_time") or "")[:10]
+                    if tekst:
+                        handmatige_notities.append((datum, tekst))
+                if handmatige_notities:
                     st.markdown("**Eerdere notities:**")
-                    for note in notes[:3]:
-                        datum = (note.get("add_time") or "")[:10]
-                        tekst = (note.get("content") or "").strip()
-                        if tekst:
-                            st.caption(f"{datum} — {tekst[:300]}")
+                    for datum, tekst in handmatige_notities[:3]:
+                        st.caption(f"{datum} — {tekst[:300]}")
 
 
 def _render_klant_table(df, key_prefix):
