@@ -13,10 +13,13 @@ from config import FUNNEL_CONFIG, INTERNE_MEDEWERKERS
 from data import (
     get_secret, generate_nid,
     fetch_emailoctopus_subscribers, fetch_pipedrive_persons,
-    fetch_pipedrive_deals, fetch_emailoctopus_campaign_activity,
+    fetch_pipedrive_deals, fetch_pipedrive_stages,
+    fetch_emailoctopus_campaign_activity,
     load_web_visitors, load_powerbi_data, validate_powerbi_data,
     build_leads_df, calculate_customer_health, get_customer_contacts,
     load_campaign_data, load_campaign_activity, fetch_leadfeeder_leads,
+    save_pipedrive_note, update_pipedrive_deal_stage,
+    fetch_mail_contact_history,
     POWERBI_EXCEL_DEFAULT,
 )
 
@@ -144,9 +147,11 @@ with st.spinner("Data ophalen..."):
     ml_df, ml_status = fetch_emailoctopus_subscribers()
     pd_df = fetch_pipedrive_persons()
     deals_dict = fetch_pipedrive_deals()
+    stages_dict = fetch_pipedrive_stages()  # {stage_id: stage_name}
     web_mapping, web_source, web_summary, web_df, identified_df = load_web_visitors()
     pbi_df, pbi_source, pbi_api_status = load_powerbi_data()
     lf_df = fetch_leadfeeder_leads(days=30)
+    mail_history = fetch_mail_contact_history()  # {email: {last_contact, last_reply, ai_class, ...}}
 
 # Status in sidebar
 with st.sidebar:
@@ -223,7 +228,7 @@ def _get_klant_opvolging(health_df, n_per_person=5):
     return tobias_klanten, arthur_klanten
 
 
-def _render_call_table(df, label, key_prefix):
+def _render_call_table(df, label, key_prefix, mail_history=None):
     """Render een bellijst tabel met relevante kolommen incl. signalen."""
     if df.empty:
         st.caption(f"Geen {label.lower()} beschikbaar.")
@@ -258,6 +263,51 @@ def _render_call_table(df, label, key_prefix):
         }
     )
 
+    # Bel-reden expanders per lead
+    mh = mail_history or {}
+    for i, (_, row) in enumerate(df.iterrows()):
+        email_key = (row.get("Email") or "").lower().strip()
+        mail = mh.get(email_key, {})
+        ai_class = mail.get("ai_class", "")
+
+        # Expander label: voeg AI-classificatie toe als die er is
+        label_suffix = ""
+        if ai_class == "Niet-geïnteresseerd":
+            label_suffix = " 🔴"
+        elif ai_class == "Follow-up":
+            label_suffix = " 🟡"
+        elif ai_class == "Geïnteresseerd":
+            label_suffix = " 🟢"
+
+        with st.expander(f"📞 {row['Naam']} — {row.get('Bedrijf', '')}{label_suffix}"):
+            st.markdown("**Waarom bellen?**")
+            reasons = []
+            if row.get("Opens", 0) > 0:
+                reasons.append(f"✉️ {int(row['Opens'])} opens, {int(row.get('Clicks', 0))} clicks")
+            if row.get("NID Bezoeken", 0) > 0:
+                reasons.append(f"🌐 {int(row['NID Bezoeken'])}× website bezocht (geïdentificeerd via e-maillink)")
+            if row.get("LF Bezocht"):
+                reasons.append("🔍 Zichtbaar via Leadfeeder")
+            if row.get("Deal Fase"):
+                waarde = f" – €{int(row['Deal Waarde']):,}" if row.get("Deal Waarde") else ""
+                reasons.append(f"📋 Open deal: {row['Deal Fase']}{waarde}")
+            # Mail contact history
+            if mail.get("last_contact"):
+                days_ago = (datetime.now().date() - datetime.fromisoformat(mail["last_contact"]).date()).days
+                reasons.append(f"📧 Laatste contact: {days_ago} dagen geleden")
+            if ai_class and ai_class != "Neutraal":
+                kleur = "🔴" if ai_class == "Niet-geïnteresseerd" else "🟡" if ai_class == "Follow-up" else "🟢"
+                reasons.append(f"{kleur} Reactie geclassificeerd: {ai_class}")
+
+            if reasons:
+                for r in reasons:
+                    st.write(r)
+            else:
+                st.caption("Geen specifieke signalen — lead staat in de lijst op basis van algemene score.")
+
+            if mail.get("reply_snippet"):
+                st.caption(f'Laatste reactie: "{mail["reply_snippet"][:250]}"')
+
 
 def _render_klant_table(df, key_prefix):
     """Render een klant-opvolging tabel met actie-type."""
@@ -281,7 +331,7 @@ if pagina == "Mijn Week":
 
         st.markdown("**Leads bellen**")
         if not tobias_leads.empty:
-            _render_call_table(tobias_leads, "leads", "t_leads")
+            _render_call_table(tobias_leads, "leads", "t_leads", mail_history=mail_history)
         else:
             st.info("Geen leads beschikbaar.")
 
@@ -299,7 +349,7 @@ if pagina == "Mijn Week":
 
         st.markdown("**Leads bellen**")
         if not arthur_leads.empty:
-            _render_call_table(arthur_leads, "leads", "a_leads")
+            _render_call_table(arthur_leads, "leads", "a_leads", mail_history=mail_history)
         else:
             st.info("Geen leads beschikbaar.")
 
@@ -308,6 +358,52 @@ if pagina == "Mijn Week":
             _render_klant_table(arthur_klanten, "a_klant")
         else:
             st.info("Geen klant health data beschikbaar.")
+
+    # ---- Belnotitie opslaan ----
+    st.divider()
+    st.subheader("Belnotitie opslaan in Pipedrive")
+
+    pip_leads = leads_df[leads_df["Pipedrive ID"].notna()] if not leads_df.empty else pd.DataFrame()
+    if pip_leads.empty:
+        st.caption("Geen leads met Pipedrive-koppeling beschikbaar.")
+    else:
+        options = [f"{r['Naam']} – {r.get('Bedrijf', '')}" for _, r in pip_leads.iterrows()]
+        selected = st.selectbox("Selecteer lead", options, key="feedback_lead_select")
+        idx = options.index(selected)
+        sel_row = pip_leads.iloc[idx]
+
+        note_text = st.text_area(
+            "Belnotitie",
+            placeholder="Wat is besproken? Wat is de vervolgstap?",
+            key="feedback_note",
+        )
+
+        new_stage = "— geen wijziging —"
+        if sel_row.get("Deal ID") and stages_dict:
+            stage_names = ["— geen wijziging —"] + [v for v in stages_dict.values()]
+            new_stage = st.selectbox(
+                "Deal fase bijwerken (optioneel)",
+                stage_names,
+                key="feedback_stage",
+            )
+
+        if st.button("Opslaan in Pipedrive", key="feedback_save"):
+            if note_text.strip():
+                ok = save_pipedrive_note(
+                    int(sel_row["Pipedrive ID"]),
+                    sel_row.get("Deal ID"),
+                    note_text.strip(),
+                )
+                if ok and new_stage != "— geen wijziging —" and sel_row.get("Deal ID"):
+                    stage_id = next((k for k, v in stages_dict.items() if v == new_stage), None)
+                    if stage_id:
+                        update_pipedrive_deal_stage(int(sel_row["Deal ID"]), stage_id)
+                if ok:
+                    st.success(f"Notitie opgeslagen voor {sel_row['Naam']}.")
+                else:
+                    st.error("Opslaan mislukt. Controleer de Pipedrive API-sleutel.")
+            else:
+                st.warning("Voer een notitie in voordat je opslaat.")
 
 
 # ============================================================

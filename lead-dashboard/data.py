@@ -268,6 +268,8 @@ def fetch_pipedrive_deals():
                         "deal_bonus": bonus,
                         "deal_titel": deal.get("title", ""),
                         "org_name": deal.get("org_name", ""),
+                        "deal_id": deal.get("id"),
+                        "stage_id": stage_id,
                     }
 
             pag = data.get("additional_data", {}).get("pagination", {})
@@ -378,6 +380,7 @@ def fetch_pipedrive_persons():
         phones = p.get("phone", [])
         phone = phones[0].get("value", "") if phones else ""
         records.append({
+            "person_id": p.get("id"),
             "pipedrive_name": (p.get("name") or "").strip(),
             "pipedrive_email": email.lower().strip(),
             "pipedrive_org": (p.get("org_name") or "").strip(),
@@ -385,6 +388,204 @@ def fetch_pipedrive_persons():
             "pipedrive_last_activity": p.get("last_activity_date", ""),
         })
     return pd.DataFrame(records)
+
+
+@st.cache_data(ttl=3600)
+def fetch_pipedrive_stages():
+    """Haal alle pipeline stages op als {stage_id: stage_name} dict."""
+    token = get_secret("PIPEDRIVE_API_TOKEN")
+    if not token:
+        return {}
+    try:
+        r = requests.get(f"{PIPEDRIVE_BASE}/stages", params={"api_token": token}, timeout=15)
+        return {s["id"]: s["name"] for s in (r.json().get("data") or [])}
+    except Exception:
+        return {}
+
+
+def save_pipedrive_note(person_id: int, deal_id, content: str) -> bool:
+    """Sla belnotitie op als note in Pipedrive (op persoon en optioneel deal)."""
+    token = get_secret("PIPEDRIVE_API_TOKEN")
+    if not token or not content.strip():
+        return False
+    payload = {
+        "content": content,
+        "person_id": person_id,
+        "pinned_to_person_flag": 1,
+    }
+    if deal_id:
+        payload["deal_id"] = int(deal_id)
+        payload["pinned_to_deal_flag"] = 1
+    try:
+        r = requests.post(
+            f"{PIPEDRIVE_BASE}/notes",
+            params={"api_token": token},
+            json=payload,
+            timeout=15,
+        )
+        return r.status_code == 201
+    except Exception:
+        return False
+
+
+def update_pipedrive_deal_stage(deal_id: int, stage_id: int) -> bool:
+    """Werk deal stage bij in Pipedrive."""
+    token = get_secret("PIPEDRIVE_API_TOKEN")
+    if not token:
+        return False
+    try:
+        r = requests.put(
+            f"{PIPEDRIVE_BASE}/deals/{deal_id}",
+            params={"api_token": token},
+            json={"stage_id": stage_id},
+            timeout=15,
+        )
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+# ============================================================
+#  MICROSOFT GRAPH — MAIL CONTACT HISTORY
+# ============================================================
+
+GRAPH_BASE = "https://graph.microsoft.com/v1.0"
+
+
+def _get_graph_token():
+    """Haal OAuth2 access token op voor Microsoft Graph via client credentials."""
+    tenant_id = get_secret("POWERBI_TENANT_ID")
+    client_id = get_secret("POWERBI_CLIENT_ID")
+    client_secret = get_secret("POWERBI_CLIENT_SECRET")
+    if not all([tenant_id, client_id, client_secret]):
+        return None
+    try:
+        r = requests.post(
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scope": "https://graph.microsoft.com/.default",
+            },
+            timeout=15,
+        )
+        return r.json().get("access_token") if r.status_code == 200 else None
+    except Exception:
+        return None
+
+
+def _classify_reply(snippet: str) -> str:
+    """Klassificeer een e-mailreactie via Claude Haiku."""
+    api_key = get_secret("ANTHROPIC_API_KEY")
+    if not api_key or not snippet.strip():
+        return "Neutraal"
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=20,
+            messages=[{
+                "role": "user",
+                "content": (
+                    "Klassificeer deze e-mailreactie in één woord. Kies exact één van: "
+                    "Geïnteresseerd, Niet-geïnteresseerd, Follow-up, Neutraal.\n\n"
+                    f"Reactie: {snippet[:400]}"
+                ),
+            }],
+        )
+        label = msg.content[0].text.strip()
+        for opt in ["Geïnteresseerd", "Niet-geïnteresseerd", "Follow-up", "Neutraal"]:
+            if opt.lower() in label.lower():
+                return opt
+        return "Neutraal"
+    except Exception:
+        return "Neutraal"
+
+
+@st.cache_data(ttl=1800)
+def fetch_mail_contact_history(mailbox="tobias@notifica.nl", days=180):
+    """
+    Haal contact history op via Microsoft Graph API.
+    Returns {email_lower: {last_contact, last_reply, reply_snippet, ai_class}}
+
+    Vereist: Mail.Read Application permission op de Azure AD app + admin consent.
+    """
+    token = _get_graph_token()
+    if not token:
+        return {}
+
+    headers = {"Authorization": f"Bearer {token}"}
+    cutoff = (datetime.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%dT00:00:00Z")
+
+    # --- Stap 1: Verzonden mails → sent_map {recipient_email: sent_date} ---
+    sent_map = {}
+    url = (
+        f"{GRAPH_BASE}/users/{mailbox}/mailFolders/SentItems/messages"
+        f"?$select=toRecipients,sentDateTime"
+        f"&$filter=sentDateTime ge {cutoff}"
+        f"&$top=250&$orderby=sentDateTime desc"
+    )
+    while url:
+        try:
+            r = requests.get(url, headers=headers, timeout=20)
+            if r.status_code != 200:
+                break
+            data = r.json()
+            for msg in data.get("value", []):
+                sent_dt = msg.get("sentDateTime", "")[:10]
+                for recipient in msg.get("toRecipients", []):
+                    addr = (recipient.get("emailAddress", {}).get("address") or "").lower().strip()
+                    if addr and addr not in sent_map:
+                        sent_map[addr] = sent_dt
+            url = data.get("@odata.nextLink")
+        except Exception:
+            break
+
+    # --- Stap 2: Ontvangen mails → reply_map {sender_email: {date, snippet}} ---
+    reply_map = {}
+    url = (
+        f"{GRAPH_BASE}/users/{mailbox}/messages"
+        f"?$select=from,receivedDateTime,bodyPreview"
+        f"&$filter=receivedDateTime ge {cutoff} and isDraft eq false"
+        f"&$top=250&$orderby=receivedDateTime desc"
+    )
+    while url:
+        try:
+            r = requests.get(url, headers=headers, timeout=20)
+            if r.status_code != 200:
+                break
+            data = r.json()
+            for msg in data.get("value", []):
+                addr = (
+                    msg.get("from", {}).get("emailAddress", {}).get("address") or ""
+                ).lower().strip()
+                if not addr or addr == mailbox.lower():
+                    continue
+                recv_dt = msg.get("receivedDateTime", "")[:10]
+                snippet = (msg.get("bodyPreview") or "").strip()
+                if addr not in reply_map:
+                    reply_map[addr] = {"date": recv_dt, "snippet": snippet}
+            url = data.get("@odata.nextLink")
+        except Exception:
+            break
+
+    # --- Stap 3: AI-classificatie voor replies ---
+    history = {}
+    all_emails = set(sent_map) | set(reply_map)
+    for email in all_emails:
+        entry = {}
+        if email in sent_map:
+            entry["last_contact"] = sent_map[email]
+        if email in reply_map:
+            entry["last_reply"] = reply_map[email]["date"]
+            entry["reply_snippet"] = reply_map[email]["snippet"]
+            entry["ai_class"] = _classify_reply(reply_map[email]["snippet"])
+        if entry:
+            history[email] = entry
+
+    return history
 
 
 def generate_nid(email):
@@ -699,7 +900,8 @@ def build_leads_df(ml_df, pd_df, web_mapping,
     deals = deals_dict or {}
     leads = []
 
-    def _build_lead(email, name, company, phone, opened, clicked, pipedrive_match):
+    def _build_lead(email, name, company, phone, opened, clicked, pipedrive_match,
+                    person_id=None):
         open_score, click_score = calculate_engagement_score(opened, clicked)
 
         # NID websitebezoek
@@ -716,6 +918,8 @@ def build_leads_df(ml_df, pd_df, web_mapping,
         deal_fase = deal.get("deal_fase", "")
         deal_waarde = deal.get("deal_waarde", 0)
         deal_bonus = deal.get("deal_bonus", 0)
+        deal_id = deal.get("deal_id")
+        deal_stage_id = deal.get("stage_id")
         # Bedrijfsnaam uit deal als er geen andere is
         if not company and deal.get("org_name"):
             company = deal["org_name"]
@@ -741,6 +945,9 @@ def build_leads_df(ml_df, pd_df, web_mapping,
             "Totaal": total,
             "Segment": classify_lead(total),
             "In Pipedrive": pipedrive_match,
+            "Pipedrive ID": person_id,
+            "Deal ID": deal_id,
+            "Deal Stage ID": deal_stage_id,
         }
 
     if not ml_df.empty:
@@ -749,16 +956,19 @@ def build_leads_df(ml_df, pd_df, web_mapping,
             pipedrive_org = ""
             pipedrive_match = False
             pipedrive_phone = ""
+            person_id = None
             if not pd_df.empty:
                 match = pd_df[pd_df["pipedrive_email"] == email]
                 if not match.empty:
                     pipedrive_org = match.iloc[0]["pipedrive_org"]
                     pipedrive_phone = match.iloc[0]["pipedrive_phone"]
                     pipedrive_match = True
+                    person_id = match.iloc[0].get("person_id")
             company = pipedrive_org or sub.get("company", "") or ""
             leads.append(_build_lead(
                 email, sub["name"], company, pipedrive_phone,
                 sub["opened"], sub["clicked"], pipedrive_match,
+                person_id=person_id,
             ))
 
     elif not pd_df.empty:
@@ -769,6 +979,7 @@ def build_leads_df(ml_df, pd_df, web_mapping,
                 p["pipedrive_email"], p["pipedrive_name"],
                 p["pipedrive_org"], p["pipedrive_phone"],
                 0, 0, True,
+                person_id=p.get("person_id"),
             ))
 
     if not leads:
