@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from config import FUNNEL_CONFIG, INTERNE_MEDEWERKERS
 from data import (
-    get_secret, generate_nid,
+    get_secret,
     fetch_emailoctopus_subscribers, fetch_pipedrive_persons,
     fetch_pipedrive_deals, fetch_pipedrive_stages,
     fetch_emailoctopus_campaign_activity,
@@ -241,8 +241,6 @@ def _render_call_table(df, label, key_prefix, mail_history=None):
         parts = []
         if row.get("Deal Fase"):
             parts.append(f"📋 {row['Deal Fase']}")
-        if row.get("NID Bezoeken", 0) > 0:
-            parts.append(f"🌐 {int(row['NID Bezoeken'])}x bezocht")
         if row.get("LF Bezocht"):
             parts.append("🔍 Leadfeeder")
         return " | ".join(parts) if parts else ""
@@ -270,8 +268,6 @@ def _render_call_table(df, label, key_prefix, mail_history=None):
             reasons = []
             if row.get("Opens", 0) > 0:
                 reasons.append(f"✉️ {int(row['Opens'])} opens, {int(row.get('Clicks', 0))} clicks")
-            if row.get("NID Bezoeken", 0) > 0:
-                reasons.append(f"🌐 {int(row['NID Bezoeken'])}× website bezocht (geïdentificeerd via e-maillink)")
             if row.get("LF Bezocht"):
                 reasons.append("🔍 Zichtbaar via Leadfeeder")
             if row.get("Deal Fase"):
@@ -539,7 +535,7 @@ elif pagina == "Data & Details":
 
             all_possible = ["Naam", "Email", "Bedrijf", "Doelgroep", "Telefoon",
                             "Opens", "Clicks", "Open Score", "Click Score",
-                            "NID Score", "LF Score", "Deal Fase", "Deal Bonus",
+                            "LF Score", "Deal Fase", "Deal Bonus",
                             "Totaal", "Segment"]
             display_cols = [c for c in all_possible if c in filtered.columns]
             st.dataframe(
@@ -554,17 +550,21 @@ elif pagina == "Data & Details":
                 "text/csv", key="download_leads",
             )
 
-            with st.expander("Scoring uitleg"):
+            with st.expander("Kolommen & scoring uitleg"):
                 st.markdown("""
-**Lead Score: 0-40 punten** (Opens + Clicks + Website)
+**Kolommen**
 
-| Component | Max | Bereik |
-|-----------|-----|--------|
-| E-mail Opens | 15 | 0=0, 1+=3, 3+=6, 5+=9, 10+=12, 20+=15 |
-| E-mail Clicks | 15 | 0=0, 1+=3, 2+=6, 3+=9, 5+=12, 10+=15 |
-| Website Bezoeken | 10 | 0-10 op basis van recente bezoekactiviteit |
-
-**Segmentatie:** HOT (>=18) | Warm (9-17) | Cold (<9)
+| Kolom | Wat het betekent |
+|-------|-----------------|
+| Opens | Aantal e-mails geopend (alle campagnes) |
+| Clicks | Aantal keer geklikt op een link in een mail |
+| Open Score | Punten op basis van opens: 1+=3, 3+=6, 5+=9, 10+=12, 20+=15 |
+| Click Score | Punten op basis van clicks: 1+=3, 2+=6, 3+=9, 5+=12, 10+=15 |
+| LF Score | +5 als het bedrijf via Leadfeeder/Leadbooster op de website is gezien |
+| Deal Fase | Huidige fase in Pipedrive (als er een open deal is) |
+| Deal Bonus | Punten op basis van deal fase: Offerte verstuurd=10, Offerte aanmaken=8, Interesse getoond=5, Contact gehad=3 |
+| Totaal | Open Score + Click Score + LF Score + Deal Bonus |
+| Segment | HOT (≥18) · Warm (9–17) · Cold (<9) |
                 """)
 
     # --- TAB: KLANT HEALTH ---

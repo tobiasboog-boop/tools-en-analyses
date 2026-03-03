@@ -201,10 +201,10 @@ def fetch_emailoctopus_campaign_activity():
 
 # Stage-prioriteit voor sortering
 _DEAL_STAGE_BONUS = {
-    "Offerte verstuurd": 20,
-    "Offerte aanmaken": 12,
-    "Intern akkoord scope & offerte": 12,
-    "Offerte": 12,
+    "Offerte verstuurd": 10,
+    "Offerte aanmaken": 8,
+    "Intern akkoord scope & offerte": 8,
+    "Offerte": 8,
     "Vervolg contact na 1e afspraak": 8,
     "Programma van Eisen (scoping)": 8,
     "Interesse getoond": 5,
@@ -871,16 +871,6 @@ def classify_lead(total_score):
         return "Cold"
 
 
-def _nid_score(visits: int) -> int:
-    """Score op basis van geïdentificeerde website-bezoeken (NID)."""
-    if visits >= 4:
-        return 10
-    elif visits >= 2:
-        return 6
-    elif visits >= 1:
-        return 3
-    return 0
-
 
 def _lf_score(company: str, lf_companies: dict) -> int:
     """Score op basis van Leadfeeder bedrijfsmatch."""
@@ -894,17 +884,8 @@ def build_leads_df(ml_df, pd_df, web_mapping,
                    deals_dict=None, identified_df=None, lf_df=None):
     """
     Bouw unified lead tabel van alle bronnen.
-    Signalen: e-mail opens/clicks + NID websitebezoek + Leadfeeder bedrijfsmatch + deal fase.
+    Signalen: e-mail opens/clicks + Leadfeeder bedrijfsmatch + deal fase.
     """
-    # Bouw NID-visit lookup: {nid: visit_count}
-    nid_visits = {}
-    if identified_df is not None and not identified_df.empty and "nid" in identified_df.columns:
-        visit_col = "visits" if "visits" in identified_df.columns else "count"
-        if visit_col in identified_df.columns:
-            nid_visits = identified_df.set_index("nid")[visit_col].to_dict()
-        else:
-            nid_visits = {row["nid"]: 1 for _, row in identified_df.iterrows()}
-
     # Bouw Leadfeeder bedrijfsnamen lookup: {company_lower: 1}
     lf_companies = {}
     if lf_df is not None and not lf_df.empty and "Bedrijf" in lf_df.columns:
@@ -917,11 +898,6 @@ def build_leads_df(ml_df, pd_df, web_mapping,
     def _build_lead(email, name, company, phone, opened, clicked, pipedrive_match,
                     person_id=None):
         open_score, click_score = calculate_engagement_score(opened, clicked)
-
-        # NID websitebezoek
-        nid = generate_nid(email)
-        visits = nid_visits.get(nid, 0)
-        nid_web_score = _nid_score(visits)
 
         # Leadfeeder bedrijfsmatch
         lf_match = _lf_score(company, lf_companies) > 0
@@ -938,7 +914,7 @@ def build_leads_df(ml_df, pd_df, web_mapping,
         if not company and deal.get("org_name"):
             company = deal["org_name"]
 
-        total = open_score + click_score + nid_web_score + lf_web_score + deal_bonus
+        total = open_score + click_score + lf_web_score + deal_bonus
 
         return {
             "Naam": name,
@@ -949,8 +925,6 @@ def build_leads_df(ml_df, pd_df, web_mapping,
             "Clicks": clicked,
             "Open Score": open_score,
             "Click Score": click_score,
-            "NID Bezoeken": visits,
-            "NID Score": nid_web_score,
             "LF Bezocht": lf_match,
             "LF Score": lf_web_score,
             "Deal Fase": deal_fase,
