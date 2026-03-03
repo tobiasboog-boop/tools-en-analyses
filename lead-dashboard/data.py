@@ -201,6 +201,7 @@ def fetch_emailoctopus_campaign_activity():
 
 # Stage-prioriteit voor sortering
 _DEAL_STAGE_BONUS = {
+    "Webinar aangemeld": 15,
     "Offerte verstuurd": 10,
     "Offerte aanmaken": 8,
     "Intern akkoord scope & offerte": 8,
@@ -330,12 +331,14 @@ def fetch_emailoctopus_subscribers():
         email = (sub.get("email_address") or "").lower().strip()
 
         engagement = hist.get(email, {})
+        leadstatus = (fields.get("LEADSTATUS") or "").strip()
         records.append({
             "email": email,
             "name": name,
             "company": (fields.get("COMPANY") or "").strip(),
             "opened": int(engagement.get("opens", 0)),
             "clicked": int(engagement.get("clicks", 0)),
+            "is_webinar": leadstatus.lower() == "webinar",
         })
     return pd.DataFrame(records), "ok"
 
@@ -896,7 +899,7 @@ def build_leads_df(ml_df, pd_df, web_mapping,
     leads = []
 
     def _build_lead(email, name, company, phone, opened, clicked, pipedrive_match,
-                    person_id=None):
+                    person_id=None, is_webinar=False):
         open_score, click_score = calculate_engagement_score(opened, clicked)
 
         # Leadfeeder bedrijfsmatch
@@ -914,7 +917,10 @@ def build_leads_df(ml_df, pd_df, web_mapping,
         if not company and deal.get("org_name"):
             company = deal["org_name"]
 
-        total = open_score + click_score + lf_web_score + deal_bonus
+        # Webinar bonus vanuit EmailOctopus LEADSTATUS (als er nog geen Pipedrive deal is)
+        webinar_bonus = 15 if (is_webinar and deal_bonus < 15) else 0
+
+        total = open_score + click_score + lf_web_score + deal_bonus + webinar_bonus
 
         return {
             "Naam": name,
@@ -927,9 +933,9 @@ def build_leads_df(ml_df, pd_df, web_mapping,
             "Click Score": click_score,
             "LF Bezocht": lf_match,
             "LF Score": lf_web_score,
-            "Deal Fase": deal_fase,
+            "Deal Fase": deal_fase or ("Webinar aangemeld" if is_webinar else ""),
             "Deal Waarde": deal_waarde,
-            "Deal Bonus": deal_bonus,
+            "Deal Bonus": max(deal_bonus, webinar_bonus),
             "Totaal": total,
             "Segment": classify_lead(total),
             "In Pipedrive": pipedrive_match,
@@ -953,10 +959,11 @@ def build_leads_df(ml_df, pd_df, web_mapping,
                     pipedrive_match = True
                     person_id = match.iloc[0].get("person_id")
             company = pipedrive_org or sub.get("company", "") or ""
+            is_webinar = bool(sub.get("is_webinar", False))
             leads.append(_build_lead(
                 email, sub["name"], company, pipedrive_phone,
                 sub["opened"], sub["clicked"], pipedrive_match,
-                person_id=person_id,
+                person_id=person_id, is_webinar=is_webinar,
             ))
 
     elif not pd_df.empty:

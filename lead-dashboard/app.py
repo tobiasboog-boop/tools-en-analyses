@@ -561,8 +561,8 @@ elif pagina == "Data & Details":
 | Open Score | Punten op basis van opens: 1+=3, 3+=6, 5+=9, 10+=12, 20+=15 |
 | Click Score | Punten op basis van clicks: 1+=3, 2+=6, 3+=9, 5+=12, 10+=15 |
 | LF Score | +5 als het bedrijf via Leadfeeder/Leadbooster op de website is gezien |
-| Deal Fase | Huidige fase in Pipedrive (als er een open deal is) |
-| Deal Bonus | Punten op basis van deal fase: Offerte verstuurd=10, Offerte aanmaken=8, Interesse getoond=5, Contact gehad=3 |
+| Deal Fase | Huidige fase in Pipedrive (als er een open deal is) of "Webinar aangemeld" via EmailOctopus |
+| Deal Bonus | Punten op basis van deal fase: Webinar aangemeld=15, Offerte verstuurd=10, Offerte aanmaken=8, Interesse getoond=5, Contact gehad=3 |
 | Totaal | Open Score + Click Score + LF Score + Deal Bonus |
 | Segment | HOT (≥18) · Warm (9–17) · Cold (<9) |
                 """)
