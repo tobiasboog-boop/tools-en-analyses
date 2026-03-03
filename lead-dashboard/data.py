@@ -680,58 +680,37 @@ _NL_MAANDEN = {
 @st.cache_data(ttl=3600)
 def fetch_powerbi_sql_data():
     """Haal Power BI report views op via Azure SQL (bisqq/notificaRAAS/Notifica.[Power BI activities]).
-    Vereist: ODBC Driver 17 for SQL Server + service principal met db_datareader op notificaRAAS.
+    Gebruikt pymssql met SQL credentials (geen ODBC driver nodig).
     Returns (DataFrame, status)."""
-    import struct
     try:
-        import pyodbc
+        import pymssql
     except ImportError:
-        return None, "no_pyodbc"
+        return None, "no_pymssql"
 
-    tenant_id = get_secret("POWERBI_TENANT_ID")
-    client_id = get_secret("POWERBI_CLIENT_ID")
-    client_secret = get_secret("POWERBI_CLIENT_SECRET")
+    server = get_secret("NOTIFICA_SQL_SERVER")
+    database = get_secret("NOTIFICA_SQL_DB")
+    user = get_secret("NOTIFICA_SQL_USER")
+    password = get_secret("NOTIFICA_SQL_PASSWORD")
 
-    if not all([tenant_id, client_id, client_secret]):
+    if not all([server, database, user, password]):
         return None, "no_credentials"
 
-    # Azure AD token voor Azure SQL (andere scope dan Power BI API)
     try:
-        r = requests.post(
-            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
-            data={
-                "grant_type": "client_credentials",
-                "client_id": client_id,
-                "client_secret": client_secret,
-                "scope": "https://database.windows.net/.default",
-            },
-            timeout=15,
+        conn = pymssql.connect(
+            server=server,
+            database=database,
+            user=user,
+            password=password,
+            tds_version="7.4",
+            timeout=30,
         )
-        if r.status_code != 200:
-            return None, "auth_failed"
-        token = r.json()["access_token"]
-    except Exception:
-        return None, "auth_error"
-
-    token_bytes = token.encode("utf-16-le")
-    token_struct = struct.pack(f"<I{len(token_bytes)}s", len(token_bytes), token_bytes)
-
-    conn_str = (
-        "Driver={ODBC Driver 17 for SQL Server};"
-        "Server=bisqq.database.windows.net;"
-        "Database=notificaRAAS;"
-        "Encrypt=yes;TrustServerCertificate=no;Connection Timeout=15;"
-    )
-
-    try:
-        conn = pyodbc.connect(conn_str, attrs_before={1256: token_struct})
         cursor = conn.cursor()
         cursor.execute("""
             SELECT
-                a.[Workspace name]    AS org_name,
-                a.[Report name]       AS report_name,
-                a.[Name]              AS user_name,
-                COUNT(*)              AS views,
+                a.[Workspace name]         AS org_name,
+                a.[Report name]            AS report_name,
+                a.[Name]                   AS user_name,
+                COUNT(*)                   AS views,
                 YEAR(a.[Activity Datum])   AS jaar,
                 MONTH(a.[Activity Datum])  AS maand_nr
             FROM Notifica.[Power BI activities] a
