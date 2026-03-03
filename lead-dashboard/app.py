@@ -5,6 +5,7 @@ Leads bellen, klanten bellen, campagneresultaten bekijken.
 """
 import streamlit as st
 import pandas as pd
+import io
 import os
 from datetime import datetime
 from dotenv import load_dotenv
@@ -15,12 +16,12 @@ from data import (
     fetch_emailoctopus_subscribers, fetch_pipedrive_persons,
     fetch_pipedrive_deals, fetch_pipedrive_stages,
     fetch_emailoctopus_campaign_activity,
-    load_web_visitors, load_powerbi_data, validate_powerbi_data,
+    load_web_visitors, load_powerbi_data, save_powerbi_cache, validate_powerbi_data,
     build_leads_df, calculate_customer_health, get_customer_contacts,
     load_campaign_data, load_campaign_activity, fetch_leadfeeder_leads,
     save_pipedrive_note, update_pipedrive_deal_stage,
     fetch_pipedrive_person_notes,
-    POWERBI_EXCEL_DEFAULT,
+    POWERBI_EXCEL_DEFAULT, POWERBI_CACHE_PATH,
 )
 
 load_dotenv()
@@ -576,12 +577,20 @@ elif pagina == "Data & Details":
             key="pbi_upload",
         )
         if uploaded is not None:
-            st.session_state.powerbi_uploaded = uploaded
-            pbi_df = pd.read_excel(uploaded)
+            file_bytes = uploaded.read()
+            saved = save_powerbi_cache(file_bytes)
+            pbi_df = pd.read_excel(io.BytesIO(file_bytes))
             health_df = calculate_customer_health(pbi_df)
             if not health_df.empty:
                 health_df = get_customer_contacts(health_df, pd_df)
-            st.success(f"Excel geladen: {len(pbi_df)} rijen, {pbi_df['Pipedrive organisatie'].nunique()} klanten")
+            msg = f"Excel opgeslagen en geladen: {len(pbi_df)} rijen, {pbi_df['Pipedrive organisatie'].nunique()} klanten"
+            if not saved:
+                msg += " (opslaan mislukt — wordt niet onthouden)"
+            st.success(msg)
+        elif pbi_source == "cache":
+            import os as _os
+            cache_date = datetime.fromtimestamp(_os.path.getmtime(POWERBI_CACHE_PATH)).strftime("%d-%m-%Y %H:%M")
+            st.info(f"Gebruik opgeslagen cache van {cache_date}. Upload een nieuwere Excel om te verversen.")
 
         if health_df.empty:
             st.info(

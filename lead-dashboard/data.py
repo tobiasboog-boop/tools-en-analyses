@@ -29,6 +29,7 @@ POWERBI_EXCEL_DEFAULT = os.path.join(
     os.path.expanduser("~"), "Downloads",
     "Power BI activity Report views (5).xlsx"
 )
+POWERBI_CACHE_PATH = os.path.join(os.path.dirname(__file__), "data", "powerbi_cache.xlsx")
 
 
 def get_secret(key, default=""):
@@ -756,18 +757,29 @@ def fetch_powerbi_sql_data():
     return result, "ok"
 
 
-def load_powerbi_data():
-    """Laad Power BI data: eerst uploaded, dan Azure SQL, dan Excel fallback.
-    Returns (DataFrame, source_label, sql_status)."""
-    if "powerbi_uploaded" in st.session_state and st.session_state.powerbi_uploaded is not None:
-        try:
-            return pd.read_excel(st.session_state.powerbi_uploaded), "upload", None
-        except Exception:
-            pass
+def save_powerbi_cache(file_bytes: bytes) -> bool:
+    """Sla geüpload Power BI Excel op als lokale cache. Returns True bij succes."""
+    try:
+        os.makedirs(os.path.dirname(POWERBI_CACHE_PATH), exist_ok=True)
+        with open(POWERBI_CACHE_PATH, "wb") as f:
+            f.write(file_bytes)
+        return True
+    except Exception:
+        return False
 
+
+def load_powerbi_data():
+    """Laad Power BI data: Azure SQL → lokale cache → Downloads Excel.
+    Returns (DataFrame, source_label, sql_status)."""
     sql_df, sql_status = fetch_powerbi_sql_data()
     if sql_df is not None and not sql_df.empty:
         return sql_df, "sql", sql_status
+
+    if os.path.exists(POWERBI_CACHE_PATH):
+        try:
+            return pd.read_excel(POWERBI_CACHE_PATH), "cache", sql_status
+        except Exception:
+            pass
 
     if os.path.exists(POWERBI_EXCEL_DEFAULT):
         try:

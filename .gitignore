@@ -9,3 +9,7 @@ lead-dashboard/.env
 # Data exports - alleen grote binaire bestanden uitsluiten
 lead-dashboard/docs/*.xlsx
 lead-dashboard/docs/*.xls
+
+# Power BI Excel cache (lokaal opgeslagen, niet in git)
+lead-dashboard/data/*.xlsx
+lead-dashboard/data/*.xls
