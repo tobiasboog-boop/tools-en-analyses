@@ -680,63 +680,83 @@ _NL_MAANDEN = {
 }
 
 
-@st.cache_data(ttl=3600)
-def fetch_powerbi_sql_data():
-    """Haal Power BI report views op via Azure SQL (bisqq/notificaRAAS/Notifica.[Power BI activities]).
-    Gebruikt pymssql met SQL credentials (geen ODBC driver nodig).
+@st.cache_data(ttl=14400)
+def fetch_powerbi_api_data():
+    """Haal Power BI report views op via de Power BI Admin API (Activity Events).
+    Gebruikt bestaande Azure AD service principal (POWERBI_TENANT/CLIENT/SECRET).
     Returns (DataFrame, status)."""
-    try:
-        import pymssql
-    except ImportError:
-        return None, "no_pymssql"
+    tenant_id = get_secret("POWERBI_TENANT_ID")
+    client_id = get_secret("POWERBI_CLIENT_ID")
+    client_secret = get_secret("POWERBI_CLIENT_SECRET")
 
-    server = get_secret("NOTIFICA_SQL_SERVER")
-    database = get_secret("NOTIFICA_SQL_DB")
-    user = get_secret("NOTIFICA_SQL_USER")
-    password = get_secret("NOTIFICA_SQL_PASSWORD")
-
-    if not all([server, database, user, password]):
+    if not all([tenant_id, client_id, client_secret]):
         return None, "no_credentials"
 
-    try:
-        conn = pymssql.connect(
-            server=server,
-            database=database,
-            user=user,
-            password=password,
-            tds_version="7.4",
-            timeout=30,
-        )
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT
-                a.[Workspace name]         AS org_name,
-                a.[Report name]            AS report_name,
-                a.[Name]                   AS user_name,
-                COUNT(*)                   AS views,
-                YEAR(a.[Activity Datum])   AS jaar,
-                MONTH(a.[Activity Datum])  AS maand_nr
-            FROM Notifica.[Power BI activities] a
-            WHERE a.[Activity Datum] >= CAST(DATEADD(month, -3, GETDATE()) AS date)
-            GROUP BY a.[Workspace name], a.[Report name], a.[Name],
-                     YEAR(a.[Activity Datum]), MONTH(a.[Activity Datum])
-        """)
-        rows = cursor.fetchall()
-        conn.close()
-    except Exception as e:
-        return None, f"sql_error: {str(e)[:120]}"
+    # OAuth2 token ophalen
+    token_resp = requests.post(
+        f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+        data={
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "https://analysis.windows.net/powerbi/api/.default",
+        },
+        timeout=15,
+    )
+    if token_resp.status_code != 200:
+        return None, f"token_error: {token_resp.status_code}"
+    token = token_resp.json().get("access_token")
+    if not token:
+        return None, "no_token"
 
-    if not rows:
+    headers = {"Authorization": f"Bearer {token}"}
+    today = datetime.utcnow().date()
+    all_events = []
+
+    for days_ago in range(1, 31):  # laatste 30 dagen
+        day = today - timedelta(days=days_ago)
+        next_url = (
+            "https://api.powerbi.com/v1.0/myorg/admin/activityevents"
+            f"?startDateTime='{day}T00:00:00.000Z'"
+            f"&endDateTime='{day}T23:59:59.999Z'"
+            "&$filter=Activity eq 'ViewReport'"
+        )
+        while next_url:
+            resp = requests.get(next_url, headers=headers, timeout=30)
+            if resp.status_code != 200:
+                return None, f"api_error_{day}: {resp.status_code} {resp.text[:80]}"
+            data = resp.json()
+            all_events.extend(data.get("activityEventEntities", []))
+            cont = data.get("continuationToken")
+            next_url = (
+                f"https://api.powerbi.com/v1.0/myorg/admin/activityevents"
+                f"?continuationToken='{cont}'"
+            ) if cont else None
+
+    if not all_events:
         return None, "no_data"
 
-    result = pd.DataFrame(
-        rows,
-        columns=["Pipedrive organisatie", "Report name", "Name",
-                 "Aantal activity reportviews", "Jaar", "_maand_nr"],
+    df = pd.DataFrame(all_events)
+    if "WorkSpaceName" not in df.columns:
+        return None, f"unexpected_fields: {list(df.columns)[:8]}"
+
+    df["_ts"] = pd.to_datetime(df["CreationTime"], utc=True)
+    df["Jaar"] = df["_ts"].dt.year
+    df["_maand_nr"] = df["_ts"].dt.month
+
+    agg = (
+        df.groupby(["WorkSpaceName", "ReportName", "UserId", "Jaar", "_maand_nr"])
+        .size()
+        .reset_index(name="Aantal activity reportviews")
     )
-    result["Maand"] = result["_maand_nr"].map(_NL_MAANDEN)
-    result = result.drop(columns=["_maand_nr"])
-    return result, "ok"
+    agg = agg.rename(columns={
+        "WorkSpaceName": "Pipedrive organisatie",
+        "ReportName": "Report name",
+        "UserId": "Name",
+    })
+    agg["Maand"] = agg["_maand_nr"].map(_NL_MAANDEN)
+    agg = agg.drop(columns=["_maand_nr"])
+    return agg, "ok"
 
 
 def save_powerbi_cache(file_bytes: bytes) -> bool:
@@ -751,25 +771,25 @@ def save_powerbi_cache(file_bytes: bytes) -> bool:
 
 
 def load_powerbi_data():
-    """Laad Power BI data: Azure SQL → lokale cache → Downloads Excel.
-    Returns (DataFrame, source_label, sql_status)."""
-    sql_df, sql_status = fetch_powerbi_sql_data()
-    if sql_df is not None and not sql_df.empty:
-        return sql_df, "sql", sql_status
+    """Laad Power BI data: Power BI API → lokale cache → Downloads Excel.
+    Returns (DataFrame, source_label, api_status)."""
+    api_df, api_status = fetch_powerbi_api_data()
+    if api_df is not None and not api_df.empty:
+        return api_df, "api", api_status
 
     if os.path.exists(POWERBI_CACHE_PATH):
         try:
-            return pd.read_excel(POWERBI_CACHE_PATH), "cache", sql_status
+            return pd.read_excel(POWERBI_CACHE_PATH), "cache", api_status
         except Exception:
             pass
 
     if os.path.exists(POWERBI_EXCEL_DEFAULT):
         try:
-            return pd.read_excel(POWERBI_EXCEL_DEFAULT), "excel", sql_status
+            return pd.read_excel(POWERBI_EXCEL_DEFAULT), "excel", api_status
         except Exception:
             pass
 
-    return None, "none", sql_status
+    return None, "none", api_status
 
 
 def validate_powerbi_data(pbi_df, excel_path=POWERBI_EXCEL_DEFAULT):

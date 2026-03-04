@@ -150,7 +150,7 @@ with st.spinner("Data ophalen..."):
     deals_dict = fetch_pipedrive_deals()
     stages_dict = fetch_pipedrive_stages()  # {stage_id: stage_name}
     web_mapping, web_source, web_summary, web_df, identified_df = load_web_visitors()
-    pbi_df, pbi_source, pbi_sql_status = load_powerbi_data()
+    pbi_df, pbi_source, pbi_api_status = load_powerbi_data()
     lf_df = fetch_leadfeeder_leads(days=30)
 
 # Status in sidebar
@@ -159,7 +159,7 @@ with st.sidebar:
         ("EmailOctopus", ml_status == "ok", f"{len(ml_df)}" if ml_status == "ok" else ml_status),
         ("Pipedrive", not pd_df.empty, f"{len(pd_df)}" if not pd_df.empty else "geen"),
         ("Power BI", pbi_df is not None and not pbi_df.empty,
-         f"{pbi_df['Pipedrive organisatie'].nunique()}" if pbi_df is not None and not pbi_df.empty else f"geen ({pbi_sql_status})"),
+         f"{pbi_df['Pipedrive organisatie'].nunique()}" if pbi_df is not None and not pbi_df.empty else f"geen ({pbi_api_status})"),
         ("Deals", bool(deals_dict), f"{len(deals_dict)}" if deals_dict else "geen"),
         ("Leadfeeder", not lf_df.empty, f"{len(lf_df)}" if not lf_df.empty else "geen"),
     ]
@@ -597,8 +597,8 @@ elif pagina == "Data & Details":
                 "Geen Power BI data. Upload een Excel bestand hierboven, "
                 f"of plaats het bestand op: `{POWERBI_EXCEL_DEFAULT}`"
             )
-            if pbi_sql_status and pbi_sql_status != "ok":
-                st.caption(f"SQL status: `{pbi_sql_status}`")
+            if pbi_api_status and pbi_api_status != "ok":
+                st.caption(f"Power BI API status: `{pbi_api_status}`")
         else:
             top12_names = FUNNEL_CONFIG["top_12"]
             health_df["Top 12"] = health_df["Klant"].apply(

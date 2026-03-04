@@ -4,4 +4,3 @@ requests
 openpyxl
 python-dotenv
 anthropic
-pymssql
