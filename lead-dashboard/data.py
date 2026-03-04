@@ -29,7 +29,7 @@ POWERBI_EXCEL_DEFAULT = os.path.join(
     os.path.expanduser("~"), "Downloads",
     "Power BI activity Report views (5).xlsx"
 )
-POWERBI_CACHE_PATH = os.path.join(os.path.dirname(__file__), "data", "powerbi_cache.xlsx")
+POWERBI_CACHE_PATH = os.path.join(os.path.dirname(__file__), "data", "powerbi_cache.parquet")
 
 
 def get_secret(key, default=""):
@@ -783,22 +783,23 @@ def fetch_powerbi_api_data():
 
 
 def save_powerbi_cache(file_bytes: bytes) -> bool:
-    """Sla geüpload Power BI Excel op als lokale cache. Returns True bij succes."""
+    """Sla geüpload Power BI Excel op als parquet cache. Returns True bij succes."""
     try:
         os.makedirs(os.path.dirname(POWERBI_CACHE_PATH), exist_ok=True)
-        with open(POWERBI_CACHE_PATH, "wb") as f:
-            f.write(file_bytes)
+        import io
+        df = pd.read_excel(io.BytesIO(file_bytes))
+        df.to_parquet(POWERBI_CACHE_PATH, index=False)
         return True
     except Exception:
         return False
 
 
 def load_powerbi_data():
-    """Laad Power BI data: lokale cache → Downloads Excel.
+    """Laad Power BI data: parquet cache → Downloads Excel.
     Returns (DataFrame, source_label, status)."""
     if os.path.exists(POWERBI_CACHE_PATH):
         try:
-            return pd.read_excel(POWERBI_CACHE_PATH), "cache", "cache"
+            return pd.read_parquet(POWERBI_CACHE_PATH), "cache", "cache"
         except Exception:
             pass
 

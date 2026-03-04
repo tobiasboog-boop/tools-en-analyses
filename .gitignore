@@ -10,6 +10,7 @@ lead-dashboard/.env
 lead-dashboard/docs/*.xlsx
 lead-dashboard/docs/*.xls
 
-# Power BI Excel cache (lokaal opgeslagen, niet in git)
+# Power BI Excel cache - xlsx/xls NIET in git (te groot/binair)
+# .parquet WEL in git: persistent cache voor Streamlit Cloud
 lead-dashboard/data/*.xlsx
 lead-dashboard/data/*.xls
