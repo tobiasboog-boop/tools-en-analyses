@@ -20,7 +20,7 @@ from data import (
     build_leads_df, calculate_customer_health, get_customer_contacts,
     load_campaign_data, load_campaign_activity, fetch_leadfeeder_leads,
     save_pipedrive_note, update_pipedrive_deal_stage,
-    fetch_pipedrive_person_notes,
+    fetch_pipedrive_person_notes, generate_nid,
     POWERBI_EXCEL_DEFAULT, POWERBI_CACHE_PATH,
 )
 
