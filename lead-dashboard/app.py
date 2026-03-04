@@ -159,7 +159,7 @@ with st.sidebar:
         ("EmailOctopus", ml_status == "ok", f"{len(ml_df)}" if ml_status == "ok" else ml_status),
         ("Pipedrive", not pd_df.empty, f"{len(pd_df)}" if not pd_df.empty else "geen"),
         ("Power BI", pbi_df is not None and not pbi_df.empty,
-         f"{pbi_df['Pipedrive organisatie'].nunique()}" if pbi_df is not None and not pbi_df.empty else "geen"),
+         f"{pbi_df['Pipedrive organisatie'].nunique()}" if pbi_df is not None and not pbi_df.empty else f"geen ({pbi_sql_status})"),
         ("Deals", bool(deals_dict), f"{len(deals_dict)}" if deals_dict else "geen"),
         ("Leadfeeder", not lf_df.empty, f"{len(lf_df)}" if not lf_df.empty else "geen"),
     ]
