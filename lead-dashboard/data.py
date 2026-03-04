@@ -794,25 +794,21 @@ def save_powerbi_cache(file_bytes: bytes) -> bool:
 
 
 def load_powerbi_data():
-    """Laad Power BI data: Power BI API → lokale cache → Downloads Excel.
-    Returns (DataFrame, source_label, api_status)."""
-    api_df, api_status = fetch_powerbi_api_data()
-    if api_df is not None and not api_df.empty:
-        return api_df, "api", api_status
-
+    """Laad Power BI data: lokale cache → Downloads Excel.
+    Returns (DataFrame, source_label, status)."""
     if os.path.exists(POWERBI_CACHE_PATH):
         try:
-            return pd.read_excel(POWERBI_CACHE_PATH), "cache", api_status
+            return pd.read_excel(POWERBI_CACHE_PATH), "cache", "cache"
         except Exception:
             pass
 
     if os.path.exists(POWERBI_EXCEL_DEFAULT):
         try:
-            return pd.read_excel(POWERBI_EXCEL_DEFAULT), "excel", api_status
+            return pd.read_excel(POWERBI_EXCEL_DEFAULT), "excel", "excel"
         except Exception:
             pass
 
-    return None, "none", api_status
+    return None, "none", "upload_nodig"
 
 
 def validate_powerbi_data(pbi_df, excel_path=POWERBI_EXCEL_DEFAULT):

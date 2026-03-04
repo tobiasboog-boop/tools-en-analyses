@@ -150,7 +150,7 @@ with st.spinner("Data ophalen..."):
     deals_dict = fetch_pipedrive_deals()
     stages_dict = fetch_pipedrive_stages()  # {stage_id: stage_name}
     web_mapping, web_source, web_summary, web_df, identified_df = load_web_visitors()
-    pbi_df, pbi_source, pbi_api_status = load_powerbi_data()
+    pbi_df, pbi_source, pbi_status = load_powerbi_data()
     lf_df = fetch_leadfeeder_leads(days=30)
 
 # Status in sidebar
@@ -159,7 +159,7 @@ with st.sidebar:
         ("EmailOctopus", ml_status == "ok", f"{len(ml_df)}" if ml_status == "ok" else ml_status),
         ("Pipedrive", not pd_df.empty, f"{len(pd_df)}" if not pd_df.empty else "geen"),
         ("Power BI", pbi_df is not None and not pbi_df.empty,
-         f"{pbi_df['Pipedrive organisatie'].nunique()}" if pbi_df is not None and not pbi_df.empty else f"geen ({pbi_api_status})"),
+         f"{pbi_df['Pipedrive organisatie'].nunique()}" if pbi_df is not None and not pbi_df.empty else "geen (upload Excel)"),
         ("Deals", bool(deals_dict), f"{len(deals_dict)}" if deals_dict else "geen"),
         ("Leadfeeder", not lf_df.empty, f"{len(lf_df)}" if not lf_df.empty else "geen"),
     ]
@@ -597,8 +597,6 @@ elif pagina == "Data & Details":
                 "Geen Power BI data. Upload een Excel bestand hierboven, "
                 f"of plaats het bestand op: `{POWERBI_EXCEL_DEFAULT}`"
             )
-            if pbi_api_status and pbi_api_status != "ok":
-                st.caption(f"Power BI API status: `{pbi_api_status}`")
         else:
             top12_names = FUNNEL_CONFIG["top_12"]
             health_df["Top 12"] = health_df["Klant"].apply(
@@ -671,25 +669,15 @@ elif pagina == "Data & Details":
                             use_container_width=True, hide_index=True,
                         )
 
-            with st.expander("Data Validatie: SQL vs Excel"):
-                if pbi_source == "sql":
-                    validation = validate_powerbi_data(pbi_df)
-                    if validation:
-                        st.markdown("**Vergelijking Azure SQL data met lokale Excel export:**")
-                        vc1, vc2, vc3 = st.columns(3)
-                        vc1.metric("SQL rijen", validation["sql_total_rows"])
-                        vc2.metric("Excel rijen", validation["excel_total_rows"])
-                        vc3.metric("Gedeelde orgs", validation["shared_orgs"])
-
-                        if not validation["comparison"].empty:
-                            st.dataframe(validation["comparison"], use_container_width=True,
-                                         hide_index=True, height=300)
-                    else:
-                        st.info(f"Validatie niet mogelijk. Excel nodig op: `{POWERBI_EXCEL_DEFAULT}`")
+            with st.expander("Data bron info"):
+                if pbi_source == "cache":
+                    import os as _os2
+                    cache_date = datetime.fromtimestamp(_os2.path.getmtime(POWERBI_CACHE_PATH)).strftime("%d-%m-%Y %H:%M")
+                    st.info(f"Data uit opgeslagen cache ({cache_date}). Upload een nieuwere Excel om te verversen.")
                 elif pbi_source == "excel":
-                    st.info("Data komt uit Excel. Validatie beschikbaar wanneer Azure SQL verbinding actief is.")
+                    st.info(f"Data uit Excel bestand: `{POWERBI_EXCEL_DEFAULT}`")
                 else:
-                    st.info("Geen data beschikbaar voor validatie.")
+                    st.info("Geen data beschikbaar.")
 
             with st.expander("Health Scoring uitleg"):
                 st.markdown("""
