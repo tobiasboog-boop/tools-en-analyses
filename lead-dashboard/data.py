@@ -713,32 +713,41 @@ def fetch_powerbi_api_data():
     today = datetime.utcnow().date()
     all_events = []
 
+    errors = []
     for days_ago in range(1, 31):  # laatste 30 dagen
         day = today - timedelta(days=days_ago)
         next_url = (
             "https://api.powerbi.com/v1.0/myorg/admin/activityevents"
             f"?startDateTime='{day}T00:00:00.000Z'"
             f"&endDateTime='{day}T23:59:59.999Z'"
-            "&$filter=Activity eq 'ViewReport'"
         )
         while next_url:
             resp = requests.get(next_url, headers=headers, timeout=30)
             if resp.status_code != 200:
-                return None, f"api_error_{day}: {resp.status_code} {resp.text[:80]}"
+                errors.append(f"{day}:{resp.status_code}")
+                break  # sla deze dag over, ga door met volgende
             data = resp.json()
             all_events.extend(data.get("activityEventEntities", []))
             cont = data.get("continuationToken")
             next_url = (
-                f"https://api.powerbi.com/v1.0/myorg/admin/activityevents"
+                "https://api.powerbi.com/v1.0/myorg/admin/activityevents"
                 f"?continuationToken='{cont}'"
             ) if cont else None
 
     if not all_events:
-        return None, "no_data"
+        err_str = ",".join(errors[:3]) if errors else "leeg"
+        return None, f"no_data ({err_str})"
 
     df = pd.DataFrame(all_events)
     if "WorkSpaceName" not in df.columns:
         return None, f"unexpected_fields: {list(df.columns)[:8]}"
+
+    # Filter op ViewReport (in Python, niet via API-filter om 400-fouten te voorkomen)
+    if "ActivityEventType" in df.columns:
+        df = df[df["ActivityEventType"] == "ViewReport"]
+
+    if df.empty:
+        return None, "no_viewreport_events"
 
     df["_ts"] = pd.to_datetime(df["CreationTime"], utc=True)
     df["Jaar"] = df["_ts"].dt.year
