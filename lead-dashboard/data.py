@@ -713,26 +713,40 @@ def fetch_powerbi_api_data():
     today = datetime.utcnow().date()
     all_events = []
 
-    errors = []
-    for days_ago in range(1, 31):  # laatste 30 dagen
-        day = today - timedelta(days=days_ago)
+    def _fetch_day(day):
+        """Haal events op voor één dag. Returns (list_of_events, error_or_None)."""
+        events = []
         next_url = (
             "https://api.powerbi.com/v1.0/myorg/admin/activityevents"
             f"?startDateTime='{day}T00:00:00.000Z'"
             f"&endDateTime='{day}T23:59:59.999Z'"
         )
         while next_url:
-            resp = requests.get(next_url, headers=headers, timeout=30)
+            try:
+                resp = requests.get(next_url, headers=headers, timeout=20)
+            except Exception as e:
+                return events, f"{day}:timeout"
             if resp.status_code != 200:
-                errors.append(f"{day}:{resp.status_code}")
-                break  # sla deze dag over, ga door met volgende
+                return events, f"{day}:{resp.status_code}"
             data = resp.json()
-            all_events.extend(data.get("activityEventEntities", []))
+            events.extend(data.get("activityEventEntities", []))
             cont = data.get("continuationToken")
             next_url = (
                 "https://api.powerbi.com/v1.0/myorg/admin/activityevents"
                 f"?continuationToken='{cont}'"
             ) if cont else None
+        return events, None
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    days = [today - timedelta(days=d) for d in range(1, 31)]
+    errors = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(_fetch_day, day): day for day in days}
+        for future in as_completed(futures):
+            evts, err = future.result()
+            all_events.extend(evts)
+            if err:
+                errors.append(err)
 
     if not all_events:
         err_str = ",".join(errors[:3]) if errors else "leeg"
