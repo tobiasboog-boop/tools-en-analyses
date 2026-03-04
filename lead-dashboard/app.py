@@ -597,6 +597,8 @@ elif pagina == "Data & Details":
                 "Geen Power BI data. Upload een Excel bestand hierboven, "
                 f"of plaats het bestand op: `{POWERBI_EXCEL_DEFAULT}`"
             )
+            if pbi_sql_status and pbi_sql_status != "ok":
+                st.caption(f"SQL status: `{pbi_sql_status}`")
         else:
             top12_names = FUNNEL_CONFIG["top_12"]
             health_df["Top 12"] = health_df["Klant"].apply(
