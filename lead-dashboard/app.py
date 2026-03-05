@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import io
 import os
+import time
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -349,7 +350,9 @@ def _render_call_table(df, label, key_prefix, mail_history=None, manual_emails=N
                         if new_phone.strip() and person_id:
                             ok = update_pipedrive_person_phone(int(person_id), new_phone)
                             if ok:
-                                st.success("Opgeslagen in Pipedrive")
+                                st.success("Opgeslagen in Pipedrive. Pagina wordt bijgewerkt...")
+                                time.sleep(1.5)
+                                st.rerun()
                             else:
                                 st.error("Opslaan mislukt")
                         else:
@@ -470,7 +473,10 @@ if pagina == "Mijn Week":
                     if stage_id:
                         update_pipedrive_deal_stage(int(sel_row["Deal ID"]), stage_id)
                 if ok:
-                    st.success(f"Notitie opgeslagen voor {sel_row['Naam']}.")
+                    fetch_pipedrive_person_notes.clear()
+                    st.success(f"Notitie opgeslagen voor {sel_row['Naam']}. Pagina wordt bijgewerkt...")
+                    time.sleep(1.5)
+                    st.rerun()
                 else:
                     st.error("Opslaan mislukt. Controleer de Pipedrive API-sleutel.")
             else:
