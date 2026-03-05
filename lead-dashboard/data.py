@@ -457,6 +457,33 @@ def update_pipedrive_deal_stage(deal_id: int, stage_id: int) -> bool:
 # ============================================================
 
 @st.cache_data(ttl=600)
+def fetch_last_activity_dates() -> dict:
+    """Haal de meest recente notitiedatum op per person_id (bulk, max 500 notities).
+    Returns {person_id_str: 'YYYY-MM-DD'}."""
+    token = get_secret("PIPEDRIVE_API_TOKEN")
+    if not token:
+        return {}
+    try:
+        r = requests.get(
+            f"{PIPEDRIVE_BASE}/notes",
+            params={"api_token": token, "limit": 500, "sort": "add_time DESC"},
+            timeout=30,
+        )
+        if r.status_code != 200:
+            return {}
+        notes = r.json().get("data") or []
+        dates = {}
+        for note in notes:
+            pid = str(note.get("person_id") or "")
+            add_time = (note.get("add_time") or "")[:10]
+            if pid and add_time and pid not in dates:
+                dates[pid] = add_time
+        return dates
+    except Exception:
+        return {}
+
+
+@st.cache_data(ttl=600)
 def fetch_pipedrive_person_notes(person_id: int):
     """Haal meest recente notities op voor een Pipedrive persoon (max 5)."""
     token = get_secret("PIPEDRIVE_API_TOKEN")

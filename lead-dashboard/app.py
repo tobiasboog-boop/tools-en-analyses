@@ -24,6 +24,7 @@ from data import (
     fetch_pipedrive_person_notes, generate_nid,
     load_manual_bellijst, save_manual_bellijst, update_pipedrive_person_phone,
     load_klantreis_fasen, save_klantreis_fasen, KLANTREIS_FASEN,
+    fetch_last_activity_dates,
     POWERBI_EXCEL_DEFAULT, POWERBI_CACHE_PATH,
 )
 
@@ -465,6 +466,35 @@ if pagina == "Mijn Week":
             _render_klant_table(arthur_klanten, "a_klant")
         else:
             st.info("Geen klant health data beschikbaar.")
+
+    # ---- Leads zonder opvolgactie (>14 dagen) ----
+    if not leads_df.empty:
+        activity_dates = fetch_last_activity_dates()
+        cutoff_14 = datetime.now().date()
+        hot_met_pipedrive = leads_df[
+            (leads_df["Segment"] == "HOT") & leads_df["Pipedrive ID"].notna()
+        ].copy()
+
+        def _dagen_geleden(pid):
+            d = activity_dates.get(str(int(pid)), "")
+            if not d:
+                return 999  # nooit
+            try:
+                return (cutoff_14 - datetime.strptime(d, "%Y-%m-%d").date()).days
+            except Exception:
+                return 999
+
+        if not hot_met_pipedrive.empty:
+            hot_met_pipedrive["Dagen zonder contact"] = hot_met_pipedrive["Pipedrive ID"].apply(_dagen_geleden)
+            geen_opvolging = hot_met_pipedrive[hot_met_pipedrive["Dagen zonder contact"] > 14].sort_values(
+                "Dagen zonder contact", ascending=False
+            )
+            if not geen_opvolging.empty:
+                st.divider()
+                with st.expander(f"⚠️ HOT leads zonder opvolging >14 dagen ({len(geen_opvolging)})"):
+                    st.caption("HOT leads die al meer dan 14 dagen geen notitie hebben in Pipedrive.")
+                    _c = [c for c in ["Naam", "Bedrijf", "Telefoon", "Dagen zonder contact", "Deal Fase", "Totaal"] if c in geen_opvolging.columns]
+                    st.dataframe(geen_opvolging[_c], use_container_width=True, hide_index=True)
 
     # ---- Oude offertes heractiveren ----
     if not leads_df.empty and "Deal Datum" in leads_df.columns:
