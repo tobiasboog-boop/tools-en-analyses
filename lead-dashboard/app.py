@@ -291,8 +291,16 @@ def _render_call_table(df, label, key_prefix, mail_history=None, manual_emails=N
     for i, (_, row) in enumerate(df.iterrows()):
         email_lower = str(row.get("Email", "")).lower()
         is_manual = email_lower in manual_emails
+        is_urgent = bool(row.get("Urgent"))
+        urgent_label = " 🔴" if is_urgent else ""
         handmatig_label = " 📅" if is_manual else ""
-        with st.expander(f"📞 {row['Naam']} — {row.get('Bedrijf', '')}{handmatig_label}"):
+        with st.expander(f"📞 {row['Naam']} — {row.get('Bedrijf', '')}{urgent_label}{handmatig_label}"):
+            if is_urgent:
+                fase = str(row.get("Deal Fase", ""))
+                if "webinar" in fase.lower():
+                    st.error("🔴 Altijd bellen — webinar aangemeld")
+                else:
+                    st.error("🔴 Altijd bellen — hoge interactie (3+ clicks)")
             if is_manual:
                 st.caption("Handmatig toegevoegd aan bellijst")
             st.markdown("**Waarom bellen?**")
@@ -615,8 +623,9 @@ elif pagina == "Data & Details":
 
             filtered = filtered.copy()
             filtered["Doelgroep"] = filtered["Bedrijf"].apply(classify_doelgroep)
+            filtered["Urgentie"] = filtered["Urgent"].apply(lambda x: "🔴" if x else "")
 
-            all_possible = ["Naam", "Email", "Bedrijf", "Doelgroep", "Telefoon",
+            all_possible = ["Urgentie", "Naam", "Email", "Bedrijf", "Doelgroep", "Telefoon",
                             "Opens", "Clicks", "Open Score", "Click Score",
                             "LF Score", "Deal Fase", "Deal Bonus",
                             "Totaal", "Segment"]

@@ -1007,6 +1007,10 @@ def build_leads_df(ml_df, pd_df, web_mapping,
 
         total = open_score + click_score + lf_web_score + deal_bonus + webinar_bonus
 
+        # Urgentie: altijd bellen (webinar deelgenomen of 3+ clicks)
+        effective_fase = deal_fase or ("Webinar aangemeld" if is_webinar else "")
+        urgent = is_webinar or "webinar" in effective_fase.lower() or clicked >= 3
+
         return {
             "Naam": name,
             "Email": email,
@@ -1018,11 +1022,12 @@ def build_leads_df(ml_df, pd_df, web_mapping,
             "Click Score": click_score,
             "LF Bezocht": lf_match,
             "LF Score": lf_web_score,
-            "Deal Fase": deal_fase or ("Webinar aangemeld" if is_webinar else ""),
+            "Deal Fase": effective_fase,
             "Deal Waarde": deal_waarde,
             "Deal Bonus": max(deal_bonus, webinar_bonus),
             "Totaal": total,
             "Segment": classify_lead(total),
+            "Urgent": urgent,
             "In Pipedrive": pipedrive_match,
             "Pipedrive ID": person_id,
             "Deal ID": deal_id,
