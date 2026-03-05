@@ -2402,6 +2402,5 @@ def check_password() -> bool:
     return False
 
 
-if __name__ == "__main__":
-    if check_password():
-        main()
+if check_password():
+    main()
