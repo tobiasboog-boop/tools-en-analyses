@@ -21,6 +21,7 @@ from data import (
     load_campaign_data, load_campaign_activity, fetch_leadfeeder_leads,
     save_pipedrive_note, update_pipedrive_deal_stage,
     fetch_pipedrive_person_notes, generate_nid,
+    load_manual_bellijst, save_manual_bellijst, update_pipedrive_person_phone,
     POWERBI_EXCEL_DEFAULT, POWERBI_CACHE_PATH,
 )
 
@@ -176,9 +177,31 @@ if not health_df.empty:
     health_df = get_customer_contacts(health_df, pd_df)
 
 
+# Handmatige bellijst — load eenmalig per sessie
+if "manual_bellijst" not in st.session_state:
+    st.session_state["manual_bellijst"] = load_manual_bellijst()
+
+# Huidige ISO-week
+_iso = datetime.now().isocalendar()
+current_week = f"{_iso[0]}-W{_iso[1]:02d}"
+
+
 # ============================================================
 #  PAGINA 1: MIJN WEEK
 # ============================================================
+
+def _get_manual_leads_for_role(leads_df, rol, week):
+    """Haal handmatig toegevoegde leads op als DataFrame + email-set."""
+    entries = [
+        e for e in st.session_state.get("manual_bellijst", [])
+        if e.get("week") == week and e.get("rol") == rol
+    ]
+    if not entries or leads_df.empty:
+        return pd.DataFrame(), set()
+    emails = {e["email"].lower() for e in entries}
+    manual_df = leads_df[leads_df["Email"].str.lower().isin(emails)].copy()
+    return manual_df, emails
+
 
 def _split_leads_for_roles(leads_df, n_per_person=5):
     """Split top leads: even indices voor Tobias, oneven voor Arthur."""
@@ -228,8 +251,10 @@ def _get_klant_opvolging(health_df, n_per_person=5):
     return tobias_klanten, arthur_klanten
 
 
-def _render_call_table(df, label, key_prefix, mail_history=None):
+def _render_call_table(df, label, key_prefix, mail_history=None, manual_emails=None):
     """Render een bellijst tabel met relevante kolommen incl. signalen."""
+    if manual_emails is None:
+        manual_emails = set()
     if df.empty:
         st.caption(f"Geen {label.lower()} beschikbaar.")
         return
@@ -263,7 +288,12 @@ def _render_call_table(df, label, key_prefix, mail_history=None):
 
     # Bel-reden expanders per lead
     for i, (_, row) in enumerate(df.iterrows()):
-        with st.expander(f"📞 {row['Naam']} — {row.get('Bedrijf', '')}"):
+        email_lower = str(row.get("Email", "")).lower()
+        is_manual = email_lower in manual_emails
+        handmatig_label = " 📅" if is_manual else ""
+        with st.expander(f"📞 {row['Naam']} — {row.get('Bedrijf', '')}{handmatig_label}"):
+            if is_manual:
+                st.caption("Handmatig toegevoegd aan bellijst")
             st.markdown("**Waarom bellen?**")
             reasons = []
             if row.get("Opens", 0) > 0:
@@ -302,6 +332,36 @@ def _render_call_table(df, label, key_prefix, mail_history=None):
                     for datum, tekst in handmatige_notities[:3]:
                         st.caption(f"{datum} — {tekst[:300]}")
 
+            # Telefoonnummer invullen als ontbreekt
+            telefoon = row.get("Telefoon")
+            if not telefoon or str(telefoon).strip() in ("", "nan", "None"):
+                st.markdown("**Telefoonnummer:**")
+                col_ph, col_ph_save = st.columns([3, 1])
+                with col_ph:
+                    new_phone = st.text_input(
+                        "Telefoonnummer", key=f"{key_prefix}_phone_{i}",
+                        placeholder="+31 6 ..."
+                    )
+                with col_ph_save:
+                    st.write("")
+                    person_id = row.get("Pipedrive ID")
+                    if st.button("Opslaan", key=f"{key_prefix}_phone_save_{i}"):
+                        if new_phone.strip() and person_id:
+                            ok = update_pipedrive_person_phone(int(person_id), new_phone)
+                            st.success("Opgeslagen in Pipedrive") if ok else st.error("Opslaan mislukt")
+                        else:
+                            st.warning("Vul een telefoonnummer in")
+
+            # Verwijder uit bellijst (alleen voor handmatig toegevoegde leads)
+            if is_manual:
+                if st.button("🗑️ Verwijder uit bellijst", key=f"{key_prefix}_remove_{i}"):
+                    st.session_state["manual_bellijst"] = [
+                        e for e in st.session_state["manual_bellijst"]
+                        if not (e["email"] == email_lower and e["week"] == current_week)
+                    ]
+                    save_manual_bellijst(st.session_state["manual_bellijst"])
+                    st.rerun()
+
 
 def _render_klant_table(df, key_prefix):
     """Render een klant-opvolging tabel met actie-type."""
@@ -317,15 +377,29 @@ def _render_klant_table(df, key_prefix):
 
 if pagina == "Mijn Week":
 
-    tobias_leads, arthur_leads = _split_leads_for_roles(leads_df, 5)
+    tobias_auto, arthur_auto = _split_leads_for_roles(leads_df, 5)
     tobias_klanten, arthur_klanten = _get_klant_opvolging(health_df, 5)
+
+    # Handmatig toegevoegde leads voor deze week
+    manual_t_df, manual_t_emails = _get_manual_leads_for_role(leads_df, "Tobias", current_week)
+    manual_a_df, manual_a_emails = _get_manual_leads_for_role(leads_df, "Arthur", current_week)
+
+    # Combineer: handmatig eerst, daarna auto (zonder duplicaten)
+    def _merge_leads(manual_df, auto_df, manual_emails_set):
+        if manual_df.empty:
+            return auto_df, manual_emails_set
+        auto_filtered = auto_df[~auto_df["Email"].str.lower().isin(manual_emails_set)]
+        return pd.concat([manual_df, auto_filtered], ignore_index=True), manual_emails_set
+
+    tobias_leads, t_manual_set = _merge_leads(manual_t_df, tobias_auto, manual_t_emails)
+    arthur_leads, a_manual_set = _merge_leads(manual_a_df, arthur_auto, manual_a_emails)
 
     if rol in ("Tobias", "Overzicht"):
         st.subheader("Tobias")
 
         st.markdown("**Leads bellen**")
         if not tobias_leads.empty:
-            _render_call_table(tobias_leads, "leads", "t_leads")
+            _render_call_table(tobias_leads, "leads", "t_leads", manual_emails=t_manual_set)
         else:
             st.info("Geen leads beschikbaar.")
 
@@ -343,7 +417,7 @@ if pagina == "Mijn Week":
 
         st.markdown("**Leads bellen**")
         if not arthur_leads.empty:
-            _render_call_table(arthur_leads, "leads", "a_leads")
+            _render_call_table(arthur_leads, "leads", "a_leads", manual_emails=a_manual_set)
         else:
             st.info("Geen leads beschikbaar.")
 
@@ -549,6 +623,43 @@ elif pagina == "Data & Details":
                 f"leads_{datetime.now().strftime('%Y%m%d')}.csv",
                 "text/csv", key="download_leads",
             )
+
+            with st.expander("📅 Voeg lead handmatig toe aan bellijst"):
+                lead_options = [
+                    f"{r['Naam']} – {r.get('Bedrijf', '')}"
+                    for _, r in filtered.iterrows()
+                ]
+                if lead_options:
+                    col_l, col_r, col_b = st.columns([4, 1, 1])
+                    with col_l:
+                        selected_lead = st.selectbox("Lead", lead_options, key="manual_add_lead")
+                    with col_r:
+                        selected_rol = st.selectbox("Voor", ["Tobias", "Arthur"], key="manual_add_rol")
+                    with col_b:
+                        st.write("")
+                        if st.button("Voeg toe", key="manual_add_btn"):
+                            idx = lead_options.index(selected_lead)
+                            sel_row = filtered.iloc[idx]
+                            entry = {
+                                "email": sel_row["Email"].lower(),
+                                "naam": sel_row["Naam"],
+                                "bedrijf": sel_row.get("Bedrijf", ""),
+                                "week": current_week,
+                                "rol": selected_rol,
+                            }
+                            existing = st.session_state["manual_bellijst"]
+                            already = any(
+                                e["email"] == entry["email"]
+                                and e["week"] == current_week
+                                and e["rol"] == selected_rol
+                                for e in existing
+                            )
+                            if not already:
+                                existing.append(entry)
+                                save_manual_bellijst(existing)
+                                st.success(f"✅ {sel_row['Naam']} toegevoegd aan bellijst van {selected_rol}")
+                            else:
+                                st.info(f"{sel_row['Naam']} staat al in de bellijst van {selected_rol}")
 
             with st.expander("Kolommen & scoring uitleg"):
                 st.markdown("""

@@ -10,6 +10,7 @@ import requests
 import re
 import os
 import hashlib
+import json as _json
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
@@ -30,6 +31,7 @@ POWERBI_EXCEL_DEFAULT = os.path.join(
     "Power BI activity Report views (5).xlsx"
 )
 POWERBI_CACHE_PATH = os.path.join(os.path.dirname(__file__), "data", "powerbi_cache.parquet")
+MANUAL_BELLIJST_PATH = os.path.join(os.path.dirname(__file__), "data", "manual_bellijst.json")
 
 
 def get_secret(key, default=""):
@@ -810,6 +812,49 @@ def load_powerbi_data():
             pass
 
     return None, "none", "upload_nodig"
+
+
+# ============================================================
+#  HANDMATIGE BELLIJST
+# ============================================================
+
+def load_manual_bellijst() -> list:
+    """Laad handmatig toegevoegde leads uit JSON bestand."""
+    try:
+        if os.path.exists(MANUAL_BELLIJST_PATH):
+            with open(MANUAL_BELLIJST_PATH, "r", encoding="utf-8") as f:
+                return _json.load(f)
+    except Exception:
+        pass
+    return []
+
+
+def save_manual_bellijst(entries: list) -> bool:
+    """Sla handmatige bellijst op als JSON. Returns True bij succes."""
+    try:
+        os.makedirs(os.path.dirname(MANUAL_BELLIJST_PATH), exist_ok=True)
+        with open(MANUAL_BELLIJST_PATH, "w", encoding="utf-8") as f:
+            _json.dump(entries, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def update_pipedrive_person_phone(person_id: int, phone: str) -> bool:
+    """Update telefoonnummer van een Pipedrive persoon."""
+    token = get_secret("PIPEDRIVE_API_TOKEN")
+    if not token or not person_id or not phone.strip():
+        return False
+    try:
+        r = requests.put(
+            f"{PIPEDRIVE_BASE}/persons/{person_id}",
+            params={"api_token": token},
+            json={"phone": [{"value": phone.strip(), "primary": True, "label": "work"}]},
+            timeout=15,
+        )
+        return r.status_code == 200
+    except Exception:
+        return False
 
 
 def validate_powerbi_data(pbi_df, excel_path=POWERBI_EXCEL_DEFAULT):
