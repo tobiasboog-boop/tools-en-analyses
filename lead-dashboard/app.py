@@ -23,6 +23,7 @@ from data import (
     save_pipedrive_note, update_pipedrive_deal_stage,
     fetch_pipedrive_person_notes, generate_nid,
     load_manual_bellijst, save_manual_bellijst, update_pipedrive_person_phone,
+    load_klantreis_fasen, save_klantreis_fasen, KLANTREIS_FASEN,
     POWERBI_EXCEL_DEFAULT, POWERBI_CACHE_PATH,
 )
 
@@ -182,6 +183,10 @@ if not health_df.empty:
 if "manual_bellijst" not in st.session_state:
     st.session_state["manual_bellijst"] = load_manual_bellijst()
 
+# Klantreis-fasen — load eenmalig per sessie
+if "klantreis_fasen" not in st.session_state:
+    st.session_state["klantreis_fasen"] = load_klantreis_fasen()
+
 # Huidige ISO-week
 _iso = datetime.now().isocalendar()
 current_week = f"{_iso[0]}-W{_iso[1]:02d}"
@@ -340,6 +345,26 @@ def _render_call_table(df, label, key_prefix, mail_history=None, manual_emails=N
                     st.markdown("**Eerdere notities:**")
                     for datum, tekst in handmatige_notities[:3]:
                         st.caption(f"{datum} — {tekst[:300]}")
+
+            # Klantreis-fase (See / Think / Do)
+            fase_opties = ["— onbekend —", "See", "Think", "Do"]
+            huidige_fase = st.session_state["klantreis_fasen"].get(email_lower, "— onbekend —")
+            col_fase, col_fase_save = st.columns([2, 1])
+            with col_fase:
+                nieuwe_fase = st.selectbox(
+                    "Klantreis-fase",
+                    fase_opties,
+                    index=fase_opties.index(huidige_fase) if huidige_fase in fase_opties else 0,
+                    key=f"{key_prefix}_fase_{i}",
+                )
+            with col_fase_save:
+                st.write("")
+                if st.button("Opslaan fase", key=f"{key_prefix}_fase_save_{i}"):
+                    st.session_state["klantreis_fasen"][email_lower] = nieuwe_fase
+                    save_klantreis_fasen(st.session_state["klantreis_fasen"])
+                    st.success("Opgeslagen")
+            if nieuwe_fase != "— onbekend —":
+                st.caption(KLANTREIS_FASEN.get(nieuwe_fase, ""))
 
             # Telefoonnummer invullen als ontbreekt
             telefoon = row.get("Telefoon")
@@ -624,11 +649,15 @@ elif pagina == "Data & Details":
             filtered = filtered.copy()
             filtered["Doelgroep"] = filtered["Bedrijf"].apply(classify_doelgroep)
             filtered["Urgentie"] = filtered["Urgent"].apply(lambda x: "🔴" if x else "")
+            _fasen = st.session_state.get("klantreis_fasen", {})
+            filtered["Fase"] = filtered["Email"].apply(
+                lambda e: _fasen.get(str(e).lower(), "")
+            )
 
             all_possible = ["Urgentie", "Naam", "Email", "Bedrijf", "Doelgroep", "Telefoon",
                             "Opens", "Clicks", "Open Score", "Click Score",
                             "LF Score", "Deal Fase", "Deal Bonus",
-                            "Totaal", "Segment"]
+                            "Totaal", "Segment", "Fase"]
             display_cols = [c for c in all_possible if c in filtered.columns]
             st.dataframe(
                 filtered[display_cols],

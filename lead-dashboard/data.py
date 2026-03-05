@@ -815,6 +815,41 @@ def load_powerbi_data():
 
 
 # ============================================================
+#  KLANTREIS-FASE
+# ============================================================
+
+KLANTREIS_PATH = os.path.join(os.path.dirname(__file__), "data", "klantreis_fasen.json")
+
+KLANTREIS_FASEN = {
+    "See": "Probleem nog niet erkend — bewust maken van risico's",
+    "Think": "Oriënterend — uitleggen hoe Notifica het oplost",
+    "Do": "Klaar om te beslissen — drempels verlagen",
+}
+
+
+def load_klantreis_fasen() -> dict:
+    """Laad klantreis-fasen per email uit JSON. Returns {email: fase}."""
+    try:
+        if os.path.exists(KLANTREIS_PATH):
+            with open(KLANTREIS_PATH, "r", encoding="utf-8") as f:
+                return _json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def save_klantreis_fasen(fasen: dict) -> bool:
+    """Sla klantreis-fasen op. Returns True bij succes."""
+    try:
+        os.makedirs(os.path.dirname(KLANTREIS_PATH), exist_ok=True)
+        with open(KLANTREIS_PATH, "w", encoding="utf-8") as f:
+            _json.dump(fasen, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+# ============================================================
 #  HANDMATIGE BELLIJST
 # ============================================================
 
