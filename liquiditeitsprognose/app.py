@@ -2377,5 +2377,31 @@ def main():
     )
 
 
+def check_password() -> bool:
+    """Wachtwoordbeveiliging via Streamlit secrets."""
+    try:
+        correct_password = st.secrets["auth"]["password"]
+    except (KeyError, AttributeError):
+        return True  # Geen wachtwoord geconfigureerd = geen beveiliging
+
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if st.session_state.authenticated:
+        return True
+
+    st.title("Liquiditeitsprognose")
+    st.markdown("*Voer het wachtwoord in om toegang te krijgen.*")
+    password = st.text_input("Wachtwoord", type="password")
+    if st.button("Inloggen"):
+        if password == correct_password:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Onjuist wachtwoord.")
+    return False
+
+
 if __name__ == "__main__":
-    main()
+    if check_password():
+        main()

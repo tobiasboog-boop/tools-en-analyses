@@ -433,29 +433,28 @@ def _build_volume(
 
 def _calc_weighted_run_rate(hist_cf: pd.DataFrame) -> Tuple[float, float]:
     """Exponentieel gewogen run rate uit historische cashflow (recent weegt zwaarder)."""
-    defaults = (150000.0, 100000.0)
     if hist_cf is None or hist_cf.empty:
-        return defaults
+        return (0.0, 0.0)
 
     date_col = next((c for c in ['week_start', 'date', 'datum'] if c in hist_cf.columns), None)
     income_col = next((c for c in ['inkomsten', 'omzet'] if c in hist_cf.columns), None)
     expense_col = next((c for c in ['uitgaven', 'expenses'] if c in hist_cf.columns), None)
     if not date_col:
-        return defaults
+        return (0.0, 0.0)
 
     df = hist_cf.copy()
     df['_date'] = pd.to_datetime(df[date_col])
     df = df.sort_values('_date')
     n = len(df)
     if n == 0:
-        return defaults
+        return (0.0, 0.0)
 
     # Half-life ~13 weken: recent data weegt ~2x meer dan 6 maanden geleden
     weights = np.exp(-0.05 * np.arange(n)[::-1])
     weights /= weights.sum()
 
-    inc = defaults[0]
-    exp = defaults[1]
+    inc = 0.0
+    exp = 0.0
     if income_col and income_col in df.columns:
         vals = pd.to_numeric(df[income_col], errors='coerce').fillna(0).values
         inc = max(float(np.dot(vals, weights)), 0)
