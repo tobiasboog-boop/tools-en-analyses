@@ -114,9 +114,18 @@ st.components.v1.html("""
 # ============================================================
 
 with st.sidebar:
-    _logo = Path(__file__).parent / "assets" / "notifica_logo.jpg"
-    if _logo.exists():
-        st.image(str(_logo), use_container_width=True)
+    _logo_svg = Path(__file__).parent / "assets" / "notifica_logo.svg"
+    _logo_jpg = Path(__file__).parent / "assets" / "notifica_logo.jpg"
+    if _logo_svg.exists():
+        import base64 as _b64
+        _svg_b64 = _b64.b64encode(_logo_svg.read_bytes()).decode()
+        st.markdown(
+            f'<img src="data:image/svg+xml;base64,{_svg_b64}" '
+            f'style="width:140px;display:block;margin:0 auto 8px;">',
+            unsafe_allow_html=True,
+        )
+    elif _logo_jpg.exists():
+        st.image(str(_logo_jpg), width=140)
     else:
         st.markdown("### Notifica")
     st.caption("Sales Dashboard")
@@ -445,7 +454,21 @@ def _render_klant_table(df, key_prefix):
 
 if pagina == "Mijn Week":
 
-    tobias_auto, arthur_auto = _split_leads_for_roles(leads_df, 5)
+    # Filter leads die recentelijk zijn opgebeld (notitie <7 dagen)
+    _activity_dates = fetch_last_activity_dates()
+    _cutoff = datetime.now().date()
+    _recent_pids = {
+        pid for pid, d in _activity_dates.items()
+        if (_cutoff - datetime.strptime(d, "%Y-%m-%d").date()).days <= 7
+    }
+    def _not_recent(pid):
+        if pd.isna(pid):
+            return True
+        return str(int(pid)) not in _recent_pids
+
+    leads_for_auto = leads_df[leads_df["Pipedrive ID"].apply(_not_recent)].copy()
+
+    tobias_auto, arthur_auto = _split_leads_for_roles(leads_for_auto, 5)
     tobias_klanten, arthur_klanten = _get_klant_opvolging(health_df, 5)
 
     # Handmatig toegevoegde leads voor deze week
