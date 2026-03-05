@@ -1,0 +1,833 @@
+"""
+Liquiditeitsprognose - Database Layer
+=====================================
+Data-laag via Notifica Data API (NotificaClient SDK).
+Vervangt directe psycopg2-verbinding.
+"""
+
+import os
+import sys
+import pandas as pd
+from datetime import date, timedelta
+from typing import Optional, Union
+
+# SDK import
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '_sdk'))
+try:
+    from notifica_sdk import NotificaClient
+    SDK_AVAILABLE = True
+except ImportError:
+    SDK_AVAILABLE = False
+
+
+def _sql_date(d: date) -> str:
+    """Format date for SQL injection-safe use (we control all inputs)."""
+    return f"'{d.isoformat()}'"
+
+
+def _sql_str(s: str) -> str:
+    """Format string for SQL (escape single quotes)."""
+    return f"'{s.replace(chr(39), chr(39)+chr(39))}'"
+
+
+# =============================================================================
+# NotificaDataSource — Alle data via de Notifica API
+# =============================================================================
+
+class NotificaDataSource:
+    """Data source via Notifica Data API. Vervangt directe DWH-verbinding."""
+
+    def __init__(self, klantnummer: str):
+        if not SDK_AVAILABLE:
+            raise ImportError("NotificaClient SDK niet gevonden in _sdk/notifica_sdk/")
+        self.client = NotificaClient()
+        self.klantnummer = int(klantnummer)
+
+    def _query(self, sql: str) -> pd.DataFrame:
+        """Execute SQL via Notifica API."""
+        return self.client.query(self.klantnummer, sql)
+
+    def test_connection(self) -> bool:
+        try:
+            self._query("SELECT 1 as test")
+            return True
+        except Exception as e:
+            print(f"API connection failed: {e}")
+            return False
+
+    # =========================================================================
+    # Bestaande methoden (zelfde SQL als voorheen, nu via API)
+    # =========================================================================
+
+    def get_banksaldo(self, standdatum: date = None, administratie: str = None) -> pd.DataFrame:
+        if standdatum is None:
+            standdatum = date.today()
+
+        adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
+        adm_join = 'JOIN notifica."SSM Administraties" a ON dag."AdministratieKey" = a."AdministratieKey"' if administratie else ""
+
+        sql = f"""
+        SELECT
+            dag."Dagboek" as bank_naam,
+            dag."Dagboek" as rekeningnummer,
+            SUM(CASE WHEN j."Debet/Credit" = 'D' THEN j."Bedrag" ELSE 0 END) -
+            SUM(CASE WHEN j."Debet/Credit" = 'C' THEN j."Bedrag" ELSE 0 END) as saldo,
+            CURRENT_DATE as datum
+        FROM financieel."Journaalregels" j
+        JOIN stam."Documenten" d ON j."DocumentKey" = d."DocumentKey"
+        JOIN stam."Dagboeken" dag ON d."DagboekKey" = dag."DagboekKey"
+        {adm_join}
+        WHERE j."Boekdatum" <= {_sql_date(standdatum)}
+          AND d."StandaardEntiteitKey" = 10
+          AND j."RubriekKey" = dag."DagboekRubriekKey"
+          {adm_filter}
+        GROUP BY dag."Dagboek"
+        HAVING ABS(SUM(CASE WHEN j."Debet/Credit" = 'D' THEN j."Bedrag" ELSE 0 END) -
+                    SUM(CASE WHEN j."Debet/Credit" = 'C' THEN j."Bedrag" ELSE 0 END)) > 0.01
+        ORDER BY saldo DESC
+        """
+        try:
+            df = self._query(sql)
+            return df if not df.empty else pd.DataFrame({"bank_naam": [], "rekeningnummer": [], "saldo": [], "datum": []})
+        except Exception as e:
+            print(f"Error fetching bank balances: {e}")
+            return pd.DataFrame({"bank_naam": [], "rekeningnummer": [], "saldo": [], "datum": []})
+
+    def get_openstaande_debiteuren(self, standdatum: date = None, administratie: str = None) -> pd.DataFrame:
+        if standdatum is None:
+            standdatum = date.today()
+
+        adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
+
+        sql = f"""
+        SELECT
+            vft."Debiteur" as debiteur_code,
+            vft."Debiteur" as debiteur_naam,
+            'Diverse' as factuurnummer,
+            MAX(vft."Alloc_datum") as factuurdatum,
+            MAX(vft."Vervaldatum") as vervaldatum,
+            SUM(vft."Bedrag") as bedrag_excl_btw,
+            NULL::date as betaaldatum,
+            0 as betaald,
+            SUM(vft."Bedrag") as openstaand,
+            30 as betaaltermijn_dagen,
+            COALESCE(a."Administratie", 'Onbekend') as administratie,
+            COALESCE(be."Bedrijfseenheid", 'Onbekend') as bedrijfseenheid
+        FROM notifica."SSM Verkoopfactuur termijnen" vft
+        LEFT JOIN notifica."SSM Documenten" d ON vft."VerkoopfactuurDocumentKey" = d."DocumentKey"
+        LEFT JOIN notifica."SSM Bedrijfseenheden" be ON d."BedrijfseenheidKey"::bigint = be."BedrijfseenheidKey"
+        LEFT JOIN notifica."SSM Administraties" a ON be."AdministratieKey" = a."AdministratieKey"
+        WHERE vft."Alloc_datum" <= {_sql_date(standdatum)}
+          {adm_filter}
+        GROUP BY vft."Debiteur", a."Administratie", be."Bedrijfseenheid"
+        HAVING ABS(SUM(vft."Bedrag")) > 0.01
+        ORDER BY SUM(vft."Bedrag") DESC
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching receivables: {e}")
+            return pd.DataFrame({
+                "debiteur_code": [], "debiteur_naam": [], "factuurnummer": [],
+                "factuurdatum": [], "vervaldatum": [], "bedrag_excl_btw": [],
+                "betaaldatum": [], "betaald": [], "openstaand": [],
+                "betaaltermijn_dagen": [], "administratie": [], "bedrijfseenheid": [],
+            })
+
+    def get_openstaande_crediteuren(self, standdatum: date = None, administratie: str = None) -> pd.DataFrame:
+        if standdatum is None:
+            standdatum = date.today()
+
+        adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
+
+        sql = f"""
+        SELECT
+            ift."Crediteur" as crediteur_code,
+            ift."Crediteur" as crediteur_naam,
+            COALESCE(d."Document code", CAST(ift."InkoopFactuurKey" AS TEXT)) as factuurnummer,
+            ift."Alloc_datum" as factuurdatum,
+            ift."Vervaldatum" as vervaldatum,
+            ift."Bedrag" as bedrag_excl_btw,
+            NULL::date as betaaldatum,
+            0 as betaald,
+            ift."Bedrag" as openstaand,
+            COALESCE(a."Administratie", 'Onbekend') as administratie,
+            COALESCE(be."Bedrijfseenheid", 'Onbekend') as bedrijfseenheid
+        FROM notifica."SSM Inkoopfactuur termijnen" ift
+        LEFT JOIN notifica."SSM Documenten" d ON ift."InkoopFactuurKey" = d."DocumentKey"
+        LEFT JOIN notifica."SSM Bedrijfseenheden" be ON d."BedrijfseenheidKey"::bigint = be."BedrijfseenheidKey"
+        LEFT JOIN notifica."SSM Administraties" a ON be."AdministratieKey" = a."AdministratieKey"
+        WHERE ift."Alloc_datum" <= {_sql_date(standdatum)}
+          AND ift."Bankafschrift status" = 'Openstaand'
+          {adm_filter}
+        ORDER BY ift."Vervaldatum" ASC
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching payables: {e}")
+            return pd.DataFrame({
+                "crediteur_code": [], "crediteur_naam": [], "factuurnummer": [],
+                "factuurdatum": [], "vervaldatum": [], "bedrag_excl_btw": [],
+                "betaaldatum": [], "betaald": [], "openstaand": [],
+                "administratie": [], "bedrijfseenheid": [],
+            })
+
+    def get_historische_cashflow_per_week(
+        self, startdatum: date = None, einddatum: date = None,
+        administratie: str = None, administratie_key: int = None
+    ) -> pd.DataFrame:
+        if einddatum is None:
+            einddatum = date.today()
+        if startdatum is None:
+            startdatum = date(einddatum.year - 1, einddatum.month, 1)
+
+        if administratie_key:
+            adm_filter = f'AND dag."AdministratieKey" = {int(administratie_key)}'
+            adm_join = ""
+        elif administratie:
+            adm_filter = f'AND adm."Administratie" = {_sql_str(administratie)}'
+            adm_join = 'JOIN stam."Administraties" adm ON dag."AdministratieKey" = adm."AdministratieKey"'
+        else:
+            return pd.DataFrame({"week_start": [], "week_nummer": [], "maand": [], "inkomsten": [], "uitgaven": [], "netto": []})
+
+        sql = f"""
+        SELECT
+            DATE_TRUNC('week', j."Boekdatum") as week_start,
+            EXTRACT(WEEK FROM j."Boekdatum") as week_nummer,
+            EXTRACT(MONTH FROM j."Boekdatum") as maand,
+            SUM(CASE WHEN j."Debet/Credit" = 'D' THEN j."Bedrag" ELSE 0 END) as inkomsten,
+            SUM(CASE WHEN j."Debet/Credit" = 'C' THEN j."Bedrag" ELSE 0 END) as uitgaven,
+            SUM(CASE WHEN j."Debet/Credit" = 'D' THEN j."Bedrag" ELSE 0 END) -
+            SUM(CASE WHEN j."Debet/Credit" = 'C' THEN j."Bedrag" ELSE 0 END) as netto
+        FROM financieel."Journaalregels" j
+        JOIN stam."Documenten" d ON j."DocumentKey" = d."DocumentKey"
+        JOIN stam."Dagboeken" dag ON d."DagboekKey" = dag."DagboekKey"
+        {adm_join}
+        WHERE j."Boekdatum" >= {_sql_date(startdatum)}
+          AND j."Boekdatum" < {_sql_date(einddatum)}
+          AND d."StandaardEntiteitKey" = 10
+          AND j."RubriekKey" = dag."DagboekRubriekKey"
+          {adm_filter}
+        GROUP BY DATE_TRUNC('week', j."Boekdatum"),
+                 EXTRACT(WEEK FROM j."Boekdatum"),
+                 EXTRACT(MONTH FROM j."Boekdatum")
+        ORDER BY week_start
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching historical weekly cashflow: {e}")
+            return pd.DataFrame({"week_start": [], "week_nummer": [], "maand": [], "inkomsten": [], "uitgaven": [], "netto": []})
+
+    def get_betaalgedrag_per_debiteur(
+        self, startdatum: date = None, einddatum: date = None, administratie: str = None
+    ) -> pd.DataFrame:
+        if einddatum is None:
+            einddatum = date.today()
+        if startdatum is None:
+            startdatum = date(einddatum.year - 2, einddatum.month, 1)
+        if not administratie:
+            return pd.DataFrame({"debiteur_code": [], "aantal_facturen": [], "gem_dagen_tot_betaling": [],
+                                 "std_dagen_tot_betaling": [], "min_dagen": [], "max_dagen": [],
+                                 "totaal_factuurbedrag": [], "laatste_betaling": [], "betrouwbaarheid": []})
+
+        sql = f"""
+        WITH betaalde_facturen AS (
+            SELECT
+                vft."Debiteur" as debiteur_code,
+                vft."VerkoopfactuurDocumentKey" as factuur_key,
+                MIN(vft."Alloc_datum") as factuurdatum,
+                MAX(vft."Alloc_datum") as betaaldatum,
+                ABS(SUM(CASE WHEN vft."Bedrag" > 0 THEN vft."Bedrag" ELSE 0 END)) as factuurbedrag
+            FROM notifica."SSM Verkoopfactuur termijnen" vft
+            LEFT JOIN notifica."SSM Documenten" d ON vft."VerkoopfactuurDocumentKey" = d."DocumentKey"
+            LEFT JOIN notifica."SSM Bedrijfseenheden" be ON d."BedrijfseenheidKey"::bigint = be."BedrijfseenheidKey"
+            LEFT JOIN notifica."SSM Administraties" a ON be."AdministratieKey" = a."AdministratieKey"
+            WHERE vft."Alloc_datum" >= {_sql_date(startdatum)}
+              AND vft."Alloc_datum" <= {_sql_date(einddatum)}
+              AND a."Administratie" = {_sql_str(administratie)}
+            GROUP BY vft."Debiteur", vft."VerkoopfactuurDocumentKey"
+            HAVING ABS(SUM(vft."Bedrag")) < 0.01 AND COUNT(*) >= 2
+        ),
+        debiteur_stats AS (
+            SELECT
+                debiteur_code,
+                COUNT(*) as aantal_facturen,
+                AVG(EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400) as gem_dagen_tot_betaling,
+                STDDEV(EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400) as std_dagen_tot_betaling,
+                MIN(EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400) as min_dagen,
+                MAX(EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400) as max_dagen,
+                SUM(factuurbedrag) as totaal_factuurbedrag,
+                MAX(betaaldatum) as laatste_betaling
+            FROM betaalde_facturen
+            WHERE EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400 BETWEEN 0 AND 365
+            GROUP BY debiteur_code
+            HAVING COUNT(*) >= 2
+        )
+        SELECT debiteur_code, aantal_facturen,
+            ROUND(gem_dagen_tot_betaling::numeric, 1) as gem_dagen_tot_betaling,
+            ROUND(COALESCE(std_dagen_tot_betaling, 0)::numeric, 1) as std_dagen_tot_betaling,
+            ROUND(min_dagen::numeric, 0) as min_dagen,
+            ROUND(max_dagen::numeric, 0) as max_dagen,
+            ROUND(totaal_factuurbedrag::numeric, 2) as totaal_factuurbedrag,
+            laatste_betaling,
+            ROUND(LEAST(1.0, (1.0 - LEAST(1.0, COALESCE(std_dagen_tot_betaling, 30) / 30.0)) * 0.7 +
+                LEAST(1.0, aantal_facturen / 10.0) * 0.3)::numeric, 2) as betrouwbaarheid
+        FROM debiteur_stats ORDER BY totaal_factuurbedrag DESC
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching debtor payment behavior: {e}")
+            return pd.DataFrame({"debiteur_code": [], "aantal_facturen": [], "gem_dagen_tot_betaling": [],
+                                 "std_dagen_tot_betaling": [], "min_dagen": [], "max_dagen": [],
+                                 "totaal_factuurbedrag": [], "laatste_betaling": [], "betrouwbaarheid": []})
+
+    def get_betaalgedrag_per_crediteur(
+        self, startdatum: date = None, einddatum: date = None, administratie: str = None
+    ) -> pd.DataFrame:
+        if einddatum is None:
+            einddatum = date.today()
+        if startdatum is None:
+            startdatum = date(einddatum.year - 2, einddatum.month, 1)
+        if not administratie:
+            return pd.DataFrame({"crediteur_code": [], "aantal_facturen": [], "gem_dagen_tot_betaling": [],
+                                 "std_dagen_tot_betaling": [], "totaal_factuurbedrag": [],
+                                 "laatste_betaling": [], "betrouwbaarheid": []})
+
+        sql = f"""
+        WITH betaalde_facturen AS (
+            SELECT
+                ift."Crediteur" as crediteur_code,
+                ift."InkoopFactuurKey" as factuur_key,
+                MIN(ift."Alloc_datum") as factuurdatum,
+                MAX(ift."Alloc_datum") as betaaldatum,
+                ABS(SUM(CASE WHEN ift."Bedrag" > 0 THEN ift."Bedrag" ELSE 0 END)) as factuurbedrag
+            FROM notifica."SSM Inkoopfactuur termijnen" ift
+            LEFT JOIN notifica."SSM Documenten" d ON ift."InkoopFactuurKey" = d."DocumentKey"
+            LEFT JOIN notifica."SSM Bedrijfseenheden" be ON d."BedrijfseenheidKey"::bigint = be."BedrijfseenheidKey"
+            LEFT JOIN notifica."SSM Administraties" a ON be."AdministratieKey" = a."AdministratieKey"
+            WHERE ift."Alloc_datum" >= {_sql_date(startdatum)}
+              AND ift."Alloc_datum" <= {_sql_date(einddatum)}
+              AND ift."Bankafschrift status" = 'Betaald'
+              AND a."Administratie" = {_sql_str(administratie)}
+            GROUP BY ift."Crediteur", ift."InkoopFactuurKey"
+            HAVING COUNT(*) >= 2
+        ),
+        crediteur_stats AS (
+            SELECT crediteur_code, COUNT(*) as aantal_facturen,
+                AVG(EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400) as gem_dagen_tot_betaling,
+                STDDEV(EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400) as std_dagen_tot_betaling,
+                SUM(factuurbedrag) as totaal_factuurbedrag,
+                MAX(betaaldatum) as laatste_betaling
+            FROM betaalde_facturen
+            WHERE EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400 BETWEEN 0 AND 365
+            GROUP BY crediteur_code HAVING COUNT(*) >= 2
+        )
+        SELECT crediteur_code, aantal_facturen,
+            ROUND(gem_dagen_tot_betaling::numeric, 1) as gem_dagen_tot_betaling,
+            ROUND(COALESCE(std_dagen_tot_betaling, 0)::numeric, 1) as std_dagen_tot_betaling,
+            ROUND(totaal_factuurbedrag::numeric, 2) as totaal_factuurbedrag,
+            laatste_betaling,
+            ROUND(LEAST(1.0, (1.0 - LEAST(1.0, COALESCE(std_dagen_tot_betaling, 30) / 30.0)) * 0.7 +
+                LEAST(1.0, aantal_facturen / 10.0) * 0.3)::numeric, 2) as betrouwbaarheid
+        FROM crediteur_stats ORDER BY totaal_factuurbedrag DESC
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching creditor payment behavior: {e}")
+            return pd.DataFrame({"crediteur_code": [], "aantal_facturen": [], "gem_dagen_tot_betaling": [],
+                                 "std_dagen_tot_betaling": [], "totaal_factuurbedrag": [],
+                                 "laatste_betaling": [], "betrouwbaarheid": []})
+
+    def get_terugkerende_kosten(self, startdatum: date = None, einddatum: date = None, administratie: str = None) -> pd.DataFrame:
+        if einddatum is None:
+            einddatum = date.today()
+        if startdatum is None:
+            startdatum = date(einddatum.year - 1, einddatum.month, 1)
+        if not administratie:
+            return pd.DataFrame({"maand": [], "kostensoort": [], "bedrag": []})
+
+        sql = f"""
+        SELECT
+            DATE_TRUNC('month', j."Boekdatum") as maand,
+            CASE
+                WHEN rub."Rubriek Code" LIKE '4%%' THEN 'Personeelskosten'
+                WHEN rub."Rubriek Code" LIKE '61%%' THEN 'Huisvestingskosten'
+                WHEN rub."Rubriek Code" LIKE '62%%' THEN 'Machinekosten'
+                WHEN rub."Rubriek Code" LIKE '65%%' THEN 'Autokosten'
+                ELSE 'Overige vaste kosten'
+            END as kostensoort,
+            SUM(CASE WHEN j."Debet/Credit" = 'D' THEN j."Bedrag" ELSE 0 END) -
+            SUM(CASE WHEN j."Debet/Credit" = 'C' THEN j."Bedrag" ELSE 0 END) as bedrag
+        FROM financieel."Journaalregels" j
+        JOIN financieel."Rubrieken" rub ON j."RubriekKey" = rub."RubriekKey"
+        JOIN notifica."SSM Administraties" a ON j."AdministratieKey" = a."AdministratieKey"
+        WHERE j."Boekdatum" >= {_sql_date(startdatum)}
+          AND j."Boekdatum" < {_sql_date(einddatum)}
+          AND (rub."Rubriek Code" LIKE '4%%' OR rub."Rubriek Code" LIKE '61%%'
+               OR rub."Rubriek Code" LIKE '62%%' OR rub."Rubriek Code" LIKE '65%%')
+          AND a."Administratie" = {_sql_str(administratie)}
+        GROUP BY DATE_TRUNC('month', j."Boekdatum"), kostensoort
+        ORDER BY maand
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching recurring costs: {e}")
+            return pd.DataFrame({"maand": [], "kostensoort": [], "bedrag": []})
+
+    def get_historisch_betalingsgedrag(self) -> pd.DataFrame:
+        sql = """
+        SELECT
+            DATE_TRUNC('month', j."Boekdatum") as maand,
+            30 as gem_betaaltermijn_debiteuren,
+            30 as gem_betaaltermijn_crediteuren,
+            SUM(CASE WHEN j."Debet/Credit" = 'D' THEN j."Bedrag" ELSE 0 END) as inkomsten,
+            SUM(CASE WHEN j."Debet/Credit" = 'C' THEN j."Bedrag" ELSE 0 END) as uitgaven
+        FROM financieel."Journaalregels" j
+        JOIN stam."Documenten" d ON j."DocumentKey" = d."DocumentKey"
+        JOIN stam."Dagboeken" dag ON d."DagboekKey" = dag."DagboekKey"
+        WHERE j."Boekdatum" >= CURRENT_DATE - INTERVAL '12 months'
+          AND d."StandaardEntiteitKey" = 10
+          AND j."RubriekKey" = dag."DagboekRubriekKey"
+        GROUP BY DATE_TRUNC('month', j."Boekdatum")
+        ORDER BY maand DESC
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching payment history: {e}")
+            return pd.DataFrame({"maand": [], "gem_betaaltermijn_debiteuren": [],
+                                 "gem_betaaltermijn_crediteuren": [], "inkomsten": [], "uitgaven": []})
+
+    def get_geplande_salarissen(self) -> pd.DataFrame:
+        return pd.DataFrame({"betaaldatum": [], "omschrijving": [], "bedrag": []})
+
+    def get_voorziening_debiteuren(self, standdatum: date = None, administratie: str = None) -> float:
+        if standdatum is None:
+            standdatum = date.today()
+        if not administratie:
+            return 0.0
+        sql = f"""
+        SELECT
+            SUM(CASE WHEN j."Debet/Credit" = 'D' THEN j."Bedrag" ELSE 0 END) -
+            SUM(CASE WHEN j."Debet/Credit" = 'C' THEN j."Bedrag" ELSE 0 END) as voorziening
+        FROM financieel."Journaalregels" j
+        JOIN financieel."Rubrieken" rub ON j."RubriekKey" = rub."RubriekKey"
+        JOIN notifica."SSM Administraties" a ON j."AdministratieKey" = a."AdministratieKey"
+        WHERE j."Boekdatum" BETWEEN
+              DATE_TRUNC('year', {_sql_date(standdatum)}::date) - INTERVAL '1 year'
+              AND DATE_TRUNC('year', {_sql_date(standdatum)}::date) - INTERVAL '1 day'
+          AND rub."Rubriek Code" = '1230'
+          AND a."Administratie" = {_sql_str(administratie)}
+        """
+        try:
+            df = self._query(sql)
+            if df.empty or df['voorziening'].iloc[0] is None:
+                return 0.0
+            return float(df['voorziening'].iloc[0])
+        except Exception:
+            return 0.0
+
+    def get_calibrated_dso_dpo(self, administratie: str, lookback_months: int = 12) -> dict:
+        result = {'dso': None, 'dpo': None}
+
+        dso_sql = f"""
+        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (
+            ORDER BY b."Betaaldatum"::date - b."Factuurdatum"::date
+        ) as median_dso
+        FROM notifica."SSM Betalingen per opbrengstregel" b
+        WHERE b."Betaaldatum" IS NOT NULL AND b."Factuurdatum" IS NOT NULL
+          AND b."Betaaldatum" >= CURRENT_DATE - INTERVAL '{int(lookback_months)} months'
+          AND b."BetaaldExclBTW" > 0
+        """
+        try:
+            df = self._query(dso_sql)
+            if not df.empty and df['median_dso'].iloc[0] is not None:
+                result['dso'] = float(df['median_dso'].iloc[0])
+        except Exception as e:
+            print(f"Could not calculate DSO: {e}")
+
+        dpo_sql = f"""
+        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (
+            ORDER BY b."Betaaldatum"::date - b."Vervaldatum"::date
+        ) as median_days_vs_due
+        FROM notifica."SSM Betalingen per inkoopregel" b
+        JOIN notifica."SSM Administraties" a ON b."AdministratieKey" = a."AdministratieKey"
+        WHERE b."Betaaldatum" IS NOT NULL AND b."Vervaldatum" IS NOT NULL
+          AND a."Administratie" = {_sql_str(administratie)}
+          AND b."Betaaldatum" >= CURRENT_DATE - INTERVAL '{int(lookback_months)} months'
+        """
+        try:
+            df = self._query(dpo_sql)
+            if not df.empty and df['median_days_vs_due'].iloc[0] is not None:
+                result['dpo'] = float(df['median_days_vs_due'].iloc[0])
+        except Exception as e:
+            print(f"Could not calculate DPO: {e}")
+
+        return result
+
+    # =========================================================================
+    # NIEUWE methoden voor V7 (Structuur x Volume x Realiteit)
+    # =========================================================================
+
+    def get_btw_aangifteregels(self, startdatum: date = None, einddatum: date = None) -> pd.DataFrame:
+        """BTW aangifteregels voor ritme-detectie (kwartaal/maandelijks)."""
+        if einddatum is None:
+            einddatum = date.today()
+        if startdatum is None:
+            startdatum = date(einddatum.year - 2, einddatum.month, 1)
+
+        sql = f"""
+        SELECT
+            DATE_TRUNC('month', btw."Boekdatum") as maand,
+            SUM(btw."Bedrag BTW") as btw_bedrag,
+            COUNT(*) as aantal_regels
+        FROM financieel."BTW aangifteregels" btw
+        WHERE btw."Boekdatum" >= {_sql_date(startdatum)}
+          AND btw."Boekdatum" < {_sql_date(einddatum)}
+        GROUP BY DATE_TRUNC('month', btw."Boekdatum")
+        ORDER BY maand
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching BTW data: {e}")
+            return pd.DataFrame({"maand": [], "btw_bedrag": [], "aantal_regels": []})
+
+    def get_salarishistorie(self, startdatum: date = None, einddatum: date = None) -> pd.DataFrame:
+        """Salarishistorie per maand voor vakantiegeld/13e maand detectie."""
+        if einddatum is None:
+            einddatum = date.today()
+        if startdatum is None:
+            startdatum = date(einddatum.year - 2, einddatum.month, 1)
+
+        sql = f"""
+        SELECT
+            DATE_TRUNC('month', sh."Datum") as maand,
+            SUM(sh."Bedrag") as salaris_bedrag,
+            COUNT(DISTINCT sh."MedewerkerKey") as aantal_medewerkers
+        FROM financieel."Salarishistorie" sh
+        WHERE sh."Datum" >= {_sql_date(startdatum)}
+          AND sh."Datum" < {_sql_date(einddatum)}
+        GROUP BY DATE_TRUNC('month', sh."Datum")
+        ORDER BY maand
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching salary history: {e}")
+            return pd.DataFrame({"maand": [], "salaris_bedrag": [], "aantal_medewerkers": []})
+
+    def get_budgetten(self, boekjaar: int = None, administratie: str = None) -> pd.DataFrame:
+        """Budgetten uit het semantisch model."""
+        if boekjaar is None:
+            boekjaar = date.today().year
+
+        adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
+
+        sql = f"""
+        SELECT
+            b."Begindatum" as datum,
+            b."Bedrag" as budget_bedrag,
+            rub."Rubriek" as rubriek,
+            rub."Rubriek Code" as rubriek_code
+        FROM financieel."Budgetten" b
+        LEFT JOIN financieel."Rubrieken" rub ON b."RubriekKey" = rub."RubriekKey"
+        LEFT JOIN notifica."SSM Administraties" a ON b."AdministratieKey" = a."AdministratieKey"
+        WHERE EXTRACT(YEAR FROM b."Begindatum") = {int(boekjaar)}
+          {adm_filter}
+        ORDER BY b."Begindatum"
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching budgets: {e}")
+            return pd.DataFrame({"datum": [], "budget_bedrag": [], "rubriek": [], "rubriek_code": []})
+
+    def get_orderportefeuille(self, administratie: str = None) -> pd.DataFrame:
+        """Openstaande orders (orderportefeuille)."""
+        adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
+
+        sql = f"""
+        SELECT
+            o."Order" as order_code,
+            o."Opleverdatum" as opleverdatum,
+            o."Einddatum" as einddatum,
+            o."Orderbedrag" as orderbedrag,
+            p."Projectstatus" as status
+        FROM stam."Orders" o
+        LEFT JOIN projecten."Projecten" p ON o."ProjectKey" = p."ProjectKey"
+        LEFT JOIN notifica."SSM Administraties" a ON o."AdministratieKey" = a."AdministratieKey"
+        WHERE o."Orderbedrag" > 0
+          {adm_filter}
+        ORDER BY o."Opleverdatum"
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching order portfolio: {e}")
+            return pd.DataFrame({"order_code": [], "opleverdatum": [], "einddatum": [],
+                                 "orderbedrag": [], "status": []})
+
+    def get_projecten_met_status(self, administratie: str = None) -> pd.DataFrame:
+        """Actieve projecten met status en omzet."""
+        adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
+
+        sql = f"""
+        SELECT
+            p."Project code" as project_code,
+            p."Project titel" as project_titel,
+            p."Projectstatus" as status,
+            COALESCE(pk."Kosten", 0) as kosten,
+            COALESCE(po."Opbrengsten", 0) as opbrengsten
+        FROM projecten."Projecten" p
+        LEFT JOIN (
+            SELECT "ProjectKey", SUM("Bedrag") as "Kosten"
+            FROM projecten."Project Kosten" GROUP BY "ProjectKey"
+        ) pk ON p."ProjectKey" = pk."ProjectKey"
+        LEFT JOIN (
+            SELECT "ProjectKey", SUM("Bedrag") as "Opbrengsten"
+            FROM projecten."Project Opbrengsten" GROUP BY "ProjectKey"
+        ) po ON p."ProjectKey" = po."ProjectKey"
+        LEFT JOIN notifica."SSM Administraties" a ON p."AdministratieKey" = a."AdministratieKey"
+        WHERE p."Projectstatus" NOT IN ('Afgerond', 'Vervallen')
+          {adm_filter}
+        ORDER BY po."Opbrengsten" DESC NULLS LAST
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching projects: {e}")
+            return pd.DataFrame({"project_code": [], "project_titel": [], "status": [],
+                                 "kosten": [], "opbrengsten": []})
+
+    def get_service_orders_prognose(self, administratie: str = None) -> pd.DataFrame:
+        """Service orders prognose (verwachte toekomstige omzet)."""
+        adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
+
+        sql = f"""
+        SELECT
+            sp."Verwachte factuurdatum" as verwachte_factuurdatum,
+            sp."Verwacht bedrag" as verwacht_bedrag,
+            sp."Orderstatus" as status
+        FROM service."Service Orders Prognose" sp
+        LEFT JOIN notifica."SSM Administraties" a ON sp."AdministratieKey" = a."AdministratieKey"
+        WHERE sp."Verwachte factuurdatum" >= CURRENT_DATE
+          {adm_filter}
+        ORDER BY sp."Verwachte factuurdatum"
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching service orders prognose: {e}")
+            return pd.DataFrame({"verwachte_factuurdatum": [], "verwacht_bedrag": [], "status": []})
+
+    def get_beschikbare_administraties(self) -> list:
+        """Haal beschikbare administraties op."""
+        sql = """
+        SELECT DISTINCT a."Administratie"
+        FROM notifica."SSM Administraties" a
+        WHERE a."Administratie" IS NOT NULL
+        ORDER BY a."Administratie"
+        """
+        try:
+            df = self._query(sql)
+            return df["Administratie"].tolist() if not df.empty else []
+        except Exception:
+            return []
+
+
+# =============================================================================
+# MockDatabase — Demo modus
+# =============================================================================
+
+class MockDatabase:
+    """Mock database for demo purposes."""
+
+    def __init__(self):
+        import numpy as np
+        self.np = np
+        self.today = date.today()
+
+    def get_banksaldo(self, standdatum=None, administratie=None):
+        return pd.DataFrame({
+            "bank_naam": ["ING Zakelijk", "Rabobank"], "rekeningnummer": ["NL91INGB01234", "NL02RABO98765"],
+            "saldo": [125000.0, 45000.0], "datum": [self.today] * 2,
+        })
+
+    def get_openstaande_debiteuren(self, standdatum=None, administratie=None):
+        self.np.random.seed(42)
+        n = 15
+        return pd.DataFrame({
+            "debiteur_code": [f"DEB{i:04d}" for i in range(n)],
+            "debiteur_naam": self.np.random.choice(["Bouwbedrijf De Vries", "Installatie Jansen", "Techniek Plus", "Klimaat BV", "Electro NL"], n),
+            "factuurnummer": [f"VF2024{i:05d}" for i in range(n)],
+            "factuurdatum": pd.date_range(self.today - timedelta(60), periods=n, freq='4D'),
+            "vervaldatum": pd.date_range(self.today - timedelta(30), periods=n, freq='4D'),
+            "bedrag_excl_btw": self.np.random.uniform(1500, 45000, n).round(2),
+            "betaald": self.np.zeros(n), "openstaand": self.np.random.uniform(1500, 45000, n).round(2),
+            "betaaltermijn_dagen": self.np.random.choice([14, 30, 45], n),
+            "administratie": ["Demo"] * n, "bedrijfseenheid": ["Demo"] * n,
+        })
+
+    def get_openstaande_crediteuren(self, standdatum=None, administratie=None):
+        self.np.random.seed(43)
+        n = 10
+        return pd.DataFrame({
+            "crediteur_code": [f"CRED{i:04d}" for i in range(n)],
+            "crediteur_naam": self.np.random.choice(["Groothandel TA", "Sanitair GH", "Elektro Supplies", "Bouwmat Direct"], n),
+            "factuurnummer": [f"INK2024{i:05d}" for i in range(n)],
+            "factuurdatum": pd.date_range(self.today - timedelta(30), periods=n, freq='3D'),
+            "vervaldatum": pd.date_range(self.today, periods=n, freq='3D'),
+            "bedrag_excl_btw": self.np.random.uniform(500, 25000, n).round(2),
+            "betaald": self.np.zeros(n), "openstaand": self.np.random.uniform(500, 25000, n).round(2),
+            "administratie": ["Demo"] * n, "bedrijfseenheid": ["Demo"] * n,
+        })
+
+    def get_historische_cashflow_per_week(self, startdatum=None, einddatum=None, administratie=None, administratie_key=None):
+        self.np.random.seed(46)
+        weeks = pd.date_range(end=self.today, periods=52, freq='W-MON')
+        rows = []
+        for w in weeks:
+            m = w.month
+            sf = 0.85 if m in [6, 7, 8] else (1.15 if m in [11, 12, 1] else 1.0)
+            ink = 180000 * sf * self.np.random.uniform(0.8, 1.2)
+            uit = 150000 * sf * self.np.random.uniform(0.85, 1.15)
+            rows.append({"week_start": w, "week_nummer": w.isocalendar()[1], "maand": m,
+                         "inkomsten": round(ink, 2), "uitgaven": round(uit, 2), "netto": round(ink - uit, 2)})
+        return pd.DataFrame(rows)
+
+    def get_betaalgedrag_per_debiteur(self, startdatum=None, einddatum=None, administratie=None):
+        return pd.DataFrame({
+            "debiteur_code": ["DEB0001", "DEB0002", "DEB0003"],
+            "aantal_facturen": [12, 8, 5], "gem_dagen_tot_betaling": [25.0, 35.0, 55.0],
+            "std_dagen_tot_betaling": [5.0, 10.0, 20.0], "min_dagen": [15, 20, 25],
+            "max_dagen": [35, 55, 90], "totaal_factuurbedrag": [120000, 85000, 45000],
+            "laatste_betaling": [self.today - timedelta(10)] * 3, "betrouwbaarheid": [0.9, 0.7, 0.4],
+        })
+
+    def get_betaalgedrag_per_crediteur(self, startdatum=None, einddatum=None, administratie=None):
+        return pd.DataFrame({
+            "crediteur_code": ["CRED0001", "CRED0002"],
+            "aantal_facturen": [15, 10], "gem_dagen_tot_betaling": [28.0, 32.0],
+            "std_dagen_tot_betaling": [5.0, 8.0], "totaal_factuurbedrag": [60000, 40000],
+            "laatste_betaling": [self.today - timedelta(5)] * 2, "betrouwbaarheid": [0.85, 0.7],
+        })
+
+    def get_geplande_salarissen(self):
+        return pd.DataFrame({"betaaldatum": [], "omschrijving": [], "bedrag": []})
+
+    def get_historisch_betalingsgedrag(self):
+        self.np.random.seed(44)
+        months = pd.date_range(end=self.today, periods=12, freq='ME')
+        return pd.DataFrame({
+            "maand": months, "gem_betaaltermijn_debiteuren": self.np.random.uniform(28, 45, 12).round(1),
+            "gem_betaaltermijn_crediteuren": self.np.random.uniform(25, 35, 12).round(1),
+            "inkomsten": self.np.random.uniform(150000, 250000, 12).round(2),
+            "uitgaven": self.np.random.uniform(120000, 200000, 12).round(2),
+        })
+
+    def get_terugkerende_kosten(self, startdatum=None, einddatum=None, administratie=None):
+        self.np.random.seed(45)
+        months = pd.date_range(end=self.today, periods=12, freq='ME')
+        rows = []
+        for d in months:
+            for soort, base in [("Personeelskosten", 85000), ("Huisvestingskosten", 12000), ("Autokosten", 8000)]:
+                rows.append({"maand": d, "kostensoort": soort, "bedrag": base + self.np.random.uniform(-base * 0.1, base * 0.1)})
+        return pd.DataFrame(rows)
+
+    def get_btw_aangifteregels(self, startdatum=None, einddatum=None):
+        months = pd.date_range(end=self.today, periods=24, freq='ME')
+        return pd.DataFrame({"maand": months, "btw_bedrag": [25000 if m.month in [1,4,7,10] else 0 for m in months],
+                             "aantal_regels": [50 if m.month in [1,4,7,10] else 0 for m in months]})
+
+    def get_salarishistorie(self, startdatum=None, einddatum=None):
+        months = pd.date_range(end=self.today, periods=24, freq='ME')
+        bedragen = [95000 if m.month == 5 else (88000 if m.month == 12 else 82000) for m in months]
+        return pd.DataFrame({"maand": months, "salaris_bedrag": bedragen, "aantal_medewerkers": [25] * 24})
+
+    def get_budgetten(self, boekjaar=None, administratie=None):
+        return pd.DataFrame({"datum": [], "budget_bedrag": [], "rubriek": [], "rubriek_code": []})
+
+    def get_orderportefeuille(self, administratie=None):
+        return pd.DataFrame({"order_code": [], "opleverdatum": [], "einddatum": [], "orderbedrag": [], "status": []})
+
+    def get_projecten_met_status(self, administratie=None):
+        return pd.DataFrame({"project_code": [], "project_titel": [], "status": [], "kosten": [], "opbrengsten": []})
+
+    def get_service_orders_prognose(self, administratie=None):
+        return pd.DataFrame({"verwachte_factuurdatum": [], "verwacht_bedrag": [], "status": []})
+
+    def get_voorziening_debiteuren(self, standdatum=None, administratie=None):
+        return 0.0
+
+    def get_calibrated_dso_dpo(self, administratie=None, lookback_months=12):
+        return {'dso': 32.0, 'dpo': 5.0}
+
+    def get_beschikbare_administraties(self):
+        return ["Demo Administratie"]
+
+
+# =============================================================================
+# FailedConnectionDatabase — Foutmelding
+# =============================================================================
+
+class FailedConnectionDatabase:
+    """Placeholder when API connection fails."""
+
+    def __init__(self, klantnummer: str, error: str = ""):
+        self.klantnummer = klantnummer
+        self.error_msg = error or f"Kon niet verbinden met API voor klant {klantnummer}"
+
+    def __getattr__(self, name):
+        """Elke methode-aanroep retourneert leeg DataFrame of default waarde."""
+        def method(*args, **kwargs):
+            if name in ('get_voorziening_debiteuren',):
+                return 0.0
+            if name in ('get_calibrated_dso_dpo',):
+                return {'dso': None, 'dpo': None}
+            if name in ('get_beschikbare_administraties',):
+                return []
+            return pd.DataFrame()
+        return method
+
+
+# =============================================================================
+# Factory function
+# =============================================================================
+
+def get_database(use_mock: bool = True, customer_code: Optional[str] = None) -> Union[NotificaDataSource, MockDatabase, FailedConnectionDatabase]:
+    """
+    Factory: Notifica API of MockDatabase.
+
+    Args:
+        use_mock: True = demo data
+        customer_code: Klantnummer (bijv. "1229")
+    """
+    if use_mock:
+        return MockDatabase()
+
+    klantnummer = customer_code or os.getenv('KLANTNUMMER', '')
+    if not klantnummer:
+        print("[WARNING] Geen klantnummer, gebruik demo data")
+        return MockDatabase()
+
+    try:
+        db = NotificaDataSource(klantnummer)
+        if db.test_connection():
+            print(f"[SUCCESS] Verbonden via API voor klant {klantnummer}")
+            return db
+        else:
+            return FailedConnectionDatabase(klantnummer, "API test query failed")
+    except Exception as e:
+        print(f"[ERROR] API verbinding mislukt: {e}")
+        return FailedConnectionDatabase(klantnummer, str(e))
+
+
+# Backwards compatibility
+SyntessDWHConnection = NotificaDataSource
+DatabaseConnection = NotificaDataSource

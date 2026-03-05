@@ -1,6 +1,5 @@
 # Secrets - nooit in git
-lead-dashboard/.streamlit/secrets.toml
-lead-dashboard/.env
+**/.streamlit/secrets.toml
 **/.env
 **/__pycache__/
 *.pyc
