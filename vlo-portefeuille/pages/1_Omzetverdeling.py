@@ -181,40 +181,44 @@ if len(eenmalig) > 0:
         pid = row["project_id"]
         override = st.session_state.project_overrides.get(pid, {})
 
+        # Truncate long project names for table readability
+        naam_kort = row["naam"] if len(row["naam"]) <= 25 else row["naam"][:23] + ".."
+
         edit_data.append({
             "project_id": pid,
-            "Project": row["naam"],
-            "Vestiging": row["vestiging"],
+            "Project": naam_kort,
+            "Vest.": row["vestiging"][:8] if len(row["vestiging"]) > 8 else row["vestiging"],
             "Totaal": format_eur_full(row["totaal"]),
             "Totaal_raw": row["totaal"],
+            "orig_start": row["originele_start"],
             "Schema": override.get("schema", default_schema),
-            "Originele start": row["originele_start"],
-            "Aangepaste start": override.get("start_date", row["originele_start"]),
+            "Start": override.get("start_date", row["originele_start"]),
             "Eind": override.get("end_date", row["originele_eind"]),
         })
 
     edit_df = pd.DataFrame(edit_data)
     edit_df = edit_df.sort_values("Totaal_raw", ascending=False)
 
-    edit_df["Delta (mnd)"] = edit_df.apply(
-        lambda r: (r["Aangepaste start"].year - r["Originele start"].year) * 12
-                  + (r["Aangepaste start"].month - r["Originele start"].month),
+    edit_df["Delta"] = edit_df.apply(
+        lambda r: (r["Start"].year - r["orig_start"].year) * 12
+                  + (r["Start"].month - r["orig_start"].month),
         axis=1,
     )
 
     column_config = {
         "project_id": None,
         "Totaal_raw": None,
-        "Project": st.column_config.TextColumn("Project", disabled=True, width="large"),
-        "Vestiging": st.column_config.TextColumn("Vestiging", disabled=True),
-        "Totaal": st.column_config.TextColumn("Totaal", disabled=True),
-        "Schema": st.column_config.SelectboxColumn("Schema", options=all_schema_namen, required=True),
-        "Originele start": st.column_config.DateColumn("Originele start", disabled=True, format="DD-MM-YYYY"),
-        "Aangepaste start": st.column_config.DateColumn("Aangepaste start", format="DD-MM-YYYY"),
-        "Eind": st.column_config.DateColumn("Einddatum", format="DD-MM-YYYY"),
-        "Delta (mnd)": st.column_config.NumberColumn(
-            "Delta",
+        "orig_start": None,
+        "Project": st.column_config.TextColumn("Project", disabled=True, width="small"),
+        "Vest.": st.column_config.TextColumn("Vest.", disabled=True, width="small"),
+        "Totaal": st.column_config.TextColumn("Totaal", disabled=True, width="small"),
+        "Schema": st.column_config.SelectboxColumn("Schema", options=all_schema_namen, required=True, width="small"),
+        "Start": st.column_config.DateColumn("Start", format="DD-MM-YYYY", width="small"),
+        "Eind": st.column_config.DateColumn("Eind", format="DD-MM-YYYY", width="small"),
+        "Delta": st.column_config.NumberColumn(
+            "Δ",
             disabled=True,
+            width="small",
             help="Verschil in maanden t.o.v. originele start (+ = later, - = eerder)",
         ),
     }
@@ -225,7 +229,7 @@ if len(eenmalig) > 0:
         use_container_width=True,
         hide_index=True,
         num_rows="fixed",
-        key="project_editor",
+        key="project_tbl_v3",
     )
 
     # Process overrides
@@ -235,7 +239,7 @@ if len(eenmalig) > 0:
         pid = row["project_id"]
         orig_row = eenmalig[eenmalig["project_id"] == pid].iloc[0]
 
-        aangepaste_start = row["Aangepaste start"]
+        aangepaste_start = row["Start"]
         eind = row["Eind"]
         schema = row["Schema"]
 
