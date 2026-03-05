@@ -878,6 +878,45 @@ def save_klantreis_fasen(fasen: dict) -> bool:
 
 
 # ============================================================
+#  POWER BI EXCEL VALIDATIE
+# ============================================================
+
+REQUIRED_PBI_COLUMNS = [
+    "Pipedrive organisatie",
+    "Aantal activity reportviews",
+    "Name",
+    "Maand",
+    "Jaar",
+    "Report name",
+]
+
+
+def validate_new_pbi_excel(file_bytes: bytes) -> dict:
+    """Valideer geüploade Power BI Excel vóór opslaan als parquet.
+    Returns {ok, errors, df, rows, orgs}."""
+    import io as _io
+    errors = []
+    try:
+        df = pd.read_excel(_io.BytesIO(file_bytes))
+    except Exception as e:
+        return {"ok": False, "errors": [f"Kan Excel niet lezen: {e}"], "df": None, "rows": 0, "orgs": 0}
+
+    missing = [c for c in REQUIRED_PBI_COLUMNS if c not in df.columns]
+    if missing:
+        errors.append(f"Verplichte kolommen ontbreken: {', '.join(missing)}")
+    if len(df) < 10:
+        errors.append(f"Slechts {len(df)} rijen — verwacht minimaal 10")
+
+    return {
+        "ok": len(errors) == 0,
+        "errors": errors,
+        "df": df if not errors else None,
+        "rows": len(df),
+        "orgs": df["Pipedrive organisatie"].nunique() if "Pipedrive organisatie" in df.columns else 0,
+    }
+
+
+# ============================================================
 #  HANDMATIGE BELLIJST
 # ============================================================
 

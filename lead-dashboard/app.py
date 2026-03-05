@@ -9,6 +9,7 @@ import io
 import os
 import time
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 
 from config import FUNNEL_CONFIG, INTERNE_MEDEWERKERS
@@ -24,7 +25,7 @@ from data import (
     fetch_pipedrive_person_notes, generate_nid,
     load_manual_bellijst, save_manual_bellijst, update_pipedrive_person_phone,
     load_klantreis_fasen, save_klantreis_fasen, KLANTREIS_FASEN,
-    fetch_last_activity_dates,
+    fetch_last_activity_dates, validate_new_pbi_excel,
     POWERBI_EXCEL_DEFAULT, POWERBI_CACHE_PATH,
 )
 
@@ -113,12 +114,12 @@ st.components.v1.html("""
 # ============================================================
 
 with st.sidebar:
-    st.markdown("""
-    <div style="text-align: center; padding: 10px 0 20px 0;">
-        <h2 style="color: #16136F; margin: 0;">Notifica</h2>
-        <p style="color: #666; font-size: 0.85rem; margin: 4px 0 0 0;">Sales Dashboard</p>
-    </div>
-    """, unsafe_allow_html=True)
+    _logo = Path(__file__).parent / "assets" / "notifica_logo.jpg"
+    if _logo.exists():
+        st.image(str(_logo), use_container_width=True)
+    else:
+        st.markdown("### Notifica")
+    st.caption("Sales Dashboard")
 
     st.divider()
 
@@ -133,7 +134,7 @@ with st.sidebar:
 
     pagina = st.radio(
         "Pagina",
-        ["Mijn Week", "Overzicht", "Data & Details"],
+        ["Mijn Week", "Overzicht", "Data & Details", "Uitleg"],
         index=0,
         key="pagina_sidebar",
     )
@@ -169,6 +170,33 @@ with st.sidebar:
     ]
     for name, ok, detail in status_items:
         st.caption(f"{'[OK]' if ok else '[--]'} {name}: {detail}")
+
+    # Power BI upload in sidebar
+    st.divider()
+    st.caption("Power BI data")
+    if pbi_source == "cache" and os.path.exists(POWERBI_CACHE_PATH):
+        _cache_ts = datetime.fromtimestamp(os.path.getmtime(POWERBI_CACHE_PATH)).strftime("%d-%m-%Y")
+        st.caption(f"Cache: {_cache_ts}")
+    pbi_upload_sidebar = st.file_uploader(
+        "Nieuwe Excel uploaden",
+        type=["xlsx", "xls"],
+        key="pbi_upload_sidebar",
+        help="Power BI Activity Report Views export",
+    )
+
+# Sidebar upload verwerken
+if pbi_upload_sidebar is not None:
+    _file_bytes = pbi_upload_sidebar.read()
+    _val = validate_new_pbi_excel(_file_bytes)
+    if not _val["ok"]:
+        with st.sidebar:
+            st.error("Validatie mislukt: " + "; ".join(_val["errors"]))
+    else:
+        with st.sidebar:
+            st.success(f"✅ {_val['rows']} rijen · {_val['orgs']} klanten")
+            if st.button("Opslaan als cache", key="pbi_save_btn"):
+                save_powerbi_cache(_file_bytes)
+                st.rerun()
 
 # Build data
 leads_df = build_leads_df(ml_df, pd_df, web_mapping,
@@ -780,31 +808,15 @@ elif pagina == "Data & Details":
     with tab_health:
         st.header("Klant Health - Power BI Gebruik")
 
-        uploaded = st.file_uploader(
-            "Upload Power BI Activity Report Views (Excel)",
-            type=["xlsx", "xls"],
-            key="pbi_upload",
-        )
-        if uploaded is not None:
-            file_bytes = uploaded.read()
-            saved = save_powerbi_cache(file_bytes)
-            pbi_df = pd.read_excel(io.BytesIO(file_bytes))
-            health_df = calculate_customer_health(pbi_df)
-            if not health_df.empty:
-                health_df = get_customer_contacts(health_df, pd_df)
-            msg = f"Excel opgeslagen en geladen: {len(pbi_df)} rijen, {pbi_df['Pipedrive organisatie'].nunique()} klanten"
-            if not saved:
-                msg += " (opslaan mislukt — wordt niet onthouden)"
-            st.success(msg)
-        elif pbi_source == "cache":
-            import os as _os
-            cache_date = datetime.fromtimestamp(_os.path.getmtime(POWERBI_CACHE_PATH)).strftime("%d-%m-%Y %H:%M")
-            st.info(f"Gebruik opgeslagen cache van {cache_date}. Upload een nieuwere Excel om te verversen.")
+        if pbi_source == "cache" and os.path.exists(POWERBI_CACHE_PATH):
+            cache_date = datetime.fromtimestamp(os.path.getmtime(POWERBI_CACHE_PATH)).strftime("%d-%m-%Y %H:%M")
+            st.info(f"Data uit cache van {cache_date}. Upload een nieuwe Excel via de sidebar om te verversen.")
+        elif pbi_source == "excel":
+            st.info("Data geladen uit lokale Downloads map.")
 
         if health_df.empty:
             st.info(
-                "Geen Power BI data. Upload een Excel bestand hierboven, "
-                f"of plaats het bestand op: `{POWERBI_EXCEL_DEFAULT}`"
+                "Geen Power BI data beschikbaar. Upload een nieuwe Excel via de **sidebar** (linkerkolom)."
             )
         else:
             top12_names = FUNNEL_CONFIG["top_12"]
@@ -1188,6 +1200,155 @@ elif pagina == "Data & Details":
 
             else:
                 st.info("Geen lead data beschikbaar.")
+
+
+# ============================================================
+#  PAGINA: UITLEG
+# ============================================================
+
+elif pagina == "Uitleg":
+    st.header("Handleiding Sales Dashboard")
+    st.caption("Hoe werkt dit dashboard? Alles wat je moet weten voor effectief gebruik.")
+
+    with st.expander("📊 Wat doet dit dashboard?", expanded=True):
+        st.markdown("""
+Dit dashboard combineert drie databronnen om te bepalen welke leads en klanten prioriteit hebben:
+
+| Bron | Data | Gebruik |
+|------|------|---------|
+| **EmailOctopus** | E-mail opens en clicks | Lead scoring |
+| **Leadfeeder** | Websitebezoeken per bedrijf | Lead scoring |
+| **Pipedrive** | Contacten, deals, notities | Lead verrijking + klant contactinfo |
+| **Power BI** | Rapportgebruik per klant/maand | Klant health scoring |
+
+Elke lead krijgt een **score (0–40+)** en een segment: **HOT** (≥18) · **Warm** (9–17) · **Cold** (<9).
+        """)
+
+    with st.expander("🔢 Lead scoring — hoe werkt het?"):
+        st.markdown("""
+**E-mail engagement (EmailOctopus)**
+
+| Opens | Punten | Clicks | Punten |
+|-------|--------|--------|--------|
+| 1+ | 3 | 1+ | 3 |
+| 3+ | 6 | 2+ | 6 |
+| 5+ | 9 | 3+ | 9 |
+| 10+ | 12 | 5+ | 12 |
+| 20+ | 15 | 10+ | 15 |
+
+**Websitebezoek (Leadfeeder):** +5 punten als het bedrijf herkend is op de website.
+
+**Deal fase bonus (Pipedrive)**
+
+| Fase | Bonus |
+|------|-------|
+| Webinar aangemeld | 15 |
+| Offerte verstuurd | 10 |
+| Offerte aanmaken | 8 |
+| Interesse getoond | 5 |
+| Contact gehad | 3 |
+
+**🔴 Urgentiebadge** verschijnt als: webinar aangemeld of 3+ clicks → altijd bellen.
+        """)
+
+    with st.expander("📅 Mijn Week — hoe gebruik je het?"):
+        st.markdown("""
+**Automatische bellijst**
+- Top 5 leads per persoon op basis van score (afwisselend Tobias / Arthur)
+- Doelstelling: **5 leads bellen per week per persoon** + **2 klanten per week gezamenlijk**
+
+**Signalen in Mijn Week**
+
+| Badge | Betekenis |
+|-------|-----------|
+| 🔴 | Altijd bellen — webinar aangemeld of 3+ clicks |
+| ⚠️ | HOT lead zonder opvolging >14 dagen |
+| 📂 | Offerte ouder dan 90 dagen zonder beslissing |
+| 📅 | Handmatig toegevoegd aan bellijst |
+
+**Handmatig toevoegen**
+Ga naar Data & Details → Lead Details → expander "Voeg lead handmatig toe aan bellijst".
+Selecteer de lead en kies voor Tobias of Arthur.
+
+**Klantreis-fase instellen**
+Open een lead-expander → selecteer See / Think / Do → klik "Opslaan fase".
+
+| Fase | Betekenis | Aanpak gesprek |
+|------|-----------|----------------|
+| See | Probleem nog niet erkend | Bewust maken van risico's van sturen op gevoel |
+| Think | Oriënterend | Uitleggen hoe Notifica het oplost |
+| Do | Klaar om te beslissen | Drempels verlagen, laten zien hoe eenvoudig starten is |
+
+**Belnotitie opslaan**
+Onderaan Mijn Week: selecteer de lead, typ de notitie, klik "Opslaan in Pipedrive".
+De notitie is daarna zichtbaar in de lead-expander én in Pipedrive.
+        """)
+
+    with st.expander("🏢 Klant Health — wat zie je?"):
+        st.markdown("""
+**Gebaseerd op Power BI rapportgebruik** per klant per maand (Activity Report Views).
+
+| Status | Criteria | Actie |
+|--------|----------|-------|
+| 🟢 Groen | Stabiel of stijgend gebruik, meerdere gebruikers | Upsell gesprek |
+| 🟠 Oranje | Dalende trend (>25% minder) of slechts 1 gebruiker | Optimalisatiegesprek |
+| 🔴 Rood | Nauwelijks gebruik | Reactiveren |
+
+**Doelstelling klantcontact (Chloé's accountplan)**
+- Minimaal **2 APK-gesprekken per jaar** per klant
+- Met 60 klanten × 2 gesprekken = **2 klanten per week** bellen (samen Arthur + Tobias)
+
+**APK-gesprek structuur**
+1. **Diagnose**: Waar lopen jullie tegenaan? Worden de KPI's actief gebruikt?
+2. **Verdieping**: Als KPI's niet aansluiten of geen sturing → consultancy positioneren
+3. **Upsell**: Resource Planning / Liquiditeit Forecast / AI Contract Checker
+
+**Signalen voor upsell**
+- Problemen met planning? → Resource Planning
+- Onzekerheid cashflow? → Liquiditeit Forecast
+- Contractrisico's? → AI Contract Checker
+        """)
+
+    with st.expander("⬆️ Power BI data bijwerken"):
+        st.markdown("""
+De Klant Health tab is gebaseerd op een Power BI Excel export. Zo werk je de data bij:
+
+1. Open **Power BI Service** → Monitor rapport
+2. Exporteer "**Activity Report Views**" als Excel (.xlsx)
+3. Upload het bestand via de **sidebar** (linkerkolom van dit dashboard)
+4. Controleer de validatie: aantal rijen en klanten wordt getoond
+5. Klik **"Opslaan als cache"** → data is daarna zichtbaar voor alle gebruikers
+
+De cache blijft beschikbaar ook na herstart van de app, totdat je een nieuwe versie uploadt.
+        """)
+
+    with st.expander("📝 Belnotities en Pipedrive"):
+        st.markdown("""
+**Notitie opslaan**
+Via Mijn Week → "Belnotitie opslaan in Pipedrive":
+- Selecteer de lead
+- Typ je notitie (wat besproken, wat is de vervolgstap)
+- Optioneel: werk de deal fase bij
+- Klik "Opslaan" → pagina herlaadt automatisch, notitie is direct zichtbaar
+
+**Telefoonnummer toevoegen**
+Als een lead geen telefoonnummer heeft, zie je in de expander een invulveld.
+Na opslaan wordt het nummer direct opgeslagen in Pipedrive.
+
+**Klantreis-fase opslaan**
+Per lead kun je de See/Think/Do fase instellen in de bel-reden expander.
+Dit wordt lokaal opgeslagen en is zichtbaar in de Lead Details tabel (kolom "Fase").
+        """)
+
+    with st.expander("🔐 Toegang en wachtwoord"):
+        st.markdown("""
+**URL:** [https://notifica-leads.streamlit.app/](https://notifica-leads.streamlit.app/)
+
+**Wachtwoord:** NotificaDash2026
+
+Het dashboard is alleen toegankelijk voor Notifica medewerkers.
+Bij vragen of problemen: neem contact op met Tobias.
+        """)
 
 
 # --- Footer ---
