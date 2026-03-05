@@ -466,6 +466,27 @@ if pagina == "Mijn Week":
         else:
             st.info("Geen klant health data beschikbaar.")
 
+    # ---- Oude offertes heractiveren ----
+    if not leads_df.empty and "Deal Datum" in leads_df.columns:
+        offerte_fasen = {"Offerte verstuurd", "Offerte aanmaken", "Offerte", "Intern akkoord scope & offerte"}
+        cutoff = datetime.now().date()
+        oude_offertes = leads_df[
+            leads_df["Deal Fase"].isin(offerte_fasen) &
+            leads_df["Deal Datum"].apply(
+                lambda d: bool(d) and (cutoff - datetime.strptime(d, "%Y-%m-%d").date()).days > 90
+            )
+        ].copy()
+
+        if not oude_offertes.empty:
+            st.divider()
+            with st.expander(f"📂 Oude offertes heractiveren ({len(oude_offertes)})"):
+                st.caption("Open offertes die 90+ dagen geleden zijn aangemaakt zonder beslissing.")
+                _cols = [c for c in ["Naam", "Bedrijf", "Deal Fase", "Deal Datum", "Deal Waarde", "Telefoon"] if c in oude_offertes.columns]
+                st.dataframe(
+                    oude_offertes[_cols].sort_values("Deal Datum"),
+                    use_container_width=True, hide_index=True,
+                )
+
     # ---- Belnotitie opslaan ----
     st.divider()
     st.subheader("Belnotitie opslaan in Pipedrive")

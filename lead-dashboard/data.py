@@ -274,6 +274,7 @@ def fetch_pipedrive_deals():
                         "org_name": deal.get("org_name", ""),
                         "deal_id": deal.get("id"),
                         "stage_id": stage_id,
+                        "deal_add_time": (deal.get("add_time") or "")[:10],
                     }
 
             pag = data.get("additional_data", {}).get("pagination", {})
@@ -1033,6 +1034,7 @@ def build_leads_df(ml_df, pd_df, web_mapping,
         deal_bonus = deal.get("deal_bonus", 0)
         deal_id = deal.get("deal_id")
         deal_stage_id = deal.get("stage_id")
+        deal_add_time = deal.get("deal_add_time", "")
         # Bedrijfsnaam uit deal als er geen andere is
         if not company and deal.get("org_name"):
             company = deal["org_name"]
@@ -1067,6 +1069,7 @@ def build_leads_df(ml_df, pd_df, web_mapping,
             "Pipedrive ID": person_id,
             "Deal ID": deal_id,
             "Deal Stage ID": deal_stage_id,
+            "Deal Datum": deal_add_time,
         }
 
     if not ml_df.empty:
