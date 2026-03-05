@@ -348,7 +348,10 @@ def _render_call_table(df, label, key_prefix, mail_history=None, manual_emails=N
                     if st.button("Opslaan", key=f"{key_prefix}_phone_save_{i}"):
                         if new_phone.strip() and person_id:
                             ok = update_pipedrive_person_phone(int(person_id), new_phone)
-                            st.success("Opgeslagen in Pipedrive") if ok else st.error("Opslaan mislukt")
+                            if ok:
+                                st.success("Opgeslagen in Pipedrive")
+                            else:
+                                st.error("Opslaan mislukt")
                         else:
                             st.warning("Vul een telefoonnummer in")
 
