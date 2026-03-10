@@ -44,15 +44,17 @@ class NotificaDataSource:
         # API key ophalen: Streamlit secrets > .env > environment
         api_url = None
         app_key = None
+        data_key = None
         try:
             import streamlit as st
             if hasattr(st, 'secrets') and 'api' in st.secrets:
                 api_url = st.secrets["api"].get("url")
                 app_key = st.secrets["api"].get("app_key")
+                data_key = st.secrets["api"].get("data_key")
         except (ImportError, Exception):
             pass
 
-        self.client = NotificaClient(api_url=api_url, app_key=app_key)
+        self.client = NotificaClient(api_url=api_url, app_key=app_key, data_key=data_key)
         self.klantnummer = int(klantnummer)
 
     def _query(self, sql: str) -> pd.DataFrame:
