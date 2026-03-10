@@ -1,9 +1,10 @@
 """
-Zenith Werkbon Rapportage v2.0
+Zenith Werkbon Rapportage v2.1
 ===============================
 Complete export met locatie-afhankelijke SLA KPIs (Classificatie-matrix)
++ AI use case tabs (Notitie-analyse, Contract Check, Storingspatronen)
 
-Laatste update: 2026-02-23
+Laatste update: 2026-03-10
 """
 import streamlit as st
 import pandas as pd
@@ -380,14 +381,405 @@ def categorize_response_time(hours):
     else:
         return '>24u'
 
+
 # ============================================================================
-# STREAMLIT APP
+# AI USE CASE TABS — RENDER FUNCTIONS
 # ============================================================================
 
-st.title("Zenith Werkbon Rapportage v2.0")
-st.markdown("**Werkbonnen export met locatie-afhankelijke SLA KPIs (Classificatie-matrix)**")
+def render_notitie_analyse_tab():
+    """Tab 2: AI Notitie-analyse — gestructureerde extractie uit BLOB-tekst"""
 
-# Filters
+    st.header("AI Notitie-analyse")
+    st.markdown("""
+    **Het probleem:** Monteurs schrijven vrije tekst in het systeem. Rommelig, afkortingen, halve zinnen.
+    De huidige tool stript alleen de RTF-opmaak, maar haalt geen **gestructureerde informatie** uit de inhoud.
+
+    **De oplossing:** AI leest elke monteurnotitie en extraheert automatisch:
+    """)
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        st.markdown("🔍 **Probleem**")
+        st.caption("Wat was de oorzaak?")
+    with col2:
+        st.markdown("🔧 **Actie**")
+        st.caption("Wat is er gedaan?")
+    with col3:
+        st.markdown("✅ **Oplossing**")
+        st.caption("Definitief of tijdelijk?")
+    with col4:
+        st.markdown("📦 **Materialen**")
+        st.caption("Welke onderdelen?")
+    with col5:
+        st.markdown("⚠️ **Derden**")
+        st.caption("Schade door externen?")
+
+    st.markdown("---")
+    st.subheader("Voorbeeld: van ruwe notitie naar gestructureerde data")
+
+    # Mockup data — realistische Zenith/Coolblue werkbonnen
+    mockup_data = pd.DataFrame([
+        {
+            "Werkbon": "WB-2025-001847",
+            "Locatie": "Warehouse Tilburg",
+            "Ruwe monteurnotitie": "Patrick Dutour 12-01-2025\nBrandmelder gang 3 defect rookmelder reageert niet meer. Detector vervangen type Siemens FDO241. Carlo gebeld voor toegang magazijn. Vervolg op: [werkbon://WB-2025-001700]",
+            "→ Probleem": "Defecte rookmelder (reageert niet)",
+            "→ Actie": "Detector vervangen",
+            "→ Materiaal": "Siemens FDO241",
+            "→ Definitief?": "Ja",
+            "→ Derden?": "Nee",
+        },
+        {
+            "Werkbon": "WB-2025-002103",
+            "Locatie": "Store Amsterdam",
+            "Ruwe monteurnotitie": "Roy Post 28-01-2025 Klant wil extra cam bijplaatsen boven kassa 4 ivm diefstal. Offerte gemaakt en doorgestuurd naar Ricardo. Geen storing - uitbreiding.",
+            "→ Probleem": "Geen storing (uitbreidingsverzoek)",
+            "→ Actie": "Offerte opgesteld",
+            "→ Materiaal": "n.v.t.",
+            "→ Definitief?": "n.v.t.",
+            "→ Derden?": "Nee",
+        },
+        {
+            "Werkbon": "WB-2025-002251",
+            "Locatie": "Depot Rotterdam",
+            "Ruwe monteurnotitie": "Werner 03-02-2025\nKabel inbraakdet beschadigd door lekkage plafond. Water druppelt op PIR sensor. Tijdelijk gerepareerd met krimpkous, moet terug voor definitief. Bouwkundig issue melden bij CB.",
+            "→ Probleem": "Waterschade aan inbraakdetectie-kabel",
+            "→ Actie": "Tijdelijke reparatie (krimpkous)",
+            "→ Materiaal": "Krimpkous",
+            "→ Definitief?": "Nee — retourbezoek nodig",
+            "→ Derden?": "Ja — bouwkundig (lekkage plafond)",
+        },
+        {
+            "Werkbon": "WB-2025-001955",
+            "Locatie": "Fietshub Utrecht",
+            "Ruwe monteurnotitie": "José v/d Pool 18-01-2025 vals alarm inbraak systeem. Spinnenwebben op sensor hal 2. Sensor schoongemaakt en gevoeligheid aangepast. Geen onderdelen.",
+            "→ Probleem": "Vals alarm door spinnenwebben",
+            "→ Actie": "Sensor gereinigd + gevoeligheid aangepast",
+            "→ Materiaal": "Geen",
+            "→ Definitief?": "Ja",
+            "→ Derden?": "Nee",
+        },
+        {
+            "Werkbon": "WB-2025-002087",
+            "Locatie": "Store Den Haag",
+            "Ruwe monteurnotitie": "Patrick Dutour 25-01-2025 Camera parkeerplaats draait niet meer, pan/tilt motor defect. Motor vervangen Dahua SD6AL245. Sven gebeld ivm parkeerplaats afsluiting.",
+            "→ Probleem": "Defecte pan/tilt motor camera",
+            "→ Actie": "Motor vervangen",
+            "→ Materiaal": "Dahua SD6AL245",
+            "→ Definitief?": "Ja",
+            "→ Derden?": "Nee",
+        },
+        {
+            "Werkbon": "WB-2025-002190",
+            "Locatie": "Warehouse Eindhoven",
+            "Ruwe monteurnotitie": "Roy Post 05-02-2025\nVerzoek nw toegangscontrole dock 7. Niet in scope oorspronkelijke install. Offerte nodig. Overleg met Giorno over planning Q2.",
+            "→ Probleem": "Geen storing (uitbreidingsverzoek)",
+            "→ Actie": "Offerte vereist",
+            "→ Materiaal": "Toegangscontrole (nader te bepalen)",
+            "→ Definitief?": "n.v.t.",
+            "→ Derden?": "Nee",
+        },
+    ])
+
+    st.dataframe(
+        mockup_data,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Ruwe monteurnotitie": st.column_config.TextColumn(width="large"),
+            "→ Probleem": st.column_config.TextColumn(width="medium"),
+            "→ Actie": st.column_config.TextColumn(width="medium"),
+        }
+    )
+
+    st.markdown("---")
+
+    # Value proposition
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Tijdsbesparing per werkbon", "~5 min", help="Handmatig notities lezen en interpreteren vs. automatische extractie")
+    with col2:
+        st.metric("Velden automatisch ingevuld", "5", help="Probleem, actie, materiaal, definitief/tijdelijk, derden")
+    with col3:
+        st.metric("Nauwkeurigheid", "~90%", help="Op basis van vergelijkbare pilots bij andere klanten")
+
+    st.info("""
+    **Hoe werkt het?** De AI leest de volledige monteurnotitie — inclusief afkortingen, typefouten en ongestructureerde tekst — en
+    extraheert de kerninfo. Dit vervangt het handmatig doorlezen van elke notitie. De medewerker valideert alleen nog de output.
+    """)
+
+
+def render_contract_check_tab():
+    """Tab 3: Contract Check — binnen/buiten SLA classificatie"""
+
+    st.header("AI Contract Check")
+    st.markdown("""
+    **Het probleem:** Per werkbon moet iemand beoordelen of het werk onder het SLA-contract valt of meerwerk is
+    dat doorbelast mag worden. Dit kost tijd, is foutgevoelig, en leidt tot gemiste omzet.
+
+    **De oplossing:** AI leest de werkbonomschrijving, monteurnotities én contractvoorwaarden, en geeft per werkbon een classificatie:
+    """)
+
+    # Drie classificaties visueel
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.success("**✅ BINNEN CONTRACT**")
+        st.markdown("Werkzaamheden vallen onder de SLA-overeenkomst. Geen actie nodig.")
+    with col2:
+        st.error("**❌ MEERWERK**")
+        st.markdown("Valt buiten het contract. Mag worden doorbelast aan de opdrachtgever.")
+    with col3:
+        st.warning("**⚠️ TWIJFEL**")
+        st.markdown("Grensgebied. Vereist menselijke beoordeling door een medewerker.")
+
+    st.markdown("---")
+    st.subheader("Voorbeeld: AI-classificatie van Zenith werkbonnen")
+
+    mockup_data = pd.DataFrame([
+        {
+            "Werkbon": "WB-2025-001847",
+            "Locatie": "Warehouse Tilburg",
+            "Omschrijving": "Brandmelder gang 3 defect, detector vervangen preventief",
+            "Classificatie": "✅ Binnen contract",
+            "AI-toelichting": "Vervanging defecte rookmelder is preventief onderhoud conform SLA art. 4.2 — onderdeel van reguliere service.",
+            "Confidence": "96%",
+        },
+        {
+            "Werkbon": "WB-2025-002103",
+            "Locatie": "Store Amsterdam",
+            "Omschrijving": "Extra camera bijplaatsen boven kassa 4",
+            "Classificatie": "❌ Meerwerk",
+            "AI-toelichting": "Bijplaatsen van camera is een uitbreiding, geen onderhoud of storing. Niet gedekt onder SLA-scope.",
+            "Confidence": "98%",
+        },
+        {
+            "Werkbon": "WB-2025-002251",
+            "Locatie": "Depot Rotterdam",
+            "Omschrijving": "Kabel inbraakdetectie beschadigd door lekkage plafond",
+            "Classificatie": "⚠️ Twijfel",
+            "AI-toelichting": "Schade door waterschade (derden/bouwkundig). Installatie valt onder SLA, maar oorzaak is extern. Menselijke beoordeling nodig.",
+            "Confidence": "62%",
+        },
+        {
+            "Werkbon": "WB-2025-001955",
+            "Locatie": "Fietshub Utrecht",
+            "Omschrijving": "Vals alarm inbraaksysteem door spinnenwebben, sensor schoongemaakt",
+            "Classificatie": "✅ Binnen contract",
+            "AI-toelichting": "Reiniging sensor en herkalibratie is regulier onderhoud. Vals alarm verhelpen valt onder SLA art. 4.1.",
+            "Confidence": "94%",
+        },
+        {
+            "Werkbon": "WB-2025-002087",
+            "Locatie": "Store Den Haag",
+            "Omschrijving": "Camera parkeerplaats draait niet meer, motor vervangen",
+            "Classificatie": "✅ Binnen contract",
+            "AI-toelichting": "Defect aan bestaande installatie. Vervanging motor is correctief onderhoud conform SLA art. 4.3.",
+            "Confidence": "95%",
+        },
+        {
+            "Werkbon": "WB-2025-002190",
+            "Locatie": "Warehouse Eindhoven",
+            "Omschrijving": "Verzoek nieuwe toegangscontrole dock 7, niet in oorspronkelijke scope",
+            "Classificatie": "❌ Meerwerk",
+            "AI-toelichting": "Nieuwe installatie buiten oorspronkelijke scope. Expliciete uitbreiding — niet gedekt onder bestaand SLA.",
+            "Confidence": "99%",
+        },
+    ])
+
+    st.dataframe(
+        mockup_data,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Omschrijving": st.column_config.TextColumn(width="medium"),
+            "Classificatie": st.column_config.TextColumn(width="small"),
+            "AI-toelichting": st.column_config.TextColumn(width="large"),
+            "Confidence": st.column_config.TextColumn(width="small"),
+        }
+    )
+
+    st.markdown("---")
+
+    # Metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Nauwkeurigheid", "~90%", help="Gebaseerd op pilots bij vergelijkbare installatiebedrijven")
+    with col2:
+        st.metric("Tijdsbesparing", "85%", help="Van ~7 min handmatig naar ~1 min valideren per werkbon")
+    with col3:
+        st.metric("Benchmark gemist meerwerk", "10-15%", help="Percentage meerwerk dat niet wordt gefactureerd bij handmatige controle")
+    with col4:
+        st.metric("Human in the loop", "Altijd", help="De AI adviseert, de medewerker beslist")
+
+    st.info("""
+    **Belangrijk:** De medewerker blijft altijd in de lead. De AI geeft een advies met toelichting en confidence score.
+    Bij twijfelgevallen (confidence < 80%) wordt de werkbon altijd voorgelegd aan een medewerker.
+    Het eindoordeel is altijd menselijk — de AI bespaart tijd, niet verantwoordelijkheid.
+    """)
+
+
+def render_patronen_tab():
+    """Tab 4: Storingspatronen — AI-gedreven patroonherkenning"""
+
+    st.header("Storingspatronen")
+
+    result_df = st.session_state.get('result_df')
+    has_data = result_df is not None and not result_df.empty
+
+    if not has_data:
+        st.markdown("""
+        **Wat doet deze tab?** AI analyseert storingsdata en herkent patronen die je met het blote oog niet ziet:
+        welke locaties geven structureel problemen, welke installaties zijn aan vervanging toe,
+        en waar kun je proactief onderhoud plannen.
+
+        ---
+        ⬅️ **Laad eerst data** in de **Storingslijst Export** tab om analyses te zien op jullie eigen werkbonnen.
+
+        Hieronder een voorbeeld met demo data:
+        """)
+
+        # Demo data voor als er geen echte data is
+        demo_locaties = pd.DataFrame({
+            'Locatie': ['Warehouse Tilburg', 'Store Amsterdam', 'Store Den Haag', 'Depot Rotterdam',
+                        'Warehouse Eindhoven', 'Fietshub Utrecht', 'Store Rotterdam', 'Store Breda'],
+            'Aantal storingen': [18, 14, 12, 11, 9, 7, 6, 4],
+        })
+
+        demo_installatie = pd.DataFrame({
+            'Type': ['Brandmelding', 'Camera', 'Inbraak', 'Toegangscontrole'],
+            'Aantal': [28, 22, 18, 13],
+        })
+
+        demo_maand = pd.DataFrame({
+            'Maand': ['Jan', 'Feb', 'Mrt', 'Apr', 'Mei', 'Jun'],
+            'Storingen': [12, 15, 18, 14, 11, 16],
+        })
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Storingen per locatie")
+            st.bar_chart(demo_locaties.set_index('Locatie'), horizontal=True)
+        with col2:
+            st.subheader("Storingen per installatietype")
+            st.bar_chart(demo_installatie.set_index('Type'))
+
+        st.subheader("Trend over tijd")
+        st.line_chart(demo_maand.set_index('Maand'))
+
+        st.markdown("---")
+        st.subheader("🤖 AI-inzicht (voorbeeld)")
+        st.info("""
+        **Patroon gedetecteerd:** Warehouse Tilburg heeft 2.5x meer storingen dan het gemiddelde, voornamelijk bij brandmeldinstallaties.
+        Van de 18 storingen waren er 7 gerelateerd aan dezelfde gang (gang 3).
+
+        **Aanbeveling:** Preventief onderhoudsplan voor de brandmeldinstallatie in gang 3 Warehouse Tilburg.
+        Overweeg vervanging van de complete detectielijn — de hoge frequentie wijst op slijtage.
+        """)
+        return
+
+    # === ECHTE DATA ANALYSE ===
+    st.markdown("Analyse op basis van de geladen werkbondata.")
+
+    # Metrics bovenaan
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Totaal werkbonnen", len(result_df))
+    with col2:
+        n_locaties = result_df['Locatie naam'].nunique()
+        st.metric("Unieke locaties", n_locaties)
+    with col3:
+        n_types = result_df['Installatie soort'].replace('', pd.NA).dropna().nunique()
+        st.metric("Installatietypes", n_types)
+    with col4:
+        date_range = f"{result_df['Datum aanmaak'].min()} — {result_df['Datum aanmaak'].max()}"
+        st.metric("Periode", date_range)
+
+    st.markdown("---")
+
+    # Storingen per locatie (top 10)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Top 10 locaties (meeste storingen)")
+        loc_counts = result_df['Locatie naam'].value_counts().head(10)
+        chart_df = pd.DataFrame({'Aantal storingen': loc_counts.values}, index=loc_counts.index)
+        st.bar_chart(chart_df, horizontal=True)
+
+    # Storingen per installatietype
+    with col2:
+        st.subheader("Storingen per installatietype")
+        inst_counts = result_df['Installatie soort'].replace('', pd.NA).dropna().value_counts()
+        if not inst_counts.empty:
+            chart_df2 = pd.DataFrame({'Aantal': inst_counts.values}, index=inst_counts.index)
+            st.bar_chart(chart_df2)
+        else:
+            st.caption("Geen installatiesoort data beschikbaar.")
+
+    # Trend per maand
+    st.subheader("Storingen per maand")
+    maand_counts = result_df['Maand'].value_counts().sort_index()
+    maand_labels = {1: 'Jan', 2: 'Feb', 3: 'Mrt', 4: 'Apr', 5: 'Mei', 6: 'Jun',
+                    7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Okt', 11: 'Nov', 12: 'Dec'}
+    maand_df = pd.DataFrame({
+        'Maand': [maand_labels.get(m, str(m)) for m in maand_counts.index],
+        'Storingen': maand_counts.values,
+    })
+    st.line_chart(maand_df.set_index('Maand'))
+
+    # SLA performance per locatietype
+    st.subheader("SLA performance per locatietype")
+    if 'Locatie soort' in result_df.columns and 'SLA response' in result_df.columns:
+        # SLA data is alleen beschikbaar na export
+        sla_data = result_df[result_df['SLA response'] != '']
+        if not sla_data.empty:
+            sla_by_loc = sla_data.groupby('Locatie soort').apply(
+                lambda x: pd.Series({
+                    'Response behaald (%)': round((x['SLA response'] == 'Behaald').sum() / len(x) * 100, 1),
+                    'Restore behaald (%)': round((x['SLA restore'] == 'Behaald').sum() / len(x) * 100, 1) if 'SLA restore' in x.columns else 0,
+                })
+            ).reset_index()
+            st.dataframe(sla_by_loc, use_container_width=True, hide_index=True)
+        else:
+            st.caption("SLA data is beschikbaar na het exporteren in de Storingslijst Export tab.")
+    else:
+        st.caption("Exporteer eerst data in de Storingslijst Export tab voor SLA analyses.")
+
+    # AI inzicht
+    st.markdown("---")
+    st.subheader("🤖 AI-inzicht")
+
+    # Genereer inzicht op basis van echte data
+    top_locatie = result_df['Locatie naam'].value_counts().head(1)
+    avg_count = result_df['Locatie naam'].value_counts().mean()
+
+    if not top_locatie.empty:
+        top_name = top_locatie.index[0]
+        top_count = top_locatie.values[0]
+        ratio = round(top_count / avg_count, 1) if avg_count > 0 else 0
+
+        # Meest voorkomende installatietype bij top locatie
+        top_loc_data = result_df[result_df['Locatie naam'] == top_name]
+        top_inst = top_loc_data['Installatie soort'].replace('', pd.NA).dropna().value_counts()
+        inst_info = f", voornamelijk bij **{top_inst.index[0]}**-installaties" if not top_inst.empty else ""
+
+        st.info(f"""
+        **Patroon gedetecteerd:** **{top_name}** heeft {ratio}x meer storingen dan het gemiddelde
+        ({top_count} storingen vs. gemiddeld {round(avg_count, 1)} per locatie){inst_info}.
+
+        **Aanbeveling:** Analyseer de storingen bij {top_name} nader. Bij structureel hogere frequentie
+        is een preventief onderhoudsplan of installatieherziening aan te raden.
+        """)
+    else:
+        st.info("Onvoldoende data voor patroonherkenning. Laad meer werkbonnen voor betere analyses.")
+
+
+# ============================================================================
+# STREAMLIT APP — MAIN
+# ============================================================================
+
+st.title("Zenith Werkbon Rapportage v2.1")
+st.markdown("**Werkbonnen export met SLA KPIs + AI-gedreven analyses**")
+
+# Sidebar filters (globaal — buiten tabs)
 with st.sidebar:
     st.header("Filters")
     default_start = datetime.now() - timedelta(days=30)
@@ -479,559 +871,605 @@ with st.sidebar:
     st.markdown("🔴 Rood = Niet in database (handmatig invullen)")
     st.markdown("🟡 Geel = Automatisch afgeleid (controleren)")
 
-# Guard: opdrachtgever moet geselecteerd zijn
-if not opdrachtgever_filter:
-    st.warning("⬅️ Selecteer eerst een opdrachtgever (debiteur) in de sidebar. Klik 'Ververs filters' als de lijst nog leeg is.")
 
-# Main button (disabled als geen opdrachtgever geselecteerd)
-if st.button("📥 Data Ophalen & Exporteren", type="primary", disabled=not opdrachtgever_filter):
-    client = NotificaClient()
+# ============================================================================
+# TABS
+# ============================================================================
 
-    # Compacte status indicator (update in plaats van nieuwe messages)
-    status_container = st.empty()
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Storingslijst Export",
+    "🤖 AI Notitie-analyse",
+    "📋 Contract Check",
+    "🔍 Storingspatronen",
+])
 
-    with st.spinner("Data ophalen uit DWH..."):
 
-        # ====================================================================
-        # STAP 1: BASIS WERKBONNEN OPHALEN
-        # ====================================================================
-        status_container.info("Stap 1/6: Basis werkbonnen ophalen...")
+# ============================================================================
+# TAB 1: STORINGSLIJST EXPORT (bestaande functionaliteit)
+# ============================================================================
 
-        werkbonnen_basis = client.query(KLANTNUMMER, f'''
-            SELECT
-                wb."WerkbonDocumentKey",
-                wb."Werkbon",
-                wb."Debiteur",
-                wb."Klant",
-                wb."MeldDatum",
-                wb."MeldTijd",
-                wb."Prioriteit",
-                wb."Betreft onderaannemer",
-                wb."Onderaannemer",
-                wb."ParentWerkbonDocumentKey",
-                wb."Status",
-                ssm."Werkboncode",
-                ssm."Werkbon titel"
-            FROM werkbonnen."Werkbonnen" wb
-            JOIN notifica."SSM Werkbonnen" ssm
-              ON wb."WerkbonDocumentKey" = ssm."WerkbonDocumentKey"
-            WHERE wb."MeldDatum" >= '{start_date}'
-              AND wb."MeldDatum" <= '{end_date}'
-            ORDER BY wb."MeldDatum" DESC
-        ''')
+with tab1:
 
-        if werkbonnen_basis.empty:
-            st.warning("Geen werkbonnen gevonden in deze periode.")
-            st.stop()
+    # Guard: opdrachtgever moet geselecteerd zijn
+    if not opdrachtgever_filter:
+        st.warning("⬅️ Selecteer eerst een opdrachtgever (debiteur) in de sidebar. Klik 'Ververs filters' als de lijst nog leeg is.")
 
-        status_container.success(f"✓ {len(werkbonnen_basis)} werkbonnen gevonden")
+    # Main button (disabled als geen opdrachtgever geselecteerd)
+    if st.button("📥 Data Ophalen & Exporteren", type="primary", disabled=not opdrachtgever_filter):
+        client = NotificaClient()
 
-        # Pas opdrachtgever filter toe indien ingesteld
-        if opdrachtgever_filter:
-            werkbonnen_basis = werkbonnen_basis[werkbonnen_basis['Debiteur'].isin(opdrachtgever_filter)]
-            st.info(f"📌 Gefilterd op {len(opdrachtgever_filter)} opdrachtgever(s) - {len(werkbonnen_basis)} werkbonnen")
+        # Compacte status indicator (update in plaats van nieuwe messages)
+        status_container = st.empty()
 
-        # Pas klantfilter toe indien ingesteld
-        if klant_filter:
-            werkbonnen_basis = werkbonnen_basis[werkbonnen_basis['Klant'].isin(klant_filter)]
-            st.info(f"📌 Gefilterd op {len(klant_filter)} klant(en) - {len(werkbonnen_basis)} werkbonnen")
+        with st.spinner("Data ophalen uit DWH..."):
 
-        if werkbonnen_basis.empty:
-            st.warning("Geen werkbonnen gevonden na filtering.")
-            st.stop()
+            # ====================================================================
+            # STAP 1: BASIS WERKBONNEN OPHALEN
+            # ====================================================================
+            status_container.info("Stap 1/6: Basis werkbonnen ophalen...")
 
-        # ====================================================================
-        # STAP 2: PARAGRAFEN & INSTALLATIES
-        # ====================================================================
-        status_container.info("Stap 2/6: Paragrafen en installaties ophalen...")
+            werkbonnen_basis = client.query(KLANTNUMMER, f'''
+                SELECT
+                    wb."WerkbonDocumentKey",
+                    wb."Werkbon",
+                    wb."Debiteur",
+                    wb."Klant",
+                    wb."MeldDatum",
+                    wb."MeldTijd",
+                    wb."Prioriteit",
+                    wb."Betreft onderaannemer",
+                    wb."Onderaannemer",
+                    wb."ParentWerkbonDocumentKey",
+                    wb."Status",
+                    ssm."Werkboncode",
+                    ssm."Werkbon titel"
+                FROM werkbonnen."Werkbonnen" wb
+                JOIN notifica."SSM Werkbonnen" ssm
+                  ON wb."WerkbonDocumentKey" = ssm."WerkbonDocumentKey"
+                WHERE wb."MeldDatum" >= '{start_date}'
+                  AND wb."MeldDatum" <= '{end_date}'
+                ORDER BY wb."MeldDatum" DESC
+            ''')
 
-        wb_keys = werkbonnen_basis['WerkbonDocumentKey'].tolist()
-        wb_keys_str = ','.join(str(k) for k in wb_keys)
+            if werkbonnen_basis.empty:
+                st.warning("Geen werkbonnen gevonden in deze periode.")
+                st.stop()
 
-        paragrafen = client.query(KLANTNUMMER, f'''
-            SELECT
-                para."WerkbonDocumentKey",
-                para."Uitgevoerd op" AS datum_oplossing,
-                para."TijdstipUitgevoerd" AS tijd_oplossing,
-                para."InstallatieKey",
-                inst."Installatiesoort"
-            FROM werkbonnen."Werkbonparagrafen" para
-            LEFT JOIN notifica."SSM Installaties" inst
-              ON para."InstallatieKey" = inst."InstallatieKey"
-            WHERE para."WerkbonDocumentKey" IN ({wb_keys_str})
-        ''')
+            status_container.success(f"✓ {len(werkbonnen_basis)} werkbonnen gevonden")
 
-        status_container.success(f"✓ {len(paragrafen)} paragrafen gevonden")
+            # Pas opdrachtgever filter toe indien ingesteld
+            if opdrachtgever_filter:
+                werkbonnen_basis = werkbonnen_basis[werkbonnen_basis['Debiteur'].isin(opdrachtgever_filter)]
+                st.info(f"📌 Gefilterd op {len(opdrachtgever_filter)} opdrachtgever(s) - {len(werkbonnen_basis)} werkbonnen")
 
-        # ====================================================================
-        # STAP 3: REACTIE TIJDEN (LOGBOEK)
-        # ====================================================================
-        status_container.info("Stap 3/6: Reactie tijden ophalen...")
+            # Pas klantfilter toe indien ingesteld
+            if klant_filter:
+                werkbonnen_basis = werkbonnen_basis[werkbonnen_basis['Klant'].isin(klant_filter)]
+                st.info(f"📌 Gefilterd op {len(klant_filter)} klant(en) - {len(werkbonnen_basis)} werkbonnen")
 
-        logboek = client.query(KLANTNUMMER, f'''
-            SELECT
-                log."WerkbonDocumentKey",
-                MIN(log."Datum en tijd") AS reactie_datetime
-            FROM notifica."SSM Logboek werkbonfases" log
-            WHERE log."WerkbonDocumentKey" IN ({wb_keys_str})
-              AND log."Waarde" LIKE '%In uitvoering%'
-            GROUP BY log."WerkbonDocumentKey"
-        ''')
+            if werkbonnen_basis.empty:
+                st.warning("Geen werkbonnen gevonden na filtering.")
+                st.stop()
 
-        status_container.success(f"✓ {len(logboek)} reactie tijden gevonden")
+            # ====================================================================
+            # STAP 2: PARAGRAFEN & INSTALLATIES
+            # ====================================================================
+            status_container.info("Stap 2/6: Paragrafen en installaties ophalen...")
 
-        # ====================================================================
-        # STAP 4: BLOB NOTITIES (VIA CSV EXPORT)
-        # ====================================================================
-        status_container.info("Stap 4/6: BLOB monteur notities ophalen (via CSV)...")
+            wb_keys = werkbonnen_basis['WerkbonDocumentKey'].tolist()
+            wb_keys_str = ','.join(str(k) for k in wb_keys)
 
-        # Eerst sessies ophalen (nog steeds via SQL)
-        sessies = client.query(KLANTNUMMER, f'''
-            SELECT
-                s."DocumentKey" AS "WerkbonDocumentKey",
-                s."MobieleuitvoersessieRegelKey"
-            FROM werkbonnen."Mobiele uitvoersessies" s
-            WHERE s."DocumentKey" IN ({wb_keys_str})
-        ''')
+            paragrafen = client.query(KLANTNUMMER, f'''
+                SELECT
+                    para."WerkbonDocumentKey",
+                    para."Uitgevoerd op" AS datum_oplossing,
+                    para."TijdstipUitgevoerd" AS tijd_oplossing,
+                    para."InstallatieKey",
+                    inst."Installatiesoort"
+                FROM werkbonnen."Werkbonparagrafen" para
+                LEFT JOIN notifica."SSM Installaties" inst
+                  ON para."InstallatieKey" = inst."InstallatieKey"
+                WHERE para."WerkbonDocumentKey" IN ({wb_keys_str})
+            ''')
 
-        blob_notities = pd.DataFrame()
-        if not sessies.empty:
-            sessie_keys = sessies['MobieleuitvoersessieRegelKey'].tolist()
+            status_container.success(f"✓ {len(paragrafen)} paragrafen gevonden")
 
-            # Haal meest recente CSV batch op
-            batch_info = get_latest_csv_batch(client, KLANTNUMMER, days=7)
+            # ====================================================================
+            # STAP 3: REACTIE TIJDEN (LOGBOEK)
+            # ====================================================================
+            status_container.info("Stap 3/6: Reactie tijden ophalen...")
 
-            if batch_info:
-                # Toon welke CSV batch gebruikt wordt
-                st.info(f"📅 CSV Export: {batch_info['date']} (meest recente nachtelijke export)")
-                # Download BLOB CSV bestanden en filter op sessie keys
-                blob_raw = get_blob_notities_from_csv(
-                    client,
-                    KLANTNUMMER,
-                    sessie_keys,
-                    batch_info
-                )
+            logboek = client.query(KLANTNUMMER, f'''
+                SELECT
+                    log."WerkbonDocumentKey",
+                    MIN(log."Datum en tijd") AS reactie_datetime
+                FROM notifica."SSM Logboek werkbonfases" log
+                WHERE log."WerkbonDocumentKey" IN ({wb_keys_str})
+                  AND log."Waarde" LIKE '%In uitvoering%'
+                GROUP BY log."WerkbonDocumentKey"
+            ''')
 
-                # Merge met sessies om WerkbonDocumentKey te krijgen
-                if not blob_raw.empty:
-                    blob_notities = sessies.merge(
-                        blob_raw,
-                        on='MobieleuitvoersessieRegelKey',
-                        how='inner'
+            status_container.success(f"✓ {len(logboek)} reactie tijden gevonden")
+
+            # ====================================================================
+            # STAP 4: BLOB NOTITIES (VIA CSV EXPORT)
+            # ====================================================================
+            status_container.info("Stap 4/6: BLOB monteur notities ophalen (via CSV)...")
+
+            # Eerst sessies ophalen (nog steeds via SQL)
+            sessies = client.query(KLANTNUMMER, f'''
+                SELECT
+                    s."DocumentKey" AS "WerkbonDocumentKey",
+                    s."MobieleuitvoersessieRegelKey"
+                FROM werkbonnen."Mobiele uitvoersessies" s
+                WHERE s."DocumentKey" IN ({wb_keys_str})
+            ''')
+
+            blob_notities = pd.DataFrame()
+            if not sessies.empty:
+                sessie_keys = sessies['MobieleuitvoersessieRegelKey'].tolist()
+
+                # Haal meest recente CSV batch op
+                batch_info = get_latest_csv_batch(client, KLANTNUMMER, days=7)
+
+                if batch_info:
+                    # Toon welke CSV batch gebruikt wordt
+                    st.info(f"📅 CSV Export: {batch_info['date']} (meest recente nachtelijke export)")
+                    # Download BLOB CSV bestanden en filter op sessie keys
+                    blob_raw = get_blob_notities_from_csv(
+                        client,
+                        KLANTNUMMER,
+                        sessie_keys,
+                        batch_info
                     )
-                    # Als er meerdere notities zijn voor dezelfde werkbon, combineer ze
-                    blob_notities = blob_notities.groupby('WerkbonDocumentKey').agg({
-                        'notitie': lambda x: '\n\n'.join(x.dropna().astype(str))
-                    }).reset_index()
+
+                    # Merge met sessies om WerkbonDocumentKey te krijgen
+                    if not blob_raw.empty:
+                        blob_notities = sessies.merge(
+                            blob_raw,
+                            on='MobieleuitvoersessieRegelKey',
+                            how='inner'
+                        )
+                        # Als er meerdere notities zijn voor dezelfde werkbon, combineer ze
+                        blob_notities = blob_notities.groupby('WerkbonDocumentKey').agg({
+                            'notitie': lambda x: '\n\n'.join(x.dropna().astype(str))
+                        }).reset_index()
+                else:
+                    status_container.warning("⚠️ Geen recente CSV batch gevonden (laatste 7 dagen)")
+
+            status_container.success(f"✓ {len(blob_notities)} BLOB notities gevonden (via CSV)")
+
+            # ====================================================================
+            # STAP 5: DATA COMBINEREN
+            # ====================================================================
+            status_container.info("Stap 5/6: Data samenvoegen en transformeren...")
+
+            # Merge alles
+            df = werkbonnen_basis.copy()
+            df = df.merge(paragrafen, on='WerkbonDocumentKey', how='left')
+            df = df.merge(logboek, on='WerkbonDocumentKey', how='left')
+
+            # Filter 1: alleen werkbonnen met reactie data (= werkbonnen die zijn gestart)
+            before_filter = len(df)
+            df = df[df['reactie_datetime'].notna()]
+            after_filter = len(df)
+            if before_filter > after_filter:
+                status_container.info(f"ℹ️ {before_filter - after_filter} niet-gestarte werkbonnen uitgefilterd")
+
+            # Filter 2: alleen werkbonnen met oplossing data (= werkbonnen die zijn afgerond)
+            # Dit voorkomt werkbonnen met 11-13 lege velden (wel gestart, niet afgerond)
+            before_filter2 = len(df)
+            df = df[df['datum_oplossing'].notna()]
+            after_filter2 = len(df)
+            if before_filter2 > after_filter2:
+                status_container.info(f"ℹ️ {before_filter2 - after_filter2} niet-afgeronde werkbonnen uitgefilterd")
+
+            # Merge BLOB notities alleen als er data is
+            if not blob_notities.empty and 'notitie' in blob_notities.columns:
+                df = df.merge(
+                    blob_notities[['WerkbonDocumentKey', 'notitie']].drop_duplicates(subset=['WerkbonDocumentKey']),
+                    on='WerkbonDocumentKey',
+                    how='left'
+                )
             else:
-                status_container.warning("⚠️ Geen recente CSV batch gevonden (laatste 7 dagen)")
+                # Voeg lege notitie kolom toe
+                df['notitie'] = None
 
-        status_container.success(f"✓ {len(blob_notities)} BLOB notities gevonden (via CSV)")
+            # Info: werkbonnen zonder BLOB notities (Storing omschrijving en Toelichting zijn dan leeg)
+            zonder_blob = df['notitie'].isna() | (df['notitie'] == '')
+            if zonder_blob.sum() > 0:
+                st.info(f"ℹ️ {zonder_blob.sum()} werkbonnen zonder BLOB notities (Storing omschrijving en Toelichting zijn leeg)")
 
-        # ====================================================================
-        # STAP 5: DATA COMBINEREN
-        # ====================================================================
-        status_container.info("Stap 5/6: Data samenvoegen en transformeren...")
+            if df.empty:
+                st.warning("Geen werkbonnen over na filtering. Verlaag de filters.")
+                st.stop()
 
-        # Merge alles
-        df = werkbonnen_basis.copy()
-        df = df.merge(paragrafen, on='WerkbonDocumentKey', how='left')
-        df = df.merge(logboek, on='WerkbonDocumentKey', how='left')
+            # ====================================================================
+            # STAP 6: KOLOMMEN TRANSFORMEREN
+            # Kolomvolgorde matcht Zenith Storingslijst (24 kolommen)
+            # ====================================================================
 
-        # Filter 1: alleen werkbonnen met reactie data (= werkbonnen die zijn gestart)
-        before_filter = len(df)
-        df = df[df['reactie_datetime'].notna()]
-        after_filter = len(df)
-        if before_filter > after_filter:
-            status_container.info(f"ℹ️ {before_filter - after_filter} niet-gestarte werkbonnen uitgefilterd")
+            result_df = pd.DataFrame()
 
-        # Filter 2: alleen werkbonnen met oplossing data (= werkbonnen die zijn afgerond)
-        # Dit voorkomt werkbonnen met 11-13 lege velden (wel gestart, niet afgerond)
-        before_filter2 = len(df)
-        df = df[df['datum_oplossing'].notna()]
-        after_filter2 = len(df)
-        if before_filter2 > after_filter2:
-            status_container.info(f"ℹ️ {before_filter2 - after_filter2} niet-afgeronde werkbonnen uitgefilterd")
+            # --- STORINGSLIJST KOLOMMEN (1-24, exact matching Zenith) ---
 
-        # Merge BLOB notities alleen als er data is
-        if not blob_notities.empty and 'notitie' in blob_notities.columns:
-            df = df.merge(
-                blob_notities[['WerkbonDocumentKey', 'notitie']].drop_duplicates(subset=['WerkbonDocumentKey']),
-                on='WerkbonDocumentKey',
-                how='left'
+            # 1. Werkbonnummer
+            result_df['Werkbonnummer'] = df['Werkboncode']
+
+            # 2. Gerelateerde werkbon
+            result_df['Gerelateerde werkbon'] = df['ParentWerkbonDocumentKey'].fillna('')
+
+            # 3-4. Datum/tijd aanmaak
+            result_df['Datum aanmaak'] = pd.to_datetime(df['MeldDatum']).dt.date
+            result_df['Tijd aanmaak'] = pd.to_datetime(df['MeldTijd']).dt.time
+
+            # 5. Locatie naam (extract na ' - ')
+            result_df['Locatie naam'] = df['Klant'].apply(
+                lambda x: x.split(' - ', 1)[1].strip() if pd.notna(x) and ' - ' in x else x
             )
-        else:
-            # Voeg lege notitie kolom toe
-            df['notitie'] = None
 
-        # Info: werkbonnen zonder BLOB notities (Storing omschrijving en Toelichting zijn dan leeg)
-        zonder_blob = df['notitie'].isna() | (df['notitie'] == '')
-        if zonder_blob.sum() > 0:
-            st.info(f"ℹ️ {zonder_blob.sum()} werkbonnen zonder BLOB notities (Storing omschrijving en Toelichting zijn leeg)")
+            # 6. Storing omschrijving (uit BLOB notities)
+            result_df['Storing omschrijving'] = df['notitie'].apply(extract_storing_omschrijving)
 
-        if df.empty:
-            st.warning("Geen werkbonnen over na filtering. Verlaag de filters.")
-            st.stop()
+            # 7. Locatie soort (heuristic, bewerkbaar in UI)
+            result_df['Locatie soort'] = result_df['Locatie naam'].apply(guess_location_type)
+
+            # 8. Installatie soort
+            result_df['Installatie soort'] = df['Installatiesoort'].apply(map_installatie_soort)
+
+            # 9. Onderaannemer (Ja/Nee)
+            result_df['Onderaannemer'] = df['Betreft onderaannemer']
+
+            # 10. Welke onder aannemer?
+            def fill_onderaannemer(onderaannemer, betreft_onderaannemer):
+                if pd.isna(onderaannemer) or onderaannemer == '' or '000000 - Zenith' in str(onderaannemer):
+                    if pd.notna(betreft_onderaannemer) and str(betreft_onderaannemer).lower() == 'nee':
+                        return 'Niet van toepassing'
+                    return ''
+                return onderaannemer
+
+            result_df['Welke onder aannemer?'] = df.apply(
+                lambda row: fill_onderaannemer(row['Onderaannemer'], row['Betreft onderaannemer']), axis=1
+            )
+
+            # 11. Categorie Melding (leeg, handmatig A-E)
+            result_df['Categorie Melding'] = ''
+
+            # 12. Prio volgens SLA / input CB
+            result_df['Prio volgens SLA / input CB'] = df['Prioriteit'].apply(map_priority)
+
+            # 13-14. Reactie datum/tijd
+            result_df['Reactie datum'] = pd.to_datetime(df['reactie_datetime']).dt.date
+            result_df['Reactie tijd'] = pd.to_datetime(df['reactie_datetime']).dt.time
+
+            # 15. Contact CB (best-effort uit BLOB notities)
+            result_df['Contact CB'] = df['notitie'].apply(extract_contact_cb)
+
+            # 16-17. Tijdelijke oplossing (leeg, handmatig/toekomst)
+            result_df['Tijdelijke oplossing datum (indien van toepassing)'] = ''
+            result_df['Tijdelijke oplossing tijd (indien van toepassing)'] = ''
+
+            # 18-19. Datum/tijd oplossing (definitief)
+            result_df['Datum oplossing'] = pd.to_datetime(df['datum_oplossing']).dt.date
+            result_df['Tijd oplossing'] = pd.to_datetime(df['tijd_oplossing']).dt.time
+
+            # 20. Geannuleerd?
+            result_df['Geannuleerd?'] = df['Status'].apply(
+                lambda x: 'Ja' if pd.notna(x) and 'Geannuleerd' in str(x) else 'Nee'
+            )
+
+            # 21. Toelichting (volledige BLOB notitie)
+            result_df['Toelichting'] = df['notitie'].apply(strip_rtf)
+
+            # 22. Ouderdom systeem / Garantie (leeg)
+            result_df['Ouderdom systeem / Garantie'] = ''
+
+            # 23. Maand
+            result_df['Maand'] = pd.to_datetime(df['MeldDatum']).dt.month
+
+            # 24. Toelichting bij Niet Behaald (wordt gevuld na SLA berekening)
+            result_df['Toelichting bij Niet Behaald'] = ''
+
+            # Sla basis data op in session_state voor bewerkbare locatie soort
+            st.session_state['result_df'] = result_df
+            st.session_state['data_ready'] = True
+
+            status_container.success(f"Data opgehaald - {len(result_df)} werkbonnen klaar")
+
+    # ============================================================================
+    # LOCATIE SOORT BEWERKBAAR (na data ophalen)
+    # ============================================================================
+
+    if st.session_state.get('data_ready', False) and 'result_df' in st.session_state:
+        result_df = st.session_state['result_df']
+
+        st.subheader("Locatie soort toewijzing")
+        st.markdown("Controleer en pas de locatie soorten aan. **Dit bepaalt de SLA-normen.**")
+
+        # Bouw bewerkbare tabel met unieke locaties + telling
+        loc_counts = result_df.groupby(['Locatie naam', 'Locatie soort']).size().reset_index(name='Aantal')
+        loc_counts = loc_counts.sort_values('Locatie naam')
+
+        # Bewerkbare tabel met dropdown voor Locatie soort
+        edited_locs = st.data_editor(
+            loc_counts,
+            column_config={
+                "Locatie naam": st.column_config.TextColumn("Locatie", disabled=True),
+                "Locatie soort": st.column_config.SelectboxColumn(
+                    "Locatie soort",
+                    options=LOCATIE_SOORTEN,
+                    required=True,
+                ),
+                "Aantal": st.column_config.NumberColumn("Aantal", disabled=True),
+            },
+            hide_index=True,
+            use_container_width=True,
+            key="locatie_editor",
+        )
+
+        # Sla de mapping op
+        st.session_state['locatie_mapping'] = dict(zip(edited_locs['Locatie naam'], edited_locs['Locatie soort']))
 
         # ====================================================================
-        # STAP 6: KOLOMMEN TRANSFORMEREN
-        # Kolomvolgorde matcht Zenith Storingslijst (24 kolommen)
+        # EXPORT KNOP (na locatie soort bewerkbaar)
         # ====================================================================
 
-        result_df = pd.DataFrame()
+        if st.button("Exporteren naar Excel", type="primary"):
 
-        # --- STORINGSLIJST KOLOMMEN (1-24, exact matching Zenith) ---
-
-        # 1. Werkbonnummer
-        result_df['Werkbonnummer'] = df['Werkboncode']
-
-        # 2. Gerelateerde werkbon
-        result_df['Gerelateerde werkbon'] = df['ParentWerkbonDocumentKey'].fillna('')
-
-        # 3-4. Datum/tijd aanmaak
-        result_df['Datum aanmaak'] = pd.to_datetime(df['MeldDatum']).dt.date
-        result_df['Tijd aanmaak'] = pd.to_datetime(df['MeldTijd']).dt.time
-
-        # 5. Locatie naam (extract na ' - ')
-        result_df['Locatie naam'] = df['Klant'].apply(
-            lambda x: x.split(' - ', 1)[1].strip() if pd.notna(x) and ' - ' in x else x
-        )
-
-        # 6. Storing omschrijving (uit BLOB notities)
-        result_df['Storing omschrijving'] = df['notitie'].apply(extract_storing_omschrijving)
-
-        # 7. Locatie soort (heuristic, bewerkbaar in UI)
-        result_df['Locatie soort'] = result_df['Locatie naam'].apply(guess_location_type)
-
-        # 8. Installatie soort
-        result_df['Installatie soort'] = df['Installatiesoort'].apply(map_installatie_soort)
-
-        # 9. Onderaannemer (Ja/Nee)
-        result_df['Onderaannemer'] = df['Betreft onderaannemer']
-
-        # 10. Welke onder aannemer?
-        def fill_onderaannemer(onderaannemer, betreft_onderaannemer):
-            if pd.isna(onderaannemer) or onderaannemer == '' or '000000 - Zenith' in str(onderaannemer):
-                if pd.notna(betreft_onderaannemer) and str(betreft_onderaannemer).lower() == 'nee':
-                    return 'Niet van toepassing'
-                return ''
-            return onderaannemer
-
-        result_df['Welke onder aannemer?'] = df.apply(
-            lambda row: fill_onderaannemer(row['Onderaannemer'], row['Betreft onderaannemer']), axis=1
-        )
-
-        # 11. Categorie Melding (leeg, handmatig A-E)
-        result_df['Categorie Melding'] = ''
-
-        # 12. Prio volgens SLA / input CB
-        result_df['Prio volgens SLA / input CB'] = df['Prioriteit'].apply(map_priority)
-
-        # 13-14. Reactie datum/tijd
-        result_df['Reactie datum'] = pd.to_datetime(df['reactie_datetime']).dt.date
-        result_df['Reactie tijd'] = pd.to_datetime(df['reactie_datetime']).dt.time
-
-        # 15. Contact CB (best-effort uit BLOB notities)
-        result_df['Contact CB'] = df['notitie'].apply(extract_contact_cb)
-
-        # 16-17. Tijdelijke oplossing (leeg, handmatig/toekomst)
-        result_df['Tijdelijke oplossing datum (indien van toepassing)'] = ''
-        result_df['Tijdelijke oplossing tijd (indien van toepassing)'] = ''
-
-        # 18-19. Datum/tijd oplossing (definitief)
-        result_df['Datum oplossing'] = pd.to_datetime(df['datum_oplossing']).dt.date
-        result_df['Tijd oplossing'] = pd.to_datetime(df['tijd_oplossing']).dt.time
-
-        # 20. Geannuleerd?
-        result_df['Geannuleerd?'] = df['Status'].apply(
-            lambda x: 'Ja' if pd.notna(x) and 'Geannuleerd' in str(x) else 'Nee'
-        )
-
-        # 21. Toelichting (volledige BLOB notitie)
-        result_df['Toelichting'] = df['notitie'].apply(strip_rtf)
-
-        # 22. Ouderdom systeem / Garantie (leeg)
-        result_df['Ouderdom systeem / Garantie'] = ''
-
-        # 23. Maand
-        result_df['Maand'] = pd.to_datetime(df['MeldDatum']).dt.month
-
-        # 24. Toelichting bij Niet Behaald (wordt gevuld na SLA berekening)
-        result_df['Toelichting bij Niet Behaald'] = ''
-
-        # Sla basis data op in session_state voor bewerkbare locatie soort
-        st.session_state['result_df'] = result_df
-        st.session_state['data_ready'] = True
-
-        status_container.success(f"Data opgehaald - {len(result_df)} werkbonnen klaar")
-
-# ============================================================================
-# LOCATIE SOORT BEWERKBAAR (na data ophalen)
-# ============================================================================
-
-if st.session_state.get('data_ready', False) and 'result_df' in st.session_state:
-    result_df = st.session_state['result_df']
-
-    st.subheader("Locatie soort toewijzing")
-    st.markdown("Controleer en pas de locatie soorten aan. **Dit bepaalt de SLA-normen.**")
-
-    # Bouw bewerkbare tabel met unieke locaties + telling
-    loc_counts = result_df.groupby(['Locatie naam', 'Locatie soort']).size().reset_index(name='Aantal')
-    loc_counts = loc_counts.sort_values('Locatie naam')
-
-    # Bewerkbare tabel met dropdown voor Locatie soort
-    edited_locs = st.data_editor(
-        loc_counts,
-        column_config={
-            "Locatie naam": st.column_config.TextColumn("Locatie", disabled=True),
-            "Locatie soort": st.column_config.SelectboxColumn(
-                "Locatie soort",
-                options=LOCATIE_SOORTEN,
-                required=True,
-            ),
-            "Aantal": st.column_config.NumberColumn("Aantal", disabled=True),
-        },
-        hide_index=True,
-        use_container_width=True,
-        key="locatie_editor",
-    )
-
-    # Sla de mapping op
-    st.session_state['locatie_mapping'] = dict(zip(edited_locs['Locatie naam'], edited_locs['Locatie soort']))
-
-    # ====================================================================
-    # EXPORT KNOP (na locatie soort bewerkbaar)
-    # ====================================================================
-
-    if st.button("Exporteren naar Excel", type="primary"):
-
-        # Pas bewerkbare locatie soorten toe
-        result_df['Locatie soort'] = result_df['Locatie naam'].map(st.session_state['locatie_mapping'])
-
-        # ====================================================================
-        # BEREKENDE VELDEN (matching Syntess kolommen 39-57)
-        # ====================================================================
-
-        # Week
-        result_df['Week'] = pd.to_datetime(result_df['Datum aanmaak']).dt.isocalendar().week.values
-
-        # Datetimes combineren
-        result_df['aanmaak d+t'] = pd.to_datetime(
-            result_df['Datum aanmaak'].astype(str) + ' ' + result_df['Tijd aanmaak'].astype(str),
-            errors='coerce'
-        )
-        result_df['Response d+t'] = pd.to_datetime(
-            result_df['Reactie datum'].astype(str) + ' ' + result_df['Reactie tijd'].astype(str),
-            errors='coerce'
-        )
-        result_df['Restore quickfix'] = ''
-        result_df['Restore definitief'] = pd.to_datetime(
-            result_df['Datum oplossing'].astype(str) + ' ' + result_df['Tijd oplossing'].astype(str),
-            errors='coerce'
-        )
-
-        # Tijdsverschillen
-        result_df['Response tijd'] = result_df['Response d+t'] - result_df['aanmaak d+t']
-        result_df['Restore tijd'] = result_df['Restore definitief'] - result_df['aanmaak d+t']
-        result_df['Def fix tijd'] = ''
-
-        # NBD check
-        result_df['Controle NBD'] = result_df.apply(
-            lambda row: check_nbd(row['aanmaak d+t'], row['Restore definitief']), axis=1
-        )
-
-        # Prio numeriek
-        prio_map = {'Urgent': 1, 'Medium': 2, 'Low': 3}
-        result_df['Prio'] = result_df['Prio volgens SLA / input CB'].map(prio_map)
-
-        # Uren (ceiling)
-        result_df['responsetijd uren'] = result_df['Response tijd'].apply(
-            lambda x: np.ceil(x.total_seconds() / 3600) if pd.notna(x) else None
-        )
-        result_df['restoretijd uren'] = result_df['Restore tijd'].apply(
-            lambda x: np.ceil(x.total_seconds() / 3600) if pd.notna(x) else None
-        )
-        result_df['Restore def uren'] = ''
-
-        # KPI lookup (locatie-afhankelijk)
-        result_df['KPI response'] = result_df.apply(
-            lambda row: get_kpi(row['Prio volgens SLA / input CB'], row['Locatie soort'])['response'], axis=1
-        )
-        result_df['KPI restore'] = result_df.apply(
-            lambda row: get_kpi(row['Prio volgens SLA / input CB'], row['Locatie soort'])['restore'], axis=1
-        )
-
-        # SLA check (ondersteunt uren, NBD en BE)
-        result_df['SLA response'] = result_df.apply(
-            lambda row: check_sla(row['responsetijd uren'], row['Response d+t'], row['aanmaak d+t'], row['KPI response']),
-            axis=1
-        )
-        result_df['SLA restore'] = result_df.apply(
-            lambda row: check_sla(row['restoretijd uren'], row['Restore definitief'], row['aanmaak d+t'], row['KPI restore']),
-            axis=1
-        )
-
-        # Toelichting bij Niet Behaald - vullen na SLA berekening
-        result_df['Toelichting bij Niet Behaald'] = result_df.apply(
-            lambda row: '-' if row['SLA response'] == 'Behaald' and row['SLA restore'] == 'Behaald' else '',
-            axis=1
-        )
-
-        st.success(f"Data getransformeerd - {len(result_df)} werkbonnen")
-
-        # ====================================================================
-        # EXCEL EXPORT MET KLEURCODERING
-        # ====================================================================
-
-        output = BytesIO()
-        columns = list(result_df.columns)
-
-        with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'strings_to_urls': False}}) as writer:
-            result_df.to_excel(writer, sheet_name='Werkbonnen', index=False)
-
-            workbook = writer.book
-            worksheet = writer.sheets['Werkbonnen']
-
-            # Formaten
-            red_format = workbook.add_format({'bg_color': '#FEE2E2'})
-            yellow_format = workbook.add_format({'bg_color': '#FEF3C7'})
-            header_format = workbook.add_format({'bg_color': '#D6E4F0', 'bold': True, 'border': 1})
-            date_format = workbook.add_format({'num_format': 'dd-mm-yyyy'})
-            time_format = workbook.add_format({'num_format': 'hh:mm:ss'})
-            datetime_format = workbook.add_format({'num_format': 'dd-mm-yyyy hh:mm:ss'})
-
-            # Lichtblauwe headers
-            for col_num, col_name in enumerate(columns):
-                worksheet.write(0, col_num, col_name, header_format)
-
-            # Kolom indexen dynamisch opzoeken
-            def col_idx(name):
-                return columns.index(name) if name in columns else -1
-
-            # Rode kolommen (handmatig invullen)
-            red_cols = [
-                'Categorie Melding',
-                'Tijdelijke oplossing datum (indien van toepassing)',
-                'Tijdelijke oplossing tijd (indien van toepassing)',
-                'Ouderdom systeem / Garantie',
-                'Toelichting bij Niet Behaald',
-                'Restore quickfix',
-                'Def fix tijd',
-                'Restore def uren',
-            ]
-
-            # Gele kolommen (automatisch afgeleid, controleren)
-            yellow_cols = ['Locatie soort', 'Contact CB']
-
-            # Datum kolommen
-            date_cols = ['Datum aanmaak', 'Reactie datum', 'Datum oplossing']
-            time_cols = ['Tijd aanmaak', 'Reactie tijd', 'Tijd oplossing']
-            datetime_cols = ['aanmaak d+t', 'Response d+t', 'Restore definitief']
-
-            for row_num in range(1, len(result_df) + 1):
-                row_data = result_df.iloc[row_num - 1]
-
-                # Datum/tijd opmaak
-                for col_name in date_cols:
-                    idx = col_idx(col_name)
-                    if idx >= 0:
-                        worksheet.write(row_num, idx, row_data[col_name], date_format)
-
-                for col_name in time_cols:
-                    idx = col_idx(col_name)
-                    if idx >= 0:
-                        worksheet.write(row_num, idx, row_data[col_name], time_format)
-
-                for col_name in datetime_cols:
-                    idx = col_idx(col_name)
-                    if idx >= 0:
-                        worksheet.write(row_num, idx, row_data[col_name], datetime_format)
-
-                # Rode kolommen
-                for col_name in red_cols:
-                    idx = col_idx(col_name)
-                    if idx >= 0:
-                        worksheet.write(row_num, idx, row_data.get(col_name, ''), red_format)
-
-                # Gele kolommen
-                for col_name in yellow_cols:
-                    idx = col_idx(col_name)
-                    if idx >= 0:
-                        val = row_data.get(col_name, '')
-                        if val:
-                            worksheet.write(row_num, idx, val, yellow_format)
+            # Pas bewerkbare locatie soorten toe
+            result_df['Locatie soort'] = result_df['Locatie naam'].map(st.session_state['locatie_mapping'])
 
             # ====================================================================
-            # INSTRUCTIES SHEET
+            # BEREKENDE VELDEN (matching Syntess kolommen 39-57)
             # ====================================================================
-            instr_data = [
-                ('Categorie Melding', 'ROOD', 'Handmatig: A=Technische storing, B=Operationele spoed, C=Bouwkundig, D=Wijzigingsverzoek, E=Gebruikerssupport'),
-                ('Locatie soort', 'GEEL', 'Automatisch afgeleid, bewerkbaar in app. Bepaalt SLA-normen.'),
-                ('Contact CB', 'GEEL', 'Best-effort uit notities. Controleer en vul aan indien nodig.'),
-                ('Tijdelijke oplossing datum/tijd', 'ROOD', 'Handmatig: quickfix. Later via Syntess Externe Notitie timestamps.'),
-                ('Ouderdom systeem / Garantie', 'ROOD', 'Voorlopig leeg. Later: datum oplevering uit Syntess.'),
-                ('Toelichting bij Niet Behaald', 'ROOD', 'Handmatig: toelichting als SLA niet behaald. "-" als beide SLAs behaald.'),
-            ]
-            instructies = pd.DataFrame(instr_data, columns=['Kolom', 'Kleur', 'Toelichting'])
 
-            sla_response_info = pd.DataFrame([
-                ('Warehouse', '4 uur', '12 uur', 'NBD'),
-                ('Store', '12 uur', 'n.v.t.', 'NBD'),
-                ('Depot', '12 uur', 'n.v.t.', 'NBD'),
-                ('Fietshub', '24 uur', 'n.v.t.', 'NBD'),
-                ('Office', '12 uur', 'n.v.t.', 'NBD'),
-            ], columns=['Locatie', 'Urgent', 'Medium', 'Low'])
+            # Week
+            result_df['Week'] = pd.to_datetime(result_df['Datum aanmaak']).dt.isocalendar().week.values
 
-            sla_restore_info = pd.DataFrame([
-                ('Warehouse', '12 uur', 'NBD', 'BE'),
-                ('Store', '24 uur', 'NBD', 'NBD'),
-                ('Depot', '24 uur', 'NBD', 'NBD'),
-                ('Fietshub', 'BE', 'BE', 'BE'),
-                ('Office', '24 uur', '24 uur', 'NBD'),
-            ], columns=['Locatie', 'Urgent', 'Medium', 'Low'])
+            # Datetimes combineren
+            result_df['aanmaak d+t'] = pd.to_datetime(
+                result_df['Datum aanmaak'].astype(str) + ' ' + result_df['Tijd aanmaak'].astype(str),
+                errors='coerce'
+            )
+            result_df['Response d+t'] = pd.to_datetime(
+                result_df['Reactie datum'].astype(str) + ' ' + result_df['Reactie tijd'].astype(str),
+                errors='coerce'
+            )
+            result_df['Restore quickfix'] = ''
+            result_df['Restore definitief'] = pd.to_datetime(
+                result_df['Datum oplossing'].astype(str) + ' ' + result_df['Tijd oplossing'].astype(str),
+                errors='coerce'
+            )
 
-            instructies.to_excel(writer, sheet_name='Instructies', index=False, startrow=0)
-            row_offset = len(instructies) + 3
-            writer.sheets['Instructies'].write(row_offset - 1, 0, 'SLA RESPONSE TIJDEN (uren)')
-            sla_response_info.to_excel(writer, sheet_name='Instructies', index=False, startrow=row_offset)
-            row_offset += len(sla_response_info) + 2
-            writer.sheets['Instructies'].write(row_offset - 1, 0, 'SLA RESTORE TIJDEN (uren)')
-            sla_restore_info.to_excel(writer, sheet_name='Instructies', index=False, startrow=row_offset)
-            row_offset += len(sla_restore_info) + 2
-            writer.sheets['Instructies'].write(row_offset - 1, 0, 'NBD = Next Business Day | BE = Best Effort (geen harde norm)')
+            # Tijdsverschillen
+            result_df['Response tijd'] = result_df['Response d+t'] - result_df['aanmaak d+t']
+            result_df['Restore tijd'] = result_df['Restore definitief'] - result_df['aanmaak d+t']
+            result_df['Def fix tijd'] = ''
 
-        output.seek(0)
+            # NBD check
+            result_df['Controle NBD'] = result_df.apply(
+                lambda row: check_nbd(row['aanmaak d+t'], row['Restore definitief']), axis=1
+            )
 
-        # ====================================================================
-        # PREVIEW & DOWNLOAD
-        # ====================================================================
+            # Prio numeriek
+            prio_map = {'Urgent': 1, 'Medium': 2, 'Low': 3}
+            result_df['Prio'] = result_df['Prio volgens SLA / input CB'].map(prio_map)
 
-        # Preview eerste 10 rijen (storingslijst kolommen)
-        st.subheader("Preview (eerste 10 werkbonnen)")
-        storingslijst_cols = columns[:24]  # Eerste 24 = storingslijst
-        st.dataframe(result_df[storingslijst_cols].head(10))
+            # Uren (ceiling)
+            result_df['responsetijd uren'] = result_df['Response tijd'].apply(
+                lambda x: np.ceil(x.total_seconds() / 3600) if pd.notna(x) else None
+            )
+            result_df['restoretijd uren'] = result_df['Restore tijd'].apply(
+                lambda x: np.ceil(x.total_seconds() / 3600) if pd.notna(x) else None
+            )
+            result_df['Restore def uren'] = ''
 
-        # Stats
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Totaal werkbonnen", len(result_df))
-        with col2:
-            sla_response_ok = (result_df['SLA response'] == 'Behaald').sum()
-            st.metric("SLA response behaald", f"{sla_response_ok}/{len(result_df)}")
-        with col3:
-            sla_restore_ok = (result_df['SLA restore'] == 'Behaald').sum()
-            st.metric("SLA restore behaald", f"{sla_restore_ok}/{len(result_df)}")
-        with col4:
-            geannuleerd = (result_df['Geannuleerd?'] == 'Ja').sum()
-            st.metric("Geannuleerd", geannuleerd)
+            # KPI lookup (locatie-afhankelijk)
+            result_df['KPI response'] = result_df.apply(
+                lambda row: get_kpi(row['Prio volgens SLA / input CB'], row['Locatie soort'])['response'], axis=1
+            )
+            result_df['KPI restore'] = result_df.apply(
+                lambda row: get_kpi(row['Prio volgens SLA / input CB'], row['Locatie soort'])['restore'], axis=1
+            )
 
-        # Download button
-        filename = f"zenith_werkbonnen_{start_date}_{end_date}.xlsx"
-        st.download_button(
-            label="Download Excel",
-            data=output,
-            file_name=filename,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+            # SLA check (ondersteunt uren, NBD en BE)
+            result_df['SLA response'] = result_df.apply(
+                lambda row: check_sla(row['responsetijd uren'], row['Response d+t'], row['aanmaak d+t'], row['KPI response']),
+                axis=1
+            )
+            result_df['SLA restore'] = result_df.apply(
+                lambda row: check_sla(row['restoretijd uren'], row['Restore definitief'], row['aanmaak d+t'], row['KPI restore']),
+                axis=1
+            )
 
-        st.info("**Let op:** Rode cellen = handmatig invullen. Gele cellen = automatisch afgeleid (controleren). Zie tabblad 'Instructies' voor details.")
+            # Toelichting bij Niet Behaald - vullen na SLA berekening
+            result_df['Toelichting bij Niet Behaald'] = result_df.apply(
+                lambda row: '-' if row['SLA response'] == 'Behaald' and row['SLA restore'] == 'Behaald' else '',
+                axis=1
+            )
+
+            # Update session state met berekende velden
+            st.session_state['result_df'] = result_df
+
+            st.success(f"Data getransformeerd - {len(result_df)} werkbonnen")
+
+            # ====================================================================
+            # EXCEL EXPORT MET KLEURCODERING
+            # ====================================================================
+
+            output = BytesIO()
+            columns = list(result_df.columns)
+
+            with pd.ExcelWriter(output, engine='xlsxwriter', engine_kwargs={'options': {'strings_to_urls': False}}) as writer:
+                result_df.to_excel(writer, sheet_name='Werkbonnen', index=False)
+
+                workbook = writer.book
+                worksheet = writer.sheets['Werkbonnen']
+
+                # Formaten
+                red_format = workbook.add_format({'bg_color': '#FEE2E2'})
+                yellow_format = workbook.add_format({'bg_color': '#FEF3C7'})
+                header_format = workbook.add_format({'bg_color': '#D6E4F0', 'bold': True, 'border': 1})
+                date_format = workbook.add_format({'num_format': 'dd-mm-yyyy'})
+                time_format = workbook.add_format({'num_format': 'hh:mm:ss'})
+                datetime_format = workbook.add_format({'num_format': 'dd-mm-yyyy hh:mm:ss'})
+
+                # Lichtblauwe headers
+                for col_num, col_name in enumerate(columns):
+                    worksheet.write(0, col_num, col_name, header_format)
+
+                # Kolom indexen dynamisch opzoeken
+                def col_idx(name):
+                    return columns.index(name) if name in columns else -1
+
+                # Rode kolommen (handmatig invullen)
+                red_cols = [
+                    'Categorie Melding',
+                    'Tijdelijke oplossing datum (indien van toepassing)',
+                    'Tijdelijke oplossing tijd (indien van toepassing)',
+                    'Ouderdom systeem / Garantie',
+                    'Toelichting bij Niet Behaald',
+                    'Restore quickfix',
+                    'Def fix tijd',
+                    'Restore def uren',
+                ]
+
+                # Gele kolommen (automatisch afgeleid, controleren)
+                yellow_cols = ['Locatie soort', 'Contact CB']
+
+                # Datum kolommen
+                date_cols = ['Datum aanmaak', 'Reactie datum', 'Datum oplossing']
+                time_cols = ['Tijd aanmaak', 'Reactie tijd', 'Tijd oplossing']
+                datetime_cols = ['aanmaak d+t', 'Response d+t', 'Restore definitief']
+
+                for row_num in range(1, len(result_df) + 1):
+                    row_data = result_df.iloc[row_num - 1]
+
+                    # Datum/tijd opmaak
+                    for col_name in date_cols:
+                        idx = col_idx(col_name)
+                        if idx >= 0:
+                            worksheet.write(row_num, idx, row_data[col_name], date_format)
+
+                    for col_name in time_cols:
+                        idx = col_idx(col_name)
+                        if idx >= 0:
+                            worksheet.write(row_num, idx, row_data[col_name], time_format)
+
+                    for col_name in datetime_cols:
+                        idx = col_idx(col_name)
+                        if idx >= 0:
+                            worksheet.write(row_num, idx, row_data[col_name], datetime_format)
+
+                    # Rode kolommen
+                    for col_name in red_cols:
+                        idx = col_idx(col_name)
+                        if idx >= 0:
+                            worksheet.write(row_num, idx, row_data.get(col_name, ''), red_format)
+
+                    # Gele kolommen
+                    for col_name in yellow_cols:
+                        idx = col_idx(col_name)
+                        if idx >= 0:
+                            val = row_data.get(col_name, '')
+                            if val:
+                                worksheet.write(row_num, idx, val, yellow_format)
+
+                # ====================================================================
+                # INSTRUCTIES SHEET
+                # ====================================================================
+                instr_data = [
+                    ('Categorie Melding', 'ROOD', 'Handmatig: A=Technische storing, B=Operationele spoed, C=Bouwkundig, D=Wijzigingsverzoek, E=Gebruikerssupport'),
+                    ('Locatie soort', 'GEEL', 'Automatisch afgeleid, bewerkbaar in app. Bepaalt SLA-normen.'),
+                    ('Contact CB', 'GEEL', 'Best-effort uit notities. Controleer en vul aan indien nodig.'),
+                    ('Tijdelijke oplossing datum/tijd', 'ROOD', 'Handmatig: quickfix. Later via Syntess Externe Notitie timestamps.'),
+                    ('Ouderdom systeem / Garantie', 'ROOD', 'Voorlopig leeg. Later: datum oplevering uit Syntess.'),
+                    ('Toelichting bij Niet Behaald', 'ROOD', 'Handmatig: toelichting als SLA niet behaald. "-" als beide SLAs behaald.'),
+                ]
+                instructies = pd.DataFrame(instr_data, columns=['Kolom', 'Kleur', 'Toelichting'])
+
+                sla_response_info = pd.DataFrame([
+                    ('Warehouse', '4 uur', '12 uur', 'NBD'),
+                    ('Store', '12 uur', 'n.v.t.', 'NBD'),
+                    ('Depot', '12 uur', 'n.v.t.', 'NBD'),
+                    ('Fietshub', '24 uur', 'n.v.t.', 'NBD'),
+                    ('Office', '12 uur', 'n.v.t.', 'NBD'),
+                ], columns=['Locatie', 'Urgent', 'Medium', 'Low'])
+
+                sla_restore_info = pd.DataFrame([
+                    ('Warehouse', '12 uur', 'NBD', 'BE'),
+                    ('Store', '24 uur', 'NBD', 'NBD'),
+                    ('Depot', '24 uur', 'NBD', 'NBD'),
+                    ('Fietshub', 'BE', 'BE', 'BE'),
+                    ('Office', '24 uur', '24 uur', 'NBD'),
+                ], columns=['Locatie', 'Urgent', 'Medium', 'Low'])
+
+                instructies.to_excel(writer, sheet_name='Instructies', index=False, startrow=0)
+                row_offset = len(instructies) + 3
+                writer.sheets['Instructies'].write(row_offset - 1, 0, 'SLA RESPONSE TIJDEN (uren)')
+                sla_response_info.to_excel(writer, sheet_name='Instructies', index=False, startrow=row_offset)
+                row_offset += len(sla_response_info) + 2
+                writer.sheets['Instructies'].write(row_offset - 1, 0, 'SLA RESTORE TIJDEN (uren)')
+                sla_restore_info.to_excel(writer, sheet_name='Instructies', index=False, startrow=row_offset)
+                row_offset += len(sla_restore_info) + 2
+                writer.sheets['Instructies'].write(row_offset - 1, 0, 'NBD = Next Business Day | BE = Best Effort (geen harde norm)')
+
+            output.seek(0)
+
+            # ====================================================================
+            # PREVIEW & DOWNLOAD
+            # ====================================================================
+
+            # Preview eerste 10 rijen (storingslijst kolommen)
+            st.subheader("Preview (eerste 10 werkbonnen)")
+            storingslijst_cols = columns[:24]  # Eerste 24 = storingslijst
+            st.dataframe(result_df[storingslijst_cols].head(10))
+
+            # Stats
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Totaal werkbonnen", len(result_df))
+            with col2:
+                sla_response_ok = (result_df['SLA response'] == 'Behaald').sum()
+                st.metric("SLA response behaald", f"{sla_response_ok}/{len(result_df)}")
+            with col3:
+                sla_restore_ok = (result_df['SLA restore'] == 'Behaald').sum()
+                st.metric("SLA restore behaald", f"{sla_restore_ok}/{len(result_df)}")
+            with col4:
+                geannuleerd = (result_df['Geannuleerd?'] == 'Ja').sum()
+                st.metric("Geannuleerd", geannuleerd)
+
+            # Download button
+            filename = f"zenith_werkbonnen_{start_date}_{end_date}.xlsx"
+            st.download_button(
+                label="Download Excel",
+                data=output,
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            st.info("**Let op:** Rode cellen = handmatig invullen. Gele cellen = automatisch afgeleid (controleren). Zie tabblad 'Instructies' voor details.")
+
+
+# ============================================================================
+# TAB 2: AI NOTITIE-ANALYSE
+# ============================================================================
+
+with tab2:
+    render_notitie_analyse_tab()
+
+
+# ============================================================================
+# TAB 3: CONTRACT CHECK
+# ============================================================================
+
+with tab3:
+    render_contract_check_tab()
+
+
+# ============================================================================
+# TAB 4: STORINGSPATRONEN
+# ============================================================================
+
+with tab4:
+    render_patronen_tab()
