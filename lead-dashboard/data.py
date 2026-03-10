@@ -653,6 +653,92 @@ def generate_nid(email):
     return hashlib.sha256(email.lower().strip().encode()).hexdigest()[:12]
 
 
+# High-intent pagina's voor web visit scoring
+_HIGH_INTENT_PREFIXES = ["/contact", "/producten/", "/verdieping/", "/demo", "/offerte"]
+
+
+def build_nid_lookup(ml_df):
+    """Bouw NID -> {email, name, company} lookup uit EmailOctopus subscribers."""
+    lookup = {}
+    if ml_df is None or ml_df.empty:
+        return lookup
+    for _, row in ml_df.iterrows():
+        email = str(row.get("email", "")).lower().strip()
+        if not email:
+            continue
+        nid = generate_nid(email)
+        lookup[nid] = {
+            "email": email,
+            "name": row.get("name", ""),
+            "company": row.get("company", ""),
+        }
+    return lookup
+
+
+def merge_visitor_data(identified_df, nid_lookup):
+    """Koppel identified_visitors API data aan personen via NID lookup.
+
+    Returns {email: {web_visit_score, unique_pages, high_intent_pages,
+                     last_seen, total_pageviews, visit_days}}.
+    """
+    if identified_df is None or identified_df.empty or not nid_lookup:
+        return {}
+
+    result = {}
+    now = datetime.now()
+
+    for _, row in identified_df.iterrows():
+        nid = row.get("nid", "")
+        if nid not in nid_lookup:
+            continue
+
+        email = nid_lookup[nid]["email"]
+
+        pages = row.get("unique_pages", [])
+        if isinstance(pages, str):
+            try:
+                pages = _json.loads(pages)
+            except Exception:
+                pages = []
+
+        last_seen = row.get("last_seen", "")
+        days_ago = 999
+        if last_seen:
+            try:
+                last_dt = datetime.fromisoformat(str(last_seen).replace("Z", "+00:00"))
+                days_ago = (now - last_dt.replace(tzinfo=None)).days
+            except Exception:
+                pass
+
+        hi_pages = [p for p in pages
+                    if any(p.startswith(pfx) for pfx in _HIGH_INTENT_PREFIXES)]
+
+        score = 0
+        if days_ago <= 7:
+            score += 8
+        elif days_ago <= 14:
+            score += 4
+        elif days_ago <= 30:
+            score += 2
+        if hi_pages:
+            score += 5
+        pageviews = int(row.get("total_pageviews", 0))
+        if pageviews >= 5:
+            score += 2
+
+        result[email] = {
+            "web_visit_score": score,
+            "total_pageviews": pageviews,
+            "visit_days": int(row.get("visit_days", 0)),
+            "unique_pages": pages,
+            "high_intent_pages": hi_pages,
+            "last_seen": last_seen,
+            "days_since_last_visit": days_ago,
+        }
+
+    return result
+
+
 @st.cache_data(ttl=300)
 def fetch_visitor_data_from_api(days=30):
     """Haal bezoekdata op via Cloudflare Workers API."""
@@ -1085,13 +1171,25 @@ def build_leads_df(ml_df, pd_df, web_mapping,
     deals = deals_dict or {}
     leads = []
 
+    # NID -> persoon lookup + visitor data koppelen
+    nid_lookup = build_nid_lookup(ml_df)
+    visitor_data = merge_visitor_data(identified_df, nid_lookup)
+
     def _build_lead(email, name, company, phone, opened, clicked, pipedrive_match,
-                    person_id=None, is_webinar=False):
+                    person_id=None, is_webinar=False, web_visit_data=None):
         open_score, click_score = calculate_engagement_score(opened, clicked)
 
         # Leadfeeder bedrijfsmatch
         lf_match = _lf_score(company, lf_companies) > 0
         lf_web_score = 5 if lf_match else 0
+
+        # NID-based web visit score
+        wv = web_visit_data or {}
+        web_visit_score = wv.get("web_visit_score", 0)
+        web_pages = wv.get("unique_pages", [])
+        web_hi_pages = wv.get("high_intent_pages", [])
+        web_last_seen = wv.get("last_seen", "")
+        web_pageviews = wv.get("total_pageviews", 0)
 
         # Pipedrive deal
         deal = deals.get(email, {})
@@ -1108,11 +1206,12 @@ def build_leads_df(ml_df, pd_df, web_mapping,
         # Webinar bonus vanuit EmailOctopus LEADSTATUS (als er nog geen Pipedrive deal is)
         webinar_bonus = 15 if (is_webinar and deal_bonus < 15) else 0
 
-        total = open_score + click_score + lf_web_score + deal_bonus + webinar_bonus
+        total = open_score + click_score + lf_web_score + deal_bonus + webinar_bonus + web_visit_score
 
-        # Urgentie: altijd bellen (webinar deelgenomen of 3+ clicks)
+        # Urgentie: altijd bellen (webinar deelgenomen, 3+ clicks, of /contact bezocht recent)
         effective_fase = deal_fase or ("Webinar aangemeld" if is_webinar else "")
-        urgent = is_webinar or "webinar" in effective_fase.lower() or clicked >= 3
+        urgent = (is_webinar or "webinar" in effective_fase.lower() or clicked >= 3
+                  or (web_visit_score >= 13 and any("/contact" in p for p in web_hi_pages)))
 
         return {
             "Naam": name,
@@ -1136,6 +1235,11 @@ def build_leads_df(ml_df, pd_df, web_mapping,
             "Deal ID": deal_id,
             "Deal Stage ID": deal_stage_id,
             "Deal Datum": deal_add_time,
+            "Web Score": web_visit_score,
+            "Web Paginas": web_pages,
+            "Web HI Paginas": web_hi_pages,
+            "Web Laatste Bezoek": web_last_seen,
+            "Web Pageviews": web_pageviews,
         }
 
     if not ml_df.empty:
@@ -1158,6 +1262,7 @@ def build_leads_df(ml_df, pd_df, web_mapping,
                 email, sub["name"], company, pipedrive_phone,
                 sub["opened"], sub["clicked"], pipedrive_match,
                 person_id=person_id, is_webinar=is_webinar,
+                web_visit_data=visitor_data.get(email),
             ))
 
     elif not pd_df.empty:
@@ -1169,6 +1274,7 @@ def build_leads_df(ml_df, pd_df, web_mapping,
                 p["pipedrive_org"], p["pipedrive_phone"],
                 0, 0, True,
                 person_id=p.get("person_id"),
+                web_visit_data=visitor_data.get(p["pipedrive_email"].lower().strip()),
             ))
 
     if not leads:

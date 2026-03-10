@@ -312,6 +312,8 @@ def _render_call_table(df, label, key_prefix, mail_history=None, manual_emails=N
             parts.append(f"📋 {row['Deal Fase']}")
         if row.get("LF Bezocht"):
             parts.append("🔍 Leadfeeder")
+        if row.get("Web Score", 0) > 0:
+            parts.append(f"🌐 Website ({int(row.get('Web Pageviews', 0))} views)")
         return " | ".join(parts) if parts else ""
 
     display["Signalen"] = display.apply(_signalen, axis=1)
@@ -355,6 +357,12 @@ def _render_call_table(df, label, key_prefix, mail_history=None, manual_emails=N
             if row.get("Deal Fase"):
                 waarde = f" – €{int(row['Deal Waarde']):,}" if row.get("Deal Waarde") else ""
                 reasons.append(f"📋 Open deal: {row['Deal Fase']}{waarde}")
+            web_score = row.get("Web Score", 0)
+            if web_score > 0:
+                last_visit = str(row.get("Web Laatste Bezoek", ""))[:10]
+                reasons.append(f"🌐 Website bezocht ({int(row.get('Web Pageviews', 0))} views, laatst: {last_visit})")
+                for p in (row.get("Web HI Paginas") or [])[:3]:
+                    reasons.append(f"  \u2192 **{p}**")
 
             if reasons:
                 for r in reasons:
