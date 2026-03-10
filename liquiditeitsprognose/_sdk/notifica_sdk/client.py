@@ -34,18 +34,23 @@ class NotificaClient:
     Configuratie via environment variabelen:
         NOTIFICA_API_URL  - Base URL (default: https://app.notifica.nl)
         NOTIFICA_APP_KEY  - API key uit App Beheer
+        NOTIFICA_DATA_KEY - DWH data key (optioneel, heeft voorrang op App Key)
     """
 
-    def __init__(self, api_url: str = None, app_key: str = None):
+    def __init__(self, api_url: str = None, app_key: str = None, data_key: str = None):
         self.api_url = (api_url or os.getenv('NOTIFICA_API_URL', 'https://app.notifica.nl')).rstrip('/')
         self.app_key = app_key or os.getenv('NOTIFICA_APP_KEY', '')
-        if not self.app_key:
-            raise AuthError("NOTIFICA_APP_KEY niet gevonden. Zet deze in .env of geef app_key= mee.")
+        self.data_key = data_key or os.getenv('NOTIFICA_DATA_KEY', '')
+        if not self.app_key and not self.data_key:
+            raise AuthError("NOTIFICA_APP_KEY of NOTIFICA_DATA_KEY niet gevonden. Zet deze in .env of geef app_key=/data_key= mee.")
         self._session = requests.Session()
-        self._session.headers.update({
-            'X-App-Key': self.app_key,
-            'Content-Type': 'application/json',
-        })
+        headers = {'Content-Type': 'application/json'}
+        # Data Key heeft voorrang — beide tegelijk sturen veroorzaakt auth-errors
+        if self.data_key:
+            headers['X-Data-Key'] = self.data_key
+        elif self.app_key:
+            headers['X-App-Key'] = self.app_key
+        self._session.headers.update(headers)
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
         """Voer een HTTP request uit en vertaal fouten naar duidelijke exceptions."""
