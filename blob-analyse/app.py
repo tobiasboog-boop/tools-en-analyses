@@ -620,6 +620,13 @@ def render_contract_check_tab():
 
 def render_patronen_tab():
     """Tab 4: Storingspatronen — AI-gedreven patroonherkenning"""
+    import plotly.express as px
+    import plotly.graph_objects as go
+
+    NAVY = '#16136F'
+    NAVY_LIGHT = '#3636A2'
+    NAVY_PALE = '#E8E7F5'
+    ACCENT = '#5B59C2'
 
     st.header("Storingspatronen")
 
@@ -627,149 +634,406 @@ def render_patronen_tab():
     has_data = result_df is not None and not result_df.empty
 
     if not has_data:
-        st.markdown("""
-        **Wat doet deze tab?** AI analyseert storingsdata en herkent patronen die je met het blote oog niet ziet:
-        welke locaties geven structureel problemen, welke installaties zijn aan vervanging toe,
-        en waar kun je proactief onderhoud plannen.
+        st.info(
+            "**Laad eerst data** in de **Storingslijst Export** tab. "
+            "Hieronder een voorbeeld met demo data."
+        )
 
-        ---
-        ⬅️ **Laad eerst data** in de **Storingslijst Export** tab om analyses te zien op jullie eigen werkbonnen.
-
-        Hieronder een voorbeeld met demo data:
-        """)
-
-        # Demo data voor als er geen echte data is
+        # --- Demo data ---
         demo_locaties = pd.DataFrame({
             'Locatie': ['Warehouse Tilburg', 'Store Amsterdam', 'Store Den Haag', 'Depot Rotterdam',
-                        'Warehouse Eindhoven', 'Fietshub Utrecht', 'Store Rotterdam', 'Store Breda'],
-            'Aantal storingen': [18, 14, 12, 11, 9, 7, 6, 4],
+                        'Warehouse Eindhoven', 'Fietshub Utrecht', 'Store Rotterdam', 'Store Breda',
+                        'Depot Tilburg', 'Store Groningen'],
+            'Storingen': [34, 27, 22, 19, 16, 14, 11, 9, 8, 5],
         })
-
         demo_installatie = pd.DataFrame({
-            'Type': ['Brandmelding', 'Camera', 'Inbraak', 'Toegangscontrole'],
-            'Aantal': [28, 22, 18, 13],
+            'Type': ['Brandmelding', 'Camerasysteem', 'Inbraakdetectie', 'Toegangscontrole', 'Intercom'],
+            'Storingen': [52, 41, 34, 24, 14],
+        })
+        maanden = ['Jan', 'Feb', 'Mrt', 'Apr', 'Mei', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
+        demo_trend = pd.DataFrame({
+            'Maand': maanden,
+            'Storingen': [11, 14, 18, 15, 12, 16, 13, 10, 17, 21, 19, 14],
+            'idx': range(12),
+        })
+        demo_prio = pd.DataFrame({
+            'Prioriteit': ['Prio 1 (4 uur)', 'Prio 2 (8 uur)', 'Prio 3 (24 uur)', 'Prio 4 (NBD)', 'Best Effort'],
+            'Storingen': [18, 35, 62, 38, 12],
         })
 
-        demo_maand = pd.DataFrame({
-            'Maand': ['Jan', 'Feb', 'Mrt', 'Apr', 'Mei', 'Jun'],
-            'Storingen': [12, 15, 18, 14, 11, 16],
-        })
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("Storingen per locatie")
-            st.bar_chart(demo_locaties.set_index('Locatie'), horizontal=True)
-        with col2:
-            st.subheader("Storingen per installatietype")
-            st.bar_chart(demo_installatie.set_index('Type'))
-
-        st.subheader("Trend over tijd")
-        st.line_chart(demo_maand.set_index('Maand'))
+        # Metrics
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Totaal werkbonnen", "165")
+        col2.metric("Unieke locaties", "10")
+        col3.metric("Installatietypes", "5")
+        col4.metric("Periode", "Jan — Dec 2025")
 
         st.markdown("---")
-        st.subheader("🤖 AI-inzicht (voorbeeld)")
-        st.info("""
-        **Patroon gedetecteerd:** Warehouse Tilburg heeft 2.5x meer storingen dan het gemiddelde, voornamelijk bij brandmeldinstallaties.
-        Van de 18 storingen waren er 7 gerelateerd aan dezelfde gang (gang 3).
 
-        **Aanbeveling:** Preventief onderhoudsplan voor de brandmeldinstallatie in gang 3 Warehouse Tilburg.
-        Overweeg vervanging van de complete detectielijn — de hoge frequentie wijst op slijtage.
-        """)
+        # Charts row 1: locaties + installatietype
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            fig = px.bar(
+                demo_locaties.sort_values('Storingen'),
+                x='Storingen', y='Locatie', orientation='h',
+                color_discrete_sequence=[NAVY],
+            )
+            fig.update_layout(
+                title='Top 10 locaties',
+                xaxis_title='', yaxis_title='',
+                height=380, margin=dict(l=0, r=20, t=40, b=20),
+                plot_bgcolor='white', paper_bgcolor='white',
+                font=dict(size=13),
+            )
+            fig.update_traces(texttemplate='%{x}', textposition='outside')
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            fig2 = px.pie(
+                demo_installatie, values='Storingen', names='Type',
+                color_discrete_sequence=[NAVY, NAVY_LIGHT, ACCENT, NAVY_PALE, '#9896D6'],
+                hole=0.45,
+            )
+            fig2.update_layout(
+                title='Verdeling per installatietype',
+                height=380, margin=dict(l=0, r=0, t=40, b=20),
+                paper_bgcolor='white',
+                font=dict(size=13),
+                legend=dict(orientation='h', yanchor='bottom', y=-0.15, xanchor='center', x=0.5),
+            )
+            fig2.update_traces(textinfo='percent+label', textposition='inside')
+            st.plotly_chart(fig2, use_container_width=True)
+
+        # Charts row 2: trend + prioriteit
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            fig3 = go.Figure()
+            fig3.add_trace(go.Scatter(
+                x=demo_trend['Maand'], y=demo_trend['Storingen'],
+                mode='lines+markers+text', text=demo_trend['Storingen'],
+                textposition='top center',
+                line=dict(color=NAVY, width=3),
+                marker=dict(size=8, color=NAVY),
+                fill='tozeroy', fillcolor='rgba(22,19,111,0.08)',
+            ))
+            fig3.update_layout(
+                title='Storingen per maand (trend)',
+                xaxis_title='', yaxis_title='Aantal',
+                height=340, margin=dict(l=0, r=20, t=40, b=20),
+                plot_bgcolor='white', paper_bgcolor='white',
+                font=dict(size=13),
+            )
+            st.plotly_chart(fig3, use_container_width=True)
+
+        with col2:
+            fig4 = px.bar(
+                demo_prio, x='Prioriteit', y='Storingen',
+                color_discrete_sequence=[NAVY_LIGHT],
+            )
+            fig4.update_layout(
+                title='Verdeling per prioriteit',
+                xaxis_title='', yaxis_title='',
+                height=340, margin=dict(l=0, r=20, t=40, b=20),
+                plot_bgcolor='white', paper_bgcolor='white',
+                font=dict(size=13),
+                xaxis_tickangle=-25,
+            )
+            fig4.update_traces(texttemplate='%{y}', textposition='outside')
+            st.plotly_chart(fig4, use_container_width=True)
+
+        # AI inzichten
+        st.markdown("---")
+        st.subheader("AI-inzichten (voorbeeld)")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(
+                '<div style="background:#F0F0FB; border-left:4px solid #16136F; padding:16px; border-radius:6px;">'
+                '<strong>Probleemlocatie</strong><br>'
+                'Warehouse Tilburg heeft <strong>2.5x</strong> meer storingen dan gemiddeld, '
+                'voornamelijk bij brandmeldinstallaties (gang 3).'
+                '</div>', unsafe_allow_html=True
+            )
+        with col2:
+            st.markdown(
+                '<div style="background:#F0F0FB; border-left:4px solid #3636A2; padding:16px; border-radius:6px;">'
+                '<strong>Seizoenspatroon</strong><br>'
+                'Oktober-november toont een <strong>piek (+45%)</strong>. '
+                'Mogelijk verband met herfststormen en vochtschade aan buitensensoren.'
+                '</div>', unsafe_allow_html=True
+            )
+        with col3:
+            st.markdown(
+                '<div style="background:#F0F0FB; border-left:4px solid #5B59C2; padding:16px; border-radius:6px;">'
+                '<strong>Aanbeveling</strong><br>'
+                'Preventief onderhoudsplan voor <strong>3 locaties</strong> kan '
+                'naar schatting <strong>30%</strong> van de terugkerende storingen voorkomen.'
+                '</div>', unsafe_allow_html=True
+            )
         return
 
-    # === ECHTE DATA ANALYSE ===
-    st.markdown("Analyse op basis van de geladen werkbondata.")
+    # ========================================================================
+    # ECHTE DATA ANALYSE
+    # ========================================================================
 
-    # Metrics bovenaan
+    # Metrics
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.metric("Totaal werkbonnen", len(result_df))
+        st.metric("Totaal werkbonnen", f"{len(result_df):,}".replace(',', '.'))
     with col2:
-        n_locaties = result_df['Locatie naam'].nunique()
-        st.metric("Unieke locaties", n_locaties)
+        st.metric("Unieke locaties", result_df['Locatie naam'].nunique())
     with col3:
         n_types = result_df['Installatie soort'].replace('', pd.NA).dropna().nunique()
         st.metric("Installatietypes", n_types)
     with col4:
-        date_range = f"{result_df['Datum aanmaak'].min()} — {result_df['Datum aanmaak'].max()}"
-        st.metric("Periode", date_range)
+        d_min = result_df['Datum aanmaak'].min()
+        d_max = result_df['Datum aanmaak'].max()
+        st.metric("Periode", f"{d_min} — {d_max}")
 
     st.markdown("---")
 
-    # Storingen per locatie (top 10)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Top 10 locaties (meeste storingen)")
-        loc_counts = result_df['Locatie naam'].value_counts().head(10)
-        chart_df = pd.DataFrame({'Aantal storingen': loc_counts.values}, index=loc_counts.index)
-        st.bar_chart(chart_df, horizontal=True)
+    # --- Charts row 1: locaties + installatietype ---
+    loc_counts = result_df['Locatie naam'].value_counts().head(12)
+    inst_counts = result_df['Installatie soort'].replace('', pd.NA).dropna().value_counts()
 
-    # Storingen per installatietype
+    col1, col2 = st.columns([3, 2])
+    with col1:
+        df_loc = pd.DataFrame({'Locatie': loc_counts.index, 'Storingen': loc_counts.values})
+        fig = px.bar(
+            df_loc.sort_values('Storingen'),
+            x='Storingen', y='Locatie', orientation='h',
+            color_discrete_sequence=[NAVY],
+        )
+        fig.update_layout(
+            title=f'Top {len(df_loc)} locaties (meeste storingen)',
+            xaxis_title='', yaxis_title='',
+            height=max(350, len(df_loc) * 35 + 80),
+            margin=dict(l=0, r=20, t=40, b=20),
+            plot_bgcolor='white', paper_bgcolor='white',
+            font=dict(size=13),
+        )
+        fig.update_traces(texttemplate='%{x}', textposition='outside')
+        st.plotly_chart(fig, use_container_width=True)
+
     with col2:
-        st.subheader("Storingen per installatietype")
-        inst_counts = result_df['Installatie soort'].replace('', pd.NA).dropna().value_counts()
         if not inst_counts.empty:
-            chart_df2 = pd.DataFrame({'Aantal': inst_counts.values}, index=inst_counts.index)
-            st.bar_chart(chart_df2)
+            df_inst = pd.DataFrame({'Type': inst_counts.index, 'Storingen': inst_counts.values})
+            fig2 = px.pie(
+                df_inst, values='Storingen', names='Type',
+                color_discrete_sequence=[NAVY, NAVY_LIGHT, ACCENT, NAVY_PALE, '#9896D6', '#C4C3E8'],
+                hole=0.45,
+            )
+            fig2.update_layout(
+                title='Verdeling per installatietype',
+                height=max(350, len(df_loc) * 35 + 80),
+                margin=dict(l=0, r=0, t=40, b=20),
+                paper_bgcolor='white',
+                font=dict(size=13),
+                legend=dict(orientation='h', yanchor='bottom', y=-0.2, xanchor='center', x=0.5),
+            )
+            fig2.update_traces(textinfo='percent+label', textposition='inside')
+            st.plotly_chart(fig2, use_container_width=True)
         else:
             st.caption("Geen installatiesoort data beschikbaar.")
 
-    # Trend per maand
-    st.subheader("Storingen per maand")
-    maand_counts = result_df['Maand'].value_counts().sort_index()
+    # --- Charts row 2: trend + prioriteit ---
     maand_labels = {1: 'Jan', 2: 'Feb', 3: 'Mrt', 4: 'Apr', 5: 'Mei', 6: 'Jun',
                     7: 'Jul', 8: 'Aug', 9: 'Sep', 10: 'Okt', 11: 'Nov', 12: 'Dec'}
-    maand_df = pd.DataFrame({
+
+    maand_counts = result_df['Maand'].value_counts().sort_index()
+    trend_df = pd.DataFrame({
         'Maand': [maand_labels.get(m, str(m)) for m in maand_counts.index],
         'Storingen': maand_counts.values,
+        'idx': range(len(maand_counts)),
     })
-    st.line_chart(maand_df.set_index('Maand'))
 
-    # SLA performance per locatietype
-    st.subheader("SLA performance per locatietype")
-    if 'Locatie soort' in result_df.columns and 'SLA response' in result_df.columns:
-        # SLA data is alleen beschikbaar na export
-        sla_data = result_df[result_df['SLA response'] != '']
-        if not sla_data.empty:
-            sla_by_loc = sla_data.groupby('Locatie soort').apply(
-                lambda x: pd.Series({
-                    'Response behaald (%)': round((x['SLA response'] == 'Behaald').sum() / len(x) * 100, 1),
-                    'Restore behaald (%)': round((x['SLA restore'] == 'Behaald').sum() / len(x) * 100, 1) if 'SLA restore' in x.columns else 0,
-                })
-            ).reset_index()
-            st.dataframe(sla_by_loc, use_container_width=True, hide_index=True)
+    prio_col = 'Prio volgens SLA / input CB'
+    has_prio = prio_col in result_df.columns
+
+    col1, col2 = st.columns([3, 2])
+    with col1:
+        fig3 = go.Figure()
+        fig3.add_trace(go.Scatter(
+            x=trend_df['Maand'], y=trend_df['Storingen'],
+            mode='lines+markers+text', text=trend_df['Storingen'],
+            textposition='top center',
+            line=dict(color=NAVY, width=3),
+            marker=dict(size=8, color=NAVY),
+            fill='tozeroy', fillcolor='rgba(22,19,111,0.08)',
+        ))
+        fig3.update_layout(
+            title='Storingen per maand (trend)',
+            xaxis_title='', yaxis_title='Aantal',
+            height=340, margin=dict(l=0, r=20, t=40, b=20),
+            plot_bgcolor='white', paper_bgcolor='white',
+            font=dict(size=13),
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+
+    with col2:
+        if has_prio:
+            prio_counts = result_df[prio_col].replace('', pd.NA).dropna().value_counts()
+            if not prio_counts.empty:
+                df_prio = pd.DataFrame({'Prioriteit': prio_counts.index, 'Storingen': prio_counts.values})
+                fig4 = px.bar(
+                    df_prio, x='Prioriteit', y='Storingen',
+                    color_discrete_sequence=[NAVY_LIGHT],
+                )
+                fig4.update_layout(
+                    title='Verdeling per prioriteit',
+                    xaxis_title='', yaxis_title='',
+                    height=340, margin=dict(l=0, r=20, t=40, b=20),
+                    plot_bgcolor='white', paper_bgcolor='white',
+                    font=dict(size=13),
+                    xaxis_tickangle=-25,
+                )
+                fig4.update_traces(texttemplate='%{y}', textposition='outside')
+                st.plotly_chart(fig4, use_container_width=True)
+            else:
+                st.caption("Geen prioriteit data beschikbaar.")
         else:
-            st.caption("SLA data is beschikbaar na het exporteren in de Storingslijst Export tab.")
-    else:
-        st.caption("Exporteer eerst data in de Storingslijst Export tab voor SLA analyses.")
+            st.caption("Prioriteit kolom niet gevonden in data.")
 
-    # AI inzicht
+    # --- Heatmap: locatietype x maand ---
+    if 'Locatie soort' in result_df.columns:
+        cross = pd.crosstab(
+            result_df['Locatie soort'].replace('', 'Onbekend'),
+            result_df['Maand']
+        )
+        cross.columns = [maand_labels.get(m, str(m)) for m in cross.columns]
+        if not cross.empty and len(cross) > 1:
+            fig5 = px.imshow(
+                cross.values,
+                x=cross.columns.tolist(),
+                y=cross.index.tolist(),
+                color_continuous_scale=[[0, '#F0F0FB'], [0.5, '#9896D6'], [1, NAVY]],
+                aspect='auto',
+                text_auto=True,
+            )
+            fig5.update_layout(
+                title='Heatmap: storingen per locatietype per maand',
+                xaxis_title='', yaxis_title='',
+                height=max(250, len(cross) * 50 + 100),
+                margin=dict(l=0, r=20, t=40, b=20),
+                paper_bgcolor='white',
+                font=dict(size=13),
+            )
+            st.plotly_chart(fig5, use_container_width=True)
+
+    # --- SLA performance ---
+    if 'SLA response' in result_df.columns:
+        sla_data = result_df[result_df['SLA response'].replace('', pd.NA).notna()]
+        if not sla_data.empty:
+            st.markdown("---")
+            st.subheader("SLA Performance")
+            total_resp = len(sla_data)
+            resp_ok = (sla_data['SLA response'] == 'Behaald').sum()
+            resp_pct = round(resp_ok / total_resp * 100, 1) if total_resp > 0 else 0
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Response SLA behaald", f"{resp_pct}%", f"{resp_ok} van {total_resp}")
+
+            if 'SLA restore' in sla_data.columns:
+                rest_data = sla_data[sla_data['SLA restore'].replace('', pd.NA).notna()]
+                if not rest_data.empty:
+                    rest_ok = (rest_data['SLA restore'] == 'Behaald').sum()
+                    rest_pct = round(rest_ok / len(rest_data) * 100, 1)
+                    col2.metric("Restore SLA behaald", f"{rest_pct}%", f"{rest_ok} van {len(rest_data)}")
+
+            # SLA per locatietype tabel
+            if 'Locatie soort' in sla_data.columns:
+                sla_by_loc = sla_data.groupby('Locatie soort').apply(
+                    lambda x: pd.Series({
+                        'Werkbonnen': len(x),
+                        'Response behaald': f"{round((x['SLA response'] == 'Behaald').sum() / len(x) * 100)}%",
+                    })
+                ).reset_index()
+                col3.dataframe(sla_by_loc, use_container_width=True, hide_index=True)
+
+    # --- AI inzichten ---
     st.markdown("---")
-    st.subheader("🤖 AI-inzicht")
+    st.subheader("AI-inzichten")
 
-    # Genereer inzicht op basis van echte data
-    top_locatie = result_df['Locatie naam'].value_counts().head(1)
-    avg_count = result_df['Locatie naam'].value_counts().mean()
+    insights = []
 
-    if not top_locatie.empty:
-        top_name = top_locatie.index[0]
-        top_count = top_locatie.values[0]
+    # Inzicht 1: probleemlocatie
+    loc_vc = result_df['Locatie naam'].value_counts()
+    avg_count = loc_vc.mean()
+    if not loc_vc.empty:
+        top_name = loc_vc.index[0]
+        top_count = loc_vc.values[0]
         ratio = round(top_count / avg_count, 1) if avg_count > 0 else 0
-
-        # Meest voorkomende installatietype bij top locatie
         top_loc_data = result_df[result_df['Locatie naam'] == top_name]
         top_inst = top_loc_data['Installatie soort'].replace('', pd.NA).dropna().value_counts()
-        inst_info = f", voornamelijk bij **{top_inst.index[0]}**-installaties" if not top_inst.empty else ""
+        inst_txt = f", voornamelijk bij <strong>{top_inst.index[0]}</strong>" if not top_inst.empty else ""
+        if ratio >= 1.5:
+            insights.append((
+                "Probleemlocatie",
+                f"<strong>{top_name}</strong> heeft <strong>{ratio}x</strong> meer storingen "
+                f"dan gemiddeld ({top_count} vs. {round(avg_count, 1)} gem.){inst_txt}."
+            ))
 
-        st.info(f"""
-        **Patroon gedetecteerd:** **{top_name}** heeft {ratio}x meer storingen dan het gemiddelde
-        ({top_count} storingen vs. gemiddeld {round(avg_count, 1)} per locatie){inst_info}.
+    # Inzicht 2: seizoenspatroon
+    if len(maand_counts) >= 4:
+        peak_month_num = maand_counts.idxmax()
+        peak_val = maand_counts.max()
+        avg_val = maand_counts.mean()
+        if peak_val > avg_val * 1.3:
+            peak_name = maand_labels.get(peak_month_num, str(peak_month_num))
+            pct_above = round((peak_val / avg_val - 1) * 100)
+            insights.append((
+                "Seizoenspatroon",
+                f"<strong>{peak_name}</strong> toont een piek van <strong>+{pct_above}%</strong> "
+                f"boven het maandgemiddelde ({int(peak_val)} vs. {round(avg_val, 1)} gem.). "
+                f"Overweeg extra capaciteit in deze periode."
+            ))
 
-        **Aanbeveling:** Analyseer de storingen bij {top_name} nader. Bij structureel hogere frequentie
-        is een preventief onderhoudsplan of installatieherziening aan te raden.
-        """)
-    else:
-        st.info("Onvoldoende data voor patroonherkenning. Laad meer werkbonnen voor betere analyses.")
+    # Inzicht 3: concentratie
+    if len(loc_vc) >= 5:
+        top3_sum = loc_vc.head(3).sum()
+        total = loc_vc.sum()
+        top3_pct = round(top3_sum / total * 100)
+        if top3_pct >= 30:
+            top3_names = ', '.join(loc_vc.head(3).index.tolist())
+            insights.append((
+                "Concentratie",
+                f"<strong>{top3_pct}%</strong> van alle storingen komt van slechts 3 locaties: "
+                f"<strong>{top3_names}</strong>. Gericht preventief onderhoud hier kan "
+                f"het totaal aantal storingen significant reduceren."
+            ))
+
+    # Inzicht 4: installatie aanbeveling
+    if not inst_counts.empty and len(inst_counts) >= 2:
+        top_inst_name = inst_counts.index[0]
+        top_inst_count = inst_counts.values[0]
+        total_inst = inst_counts.sum()
+        inst_pct = round(top_inst_count / total_inst * 100)
+        if inst_pct >= 25:
+            insights.append((
+                "Dominante storingscategorie",
+                f"<strong>{top_inst_name}</strong> is verantwoordelijk voor <strong>{inst_pct}%</strong> "
+                f"van alle storingen ({top_inst_count} van {total_inst}). "
+                f"Focus verbetertrajecten op dit installatietype voor het grootste effect."
+            ))
+
+    if not insights:
+        insights.append((
+            "Analyse",
+            "De dataset is relatief klein of gelijkmatig verdeeld. "
+            "Laad meer werkbonnen voor diepere patroonherkenning."
+        ))
+
+    # Render inzichten in kaarten
+    cols = st.columns(min(len(insights), 3))
+    colors = [NAVY, NAVY_LIGHT, ACCENT, '#9896D6']
+    for i, (title, text) in enumerate(insights):
+        with cols[i % len(cols)]:
+            c = colors[i % len(colors)]
+            st.markdown(
+                f'<div style="background:#F0F0FB; border-left:4px solid {c}; '
+                f'padding:16px; border-radius:6px; margin-bottom:12px;">'
+                f'<strong>{title}</strong><br>{text}</div>',
+                unsafe_allow_html=True
+            )
 
 
 # ============================================================================
