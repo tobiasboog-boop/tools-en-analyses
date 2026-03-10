@@ -45,10 +45,11 @@ class NotificaClient:
             raise AuthError("NOTIFICA_APP_KEY of NOTIFICA_DATA_KEY niet gevonden. Zet deze in .env of geef app_key=/data_key= mee.")
         self._session = requests.Session()
         headers = {'Content-Type': 'application/json'}
-        if self.app_key:
-            headers['X-App-Key'] = self.app_key
+        # Data Key heeft voorrang — beide tegelijk sturen veroorzaakt auth-errors
         if self.data_key:
             headers['X-Data-Key'] = self.data_key
+        elif self.app_key:
+            headers['X-App-Key'] = self.app_key
         self._session.headers.update(headers)
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
