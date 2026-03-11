@@ -3,21 +3,12 @@ Wassink C-Track — Database Layer
 =================================
 Data bronnen:
 1. C-Track ritten: PostgreSQL DWH (stg.ods_vehicle_trips_detailed)
-2. Medewerkerdata: Syntess DWH (Azure SQL, 1225DWH) → Notifica API → CSV fallback
+2. Medewerkerdata + verlof: Syntess DWH (Azure SQL, 1225DWH)
 """
 
 import os
-import sys
 import streamlit as st
 import pandas as pd
-
-# Notifica SDK import (voor API fallback)
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '_sdk'))
-try:
-    from notifica_sdk import NotificaClient
-    SDK_AVAILABLE = True
-except ImportError:
-    SDK_AVAILABLE = False
 
 # dotenv laden
 try:
@@ -105,15 +96,28 @@ def _fix_double_utf8(s):
 # =====================================================================
 
 def _get_ctrack_connection():
-    """Maak PostgreSQL connectie voor C-Track data."""
+    """Maak PostgreSQL connectie voor C-Track data.
+
+    Probeert eerst het intern IP (10.3.152.9), dan extern (217.160.16.105).
+    """
     import psycopg
-    return psycopg.connect(
-        host=_get_secret('CTRACK_DB_HOST', '10.3.152.9'),
-        port=int(_get_secret('CTRACK_DB_PORT', '5432')),
-        dbname=_get_secret('CTRACK_DB_NAME', 'DATAWAREHOUSE'),
-        user=_get_secret('CTRACK_DB_USER', 'ctrack_kijker'),
-        password=_get_secret('CTRACK_DB_PASSWORD', 'ctrack_kijker'),
-    )
+    host = _get_secret('CTRACK_DB_HOST', '')
+    port = int(_get_secret('CTRACK_DB_PORT', '5432'))
+    dbname = _get_secret('CTRACK_DB_NAME', 'DATAWAREHOUSE')
+    user = _get_secret('CTRACK_DB_USER', 'ctrack_kijker')
+    password = _get_secret('CTRACK_DB_PASSWORD', 'ctrack_kijker')
+
+    hosts = [host] if host else ['10.3.152.9', '217.160.16.105']
+    last_err = None
+    for h in hosts:
+        try:
+            return psycopg.connect(
+                host=h, port=port, dbname=dbname, user=user, password=password,
+                connect_timeout=10,
+            )
+        except Exception as e:
+            last_err = e
+    raise last_err
 
 
 def _query_ctrack(sql: str) -> pd.DataFrame:
@@ -261,49 +265,103 @@ def _load_verzuim_syntess_dwh() -> pd.DataFrame:
         return pd.DataFrame()
 
 
-# =====================================================================
-# NOTIFICA DATA API (fallback als DWH niet bereikbaar)
-# =====================================================================
+# Verlof TaakKeys (Actueel in Syntess DWH 1225)
+VERLOF_TAAK_CODES = {
+    '06': 'Snipperdagen/vakantie',
+    '06.1': 'Verlof (bovenwettelijk)',
+    '06.2': 'Onbetaald verlof',
+    '07': 'ADV',
+    '09': 'Ziek',
+    '11': 'Bijzonder verlof',
+    '12': 'Opname tijd voor tijd',
+    '23': 'Ouderschapsverlof',
+    '23.1': 'Ouderschapsverlof (betaald)',
+    '23.2': 'Vaderschapsverlof',
+    '30': 'Kortdurend zorgverlof',
+}
+
 
 @st.cache_data(ttl=3600)
-def _load_medewerkers_api() -> pd.DataFrame:
-    """Haal medewerkerdata op via Notifica Data API."""
-    if not SDK_AVAILABLE:
-        return pd.DataFrame()
+def load_verlof_dagen() -> pd.DataFrame:
+    """Haal verlof/ziektedagen op uit Syntess Geboekte Uren.
 
-    data_key = _get_secret('NOTIFICA_DATA_KEY')
-    klantnummer = _get_secret('KLANTNUMMER', '1225')
-    if not data_key:
-        return pd.DataFrame()
+    Returns DataFrame met kolommen: personeelsnummer, datum, verlof_type, uren
+    Elke rij = 1 dag verlof voor 1 medewerker.
+    """
+    if not _get_secret('SYNTESS_DB_PASSWORD'):
+        return pd.DataFrame(columns=['personeelsnummer', 'datum', 'verlof_type', 'uren'])
 
     try:
-        client = NotificaClient(data_key=data_key)
-        df = client.query(int(klantnummer), """
-            SELECT
-                [Medewerker code] as medewerkercode,
-                [Volledige naam] as volledige_naam,
-                [Functie] as functie,
-                [Status] as status,
-                [Datum in dienst] as datum_in_dienst,
-                [plaats], [straat], [Huisnummer] as huisnummer, [postcode]
+        import pyodbc
+        conn = _get_syntess_connection()
+        cur = conn.cursor()
+
+        # Stap 1: TaakKeys ophalen voor verlof-codes
+        codes = "','".join(VERLOF_TAAK_CODES.keys())
+        cur.execute(f"""
+            SELECT TaakKey, [Taak Code]
+            FROM uren.[Taken]
+            WHERE [Taak Code] IN ('{codes}')
+              AND TaakStatus LIKE 'Actueel%'
+        """)
+        taak_map = {}
+        taak_keys = []
+        for r in cur.fetchall():
+            taak_map[r[0]] = VERLOF_TAAK_CODES.get(r[1].strip(), r[1].strip())
+            taak_keys.append(r[0])
+
+        if not taak_keys:
+            conn.close()
+            return pd.DataFrame(columns=['personeelsnummer', 'datum', 'verlof_type', 'uren'])
+
+        # Stap 2: MedewerkerKey → personeelsnummer mapping
+        cur.execute("""
+            SELECT DISTINCT MedewerkerKey, [Medewerker code]
             FROM Notifica.[SSM Bedrijfsmedewerkers]
             WHERE [Status] = 'Actueel'
-              AND [Volledige naam] IS NOT NULL
-              AND LEN([Volledige naam]) > 3
-              AND ([Datum in dienst] IS NOT NULL OR [Functie] IS NOT NULL)
+              AND [Medewerker code] IS NOT NULL
         """)
-        return df
+        mdw_map = {}
+        for r in cur.fetchall():
+            mdw_map[r[0]] = str(r[1]).strip()
+
+        # Stap 3: Verlof-boekingen ophalen (gefilterd op TaakKeys, recente periode)
+        keys_str = ','.join(str(k) for k in taak_keys)
+        cur.execute(f"""
+            SELECT MedewerkerKey, Uitvoeringsdatum, TaakKey, Aantal
+            FROM uren.[Geboekte Uren]
+            WHERE TaakKey IN ({keys_str})
+              AND Uitvoeringsdatum >= '2025-01-01'
+        """)
+
+        rows = []
+        for r in cur.fetchall():
+            mdw_key, datum, taak_key, uren = r
+            pnr = mdw_map.get(mdw_key, '')
+            if pnr:
+                rows.append({
+                    'personeelsnummer': pnr,
+                    'datum': datum.date() if hasattr(datum, 'date') else datum,
+                    'verlof_type': taak_map.get(taak_key, 'Onbekend'),
+                    'uren': float(uren) if uren else 0,
+                })
+
+        conn.close()
+        return pd.DataFrame(rows) if rows else pd.DataFrame(
+            columns=['personeelsnummer', 'datum', 'verlof_type', 'uren']
+        )
+
     except Exception as e:
-        print(f"[INFO] Notifica API niet beschikbaar: {e}")
-        return pd.DataFrame()
+        print(f"[INFO] Verlof laden mislukt: {e}")
+        return pd.DataFrame(columns=['personeelsnummer', 'datum', 'verlof_type', 'uren'])
 
 
 # =====================================================================
-# MEDEWERKER MAPPING (Syntess DWH → API → CSV fallback)
+# MEDEWERKER MAPPING (CSV met Syntess-data)
 # =====================================================================
 
 def _load_medewerker_csv() -> pd.DataFrame:
-    """Laad medewerker mapping uit CSV (fallback)."""
+    """Laad medewerker mapping uit CSV (gevuld vanuit Syntess DWH)."""
     csv_path = os.path.join(DATA_DIR, 'medewerker_mapping.csv')
     if os.path.exists(csv_path):
         return pd.read_csv(csv_path, dtype=str).fillna('')
@@ -348,16 +406,13 @@ def _functie_categorie(functie: str) -> str:
 
 @st.cache_data(ttl=3600)
 def load_medewerker_mapping() -> pd.DataFrame:
-    """Laad medewerker mapping: Syntess DWH → API → CSV fallback.
+    """Laad medewerker mapping uit CSV (gevuld vanuit Syntess DWH).
 
-    Returns DataFrame met kolommen:
-        bestuurder, personeelsnummer, functie, functie_categorie,
-        straat, huisnummer, postcode, plaats
+    CSV bevat: bestuurder, personeelsnummer, functie, straat, huisnummer, postcode, plaats.
+    Fallback naar Syntess DWH als CSV leeg is.
     """
-    # CSV is altijd de basis (handmatige overrides + al gematcht)
     csv_data = _load_medewerker_csv()
 
-    # Check of CSV al gevuld is (personeelsnummers aanwezig)
     csv_has_data = (
         not csv_data.empty
         and 'personeelsnummer' in csv_data.columns
@@ -365,22 +420,16 @@ def load_medewerker_mapping() -> pd.DataFrame:
     )
 
     if csv_has_data:
-        # CSV is al gevuld (door Syntess-matching of handmatig)
         result = csv_data.copy()
-        # Voeg functie_categorie toe
         result['functie_categorie'] = result['functie'].apply(_functie_categorie)
         return result
 
-    # Probeer Syntess DWH direct, dan API, dan lege CSV
+    # Fallback: Syntess DWH direct matchen
     syntess_data = _load_medewerkers_syntess_dwh()
-    if syntess_data.empty:
-        syntess_data = _load_medewerkers_api()
-
     if syntess_data.empty:
         csv_data['functie_categorie'] = ''
         return csv_data
 
-    # Match bestuurders uit trips met Syntess medewerkers
     trips = load_trips()
     bestuurders = trips['bestuurder'].dropna().unique()
 

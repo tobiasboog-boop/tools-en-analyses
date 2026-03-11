@@ -5,7 +5,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.database import load_trips, load_medewerker_mapping
+from src.database import load_trips, load_medewerker_mapping, load_verlof_dagen
 from src.auth import check_password
 from src.sidebar import show_logo
 
@@ -19,6 +19,7 @@ st.caption("LB km (prive) vs OB km (woon-werk) — doel: prive < 500 km/jaar")
 try:
     trips = load_trips()
     medewerker_map = load_medewerker_mapping()
+    verlof_dagen = load_verlof_dagen()
 except Exception as e:
     st.error(f"Data fout: {e}")
     st.stop()
@@ -48,6 +49,25 @@ if 'functie_categorie' not in trips.columns:
 else:
     trips['functie_categorie'] = trips['functie_categorie'].fillna('')
 
+# Verlof-lookup: set van (personeelsnummer, datum) → verlof_type
+_verlof_set = set()
+_verlof_type_lookup = {}
+if not verlof_dagen.empty:
+    for _, vr in verlof_dagen.iterrows():
+        key = (str(vr['personeelsnummer']), vr['datum'])
+        _verlof_set.add(key)
+        _verlof_type_lookup[key] = vr['verlof_type']
+
+# Markeer verlofdag op trips
+trips['is_verlofdag'] = trips.apply(
+    lambda r: (str(r['personeelsnummer']), r['datum']) in _verlof_set, axis=1
+)
+trips['verlof_type'] = trips.apply(
+    lambda r: _verlof_type_lookup.get((str(r['personeelsnummer']), r['datum']), ''), axis=1
+)
+
+_verlof_count = trips['is_verlofdag'].sum()
+
 
 # =====================================================================
 # REGELS TOELICHTING
@@ -66,6 +86,12 @@ with st.expander("Classificatieregels (Wassink / Belastingdienst)", expanded=Fal
     Medewerkerdata wordt gematcht op basis van voor- en achternaam. Huidige status: **55 van 59 bestuurders** gekoppeld aan Syntess.
     Niet gematcht: Andre Jenneskens, Patrick Kool, Tim Van der Woning, Wilco Waltmann.
 
+    **Verlof/ziektedagen**: Uit Syntess `uren.Geboekte Uren` (taakcodes 06-Snipper, 07-ADV, 09-Ziek, 11-Bijzonder verlof, 12-TVT, 23-Ouderschapsverlof).
+    Ritten op een verlof- of ziektedag worden automatisch als **Prive (LB)** geclassificeerd.
+    """)
+    if _verlof_count > 0:
+        st.info(f"**{_verlof_count}** ritten vallen op een verlof/ziektedag en worden als Prive geclassificeerd.")
+    st.markdown("""
     ---
 
     ### Uitgangspunten (email Wassink 11 mrt 2026)
@@ -111,6 +137,7 @@ with st.expander("Classificatieregels (Wassink / Belastingdienst)", expanded=Fal
     st.markdown("**Classificatieregels (volgorde van toepassing):**")
     regels = pd.DataFrame({
         'Regel': [
+            '0. Verlof/ziektedag (Syntess)',
             '1. Thuis collega',
             '2. Eigen Thuis \u2192 eigen Thuis',
             '3. Eigen Thuis \u2194 Vestiging/Project',
@@ -123,6 +150,7 @@ with st.expander("Classificatieregels (Wassink / Belastingdienst)", expanded=Fal
             '10. Rest',
         ],
         'Classificatie': [
+            'Prive (LB) \u2014 alle ritten op verlofdag',
             'Zakelijk \u2014 collega ophalen/afzetten',
             'Prive (LB)',
             'Woon-werk (OB)',
@@ -202,6 +230,10 @@ def classificeer_rit(row: pd.Series) -> str:
     weekdag = row['start'].dayofweek  # 0=ma, 6=zo
 
     werk_types = {'Vestiging', 'Project', 'Opdrachtgever'}
+
+    # Verlofdag = alle ritten zijn prive (Syntess: ziek, snipper, ADV, etc.)
+    if row.get('is_verlofdag', False):
+        return 'Prive'
 
     # Thuis collega = altijd zakelijk (ophalen/afzetten)
     if start_type == 'Thuis collega' or eind_type == 'Thuis collega':
@@ -283,6 +315,11 @@ def controle_flag(row: pd.Series) -> str:
     """
     uur = row['start'].hour + row['start'].minute / 60.0
     weekdag = row['start'].dayofweek
+
+    # Verlofdag = altijd controle
+    if row.get('is_verlofdag', False):
+        verlof = row.get('verlof_type', 'Verlof')
+        return f'Verlofdag ({verlof})'
 
     # Weekend = altijd controle
     if weekdag >= 5:
@@ -517,7 +554,7 @@ with col_table:
 # =====================================================================
 
 st.markdown("---")
-st.subheader("Controle-ritten (buiten werktijd / weekend)")
+st.subheader("Controle-ritten (buiten werktijd / weekend / verlofdag)")
 
 controle_ritten = data[data['controle'] != ''].copy()
 if not controle_ritten.empty:
