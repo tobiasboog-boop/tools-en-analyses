@@ -26,6 +26,14 @@ try:
 except ImportError:
     pass
 
+
+def _get_secret(key: str, default: str = '') -> str:
+    """Haal secret op: st.secrets (Streamlit Cloud) → os.getenv (.env lokaal)."""
+    try:
+        return st.secrets[key]
+    except (KeyError, AttributeError, FileNotFoundError):
+        return os.getenv(key, default)
+
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
 
@@ -55,7 +63,7 @@ def check_connections() -> dict:
         status['ctrack']['detail'] = str(e)[:80]
 
     # Test Syntess Azure SQL
-    if os.getenv('SYNTESS_DB_PASSWORD'):
+    if _get_secret('SYNTESS_DB_PASSWORD'):
         try:
             conn = _get_syntess_connection()
             cur = conn.cursor()
@@ -100,11 +108,11 @@ def _get_ctrack_connection():
     """Maak PostgreSQL connectie voor C-Track data."""
     import psycopg
     return psycopg.connect(
-        host=os.getenv('CTRACK_DB_HOST', '10.3.152.9'),
-        port=int(os.getenv('CTRACK_DB_PORT', '5432')),
-        dbname=os.getenv('CTRACK_DB_NAME', 'DATAWAREHOUSE'),
-        user=os.getenv('CTRACK_DB_USER', 'ctrack_kijker'),
-        password=os.getenv('CTRACK_DB_PASSWORD', 'ctrack_kijker'),
+        host=_get_secret('CTRACK_DB_HOST', '10.3.152.9'),
+        port=int(_get_secret('CTRACK_DB_PORT', '5432')),
+        dbname=_get_secret('CTRACK_DB_NAME', 'DATAWAREHOUSE'),
+        user=_get_secret('CTRACK_DB_USER', 'ctrack_kijker'),
+        password=_get_secret('CTRACK_DB_PASSWORD', 'ctrack_kijker'),
     )
 
 
@@ -194,7 +202,7 @@ def _get_syntess_connection():
         "SERVER=bisqq.database.windows.net,1433;"
         "DATABASE=1225DWH;"
         "UID=server_admin;"
-        f"PWD={os.getenv('SYNTESS_DB_PASSWORD', '')};"
+        f"PWD={_get_secret('SYNTESS_DB_PASSWORD')};"
         "Encrypt=yes;"
         "TrustServerCertificate=no;"
         "Connection Timeout=30;"
@@ -215,7 +223,7 @@ def _query_syntess(sql: str) -> pd.DataFrame:
 @st.cache_data(ttl=3600)
 def _load_medewerkers_syntess_dwh() -> pd.DataFrame:
     """Haal medewerkerdata op via directe Syntess DWH connectie."""
-    if not os.getenv('SYNTESS_DB_PASSWORD'):
+    if not _get_secret('SYNTESS_DB_PASSWORD'):
         return pd.DataFrame()
 
     try:
@@ -241,7 +249,7 @@ def _load_medewerkers_syntess_dwh() -> pd.DataFrame:
 @st.cache_data(ttl=3600)
 def _load_verzuim_syntess_dwh() -> pd.DataFrame:
     """Haal verzuimdata op via directe Syntess DWH connectie."""
-    if not os.getenv('SYNTESS_DB_PASSWORD'):
+    if not _get_secret('SYNTESS_DB_PASSWORD'):
         return pd.DataFrame()
 
     try:
@@ -263,8 +271,8 @@ def _load_medewerkers_api() -> pd.DataFrame:
     if not SDK_AVAILABLE:
         return pd.DataFrame()
 
-    data_key = os.getenv('NOTIFICA_DATA_KEY', '')
-    klantnummer = os.getenv('KLANTNUMMER', '1225')
+    data_key = _get_secret('NOTIFICA_DATA_KEY')
+    klantnummer = _get_secret('KLANTNUMMER', '1225')
     if not data_key:
         return pd.DataFrame()
 
