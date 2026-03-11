@@ -120,7 +120,11 @@ class NotificaClient:
         if max_rows:
             body['max_rows'] = max_rows
         result = self._request('POST', '/api/data/query', json=body)
-        return pd.DataFrame(result.get('rows', []), columns=result.get('columns', []))
+        df = pd.DataFrame(result.get('rows', []), columns=result.get('columns', []))
+        # API geeft numerieke waarden als strings terug — converteer waar mogelijk
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='ignore')
+        return df
 
     def query_template(self, klantnummer: int, template_name: str, parameters: dict = None) -> pd.DataFrame:
         """Voer een template-query uit.
