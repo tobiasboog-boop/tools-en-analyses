@@ -364,25 +364,28 @@ trips['ob_km'] = trips.apply(
 with tab_classificatie:
 
     # =====================================================================
-    # FILTERS
+    # FILTERS (sidebar: periode | main: bestuurder + classificatie)
     # =====================================================================
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        bestuurders = sorted(trips['bestuurder'].dropna().unique())
-        sel_bestuurder = st.selectbox("Bestuurder", ["Alle"] + bestuurders)
-    with col2:
+    # Sidebar: datumselectie
+    with st.sidebar:
+        st.subheader("Periode")
         datums = sorted(trips['datum'].unique())
         if len(datums) >= 2:
             date_range = st.date_input(
-                "Periode",
+                "Selecteer periode",
                 value=(datums[0], datums[-1]),
                 min_value=datums[0],
                 max_value=datums[-1],
             )
         else:
             date_range = (datums[0], datums[0])
-    with col3:
+
+    col1, col2 = st.columns(2)
+    with col1:
+        bestuurders = sorted(trips['bestuurder'].dropna().unique())
+        sel_bestuurder = st.selectbox("Bestuurder", ["Alle"] + bestuurders)
+    with col2:
         classificaties = ['Alle', 'Woon-werk', 'Zakelijk', 'Prive', 'Te beoordelen']
         sel_class = st.selectbox("Classificatie", classificaties)
 
