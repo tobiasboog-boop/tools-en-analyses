@@ -32,8 +32,8 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 def check_connections() -> dict:
     """Test of C-Track en Syntess DWH bereikbaar zijn. Geeft status dict terug."""
     status = {
-        'ctrack': {'ok': False, 'bron': 'Parquet (fallback)', 'detail': ''},
-        'syntess': {'ok': False, 'bron': 'CSV (fallback)', 'detail': ''},
+        'ctrack': {'ok': False, 'bron': 'Niet verbonden', 'detail': ''},
+        'syntess': {'ok': False, 'bron': 'Niet verbonden', 'detail': ''},
     }
 
     # Test C-Track PostgreSQL
@@ -47,13 +47,21 @@ def check_connections() -> dict:
         conn.close()
         status['ctrack'] = {
             'ok': True,
-            'bron': f'PostgreSQL (10.3.152.9)',
+            'bron': 'PostgreSQL (live)',
             'detail': f'{count:,} ritten, laatste: {str(latest)[:10]}',
         }
     except Exception as e:
-        status['ctrack']['detail'] = str(e)[:80]
+        err = str(e)
+        if 'timeout' in err.lower():
+            status['ctrack']['detail'] = (
+                f'Timeout — server 217.160.16.105 niet bereikbaar. '
+                f'Firewall whitelisting nodig? Data via Parquet.'
+            )
+            status['ctrack']['bron'] = 'Parquet (offline data)'
+        else:
+            status['ctrack']['detail'] = err[:100]
 
-    # Test Syntess Azure SQL
+    # Test Syntess Azure SQL (pymssql)
     if _get_secret('SYNTESS_DB_PASSWORD'):
         try:
             conn = _get_syntess_connection()
@@ -67,7 +75,9 @@ def check_connections() -> dict:
                 'detail': f'{count} medewerkers',
             }
         except Exception as e:
-            status['syntess']['detail'] = str(e)[:80]
+            status['syntess']['detail'] = str(e)[:100]
+    else:
+        status['syntess']['detail'] = 'SYNTESS_DB_PASSWORD niet ingesteld'
 
     return status
 
@@ -151,7 +161,11 @@ def load_trips() -> pd.DataFrame:
             LEFT JOIN stg.stg_ctrack_vehicles v ON t.nodeid = v.nodeid
         """)
     except Exception as e:
-        st.warning(f"DB niet bereikbaar, fallback naar Parquet: {e}")
+        st.warning(
+            f"C-Track DB niet bereikbaar ({e}). "
+            "Data geladen uit Parquet (laatste export). "
+            "Voor live data: firewall openen voor Streamlit Cloud IP."
+        )
         df = pd.read_parquet(os.path.join(DATA_DIR, 'trips.parquet'))
 
     # Parse timestamps (UTC -> Europe/Amsterdam)
@@ -199,17 +213,20 @@ def load_trips() -> pd.DataFrame:
 # =====================================================================
 
 def _get_syntess_connection():
-    """Maak Azure SQL connectie voor Syntess DWH (1225DWH)."""
-    import pyodbc
-    return pyodbc.connect(
-        "DRIVER={ODBC Driver 17 for SQL Server};"
-        "SERVER=bisqq.database.windows.net,1433;"
-        "DATABASE=1225DWH;"
-        "UID=server_admin;"
-        f"PWD={_get_secret('SYNTESS_DB_PASSWORD')};"
-        "Encrypt=yes;"
-        "TrustServerCertificate=no;"
-        "Connection Timeout=30;"
+    """Maak Azure SQL connectie voor Syntess DWH (1225DWH).
+
+    Gebruikt pymssql (pure Python) i.p.v. pyodbc zodat het ook werkt
+    op Streamlit Cloud zonder ODBC drivers.
+    """
+    import pymssql
+    return pymssql.connect(
+        server='bisqq.database.windows.net',
+        port=1433,
+        database='1225DWH',
+        user='server_admin',
+        password=_get_secret('SYNTESS_DB_PASSWORD'),
+        login_timeout=30,
+        tds_version='7.3',
     )
 
 
@@ -292,7 +309,6 @@ def load_verlof_dagen() -> pd.DataFrame:
         return pd.DataFrame(columns=['personeelsnummer', 'datum', 'verlof_type', 'uren'])
 
     try:
-        import pyodbc
         conn = _get_syntess_connection()
         cur = conn.cursor()
 
