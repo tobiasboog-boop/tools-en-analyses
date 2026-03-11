@@ -5,7 +5,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from src.database import load_trips, load_medewerker_mapping, load_verlof_dagen
+from src.database import load_trips, load_medewerker_mapping, load_verlof_dagen, VERLOF_TAAK_CODES
 from src.auth import check_password
 from src.sidebar import show_logo
 
@@ -69,101 +69,8 @@ trips['verlof_type'] = trips.apply(
 _verlof_count = trips['is_verlofdag'].sum()
 
 
-# =====================================================================
-# REGELS TOELICHTING
-# =====================================================================
-
-with st.expander("Classificatieregels (Wassink / Belastingdienst)", expanded=False):
-    st.markdown("""
-    ### Databronnen
-
-    | Bron | Type | Gegevens |
-    |------|------|----------|
-    | C-Track DWH | PostgreSQL (`10.3.152.9`) | Ritten, voertuigen, GPS-locaties |
-    | Syntess DWH | Azure SQL (`bisqq.database.windows.net / 1225DWH`) | Personeelsnummer, functie, thuisadres, verzuim |
-    | CSV fallback | `data/medewerker_mapping.csv` | Handmatige mapping als DWH niet bereikbaar |
-
-    Medewerkerdata wordt gematcht op basis van voor- en achternaam. Huidige status: **55 van 59 bestuurders** gekoppeld aan Syntess.
-    Niet gematcht: Andre Jenneskens, Patrick Kool, Tim Van der Woning, Wilco Waltmann.
-
-    **Verlof/ziektedagen**: Uit Syntess `uren.Geboekte Uren` (taakcodes 06-Snipper, 07-ADV, 09-Ziek, 11-Bijzonder verlof, 12-TVT, 23-Ouderschapsverlof).
-    Ritten op een verlof- of ziektedag worden automatisch als **Prive (LB)** geclassificeerd.
-    """)
-    if _verlof_count > 0:
-        st.info(f"**{_verlof_count}** ritten vallen op een verlof/ziektedag en worden als Prive geclassificeerd.")
-    st.markdown("""
-    ---
-
-    ### Uitgangspunten (email Wassink 11 mrt 2026)
-
-    - Controle op ritten buiten werktijd van 16:30 tot 08:00 uur
-    - Projectmonteurs beginnen om 07:00 op de bouw, servicemonteurs om 08:00 bij de klant
-    - Alle weekenden worden meegenomen in de controle
-    - Vrije dagen met Syntess taken: 09 Ziek, 06 Snipper, 07 ADV, 12 TVT, 11 Bijzonder verlof, 23 Ouderschapsverlof *(nog niet geimplementeerd)*
-    - Vertrekpunt in de ochtend is altijd vanaf huis
-
-    **LB km** = prive-kilometers (doel: berijder blijft onder 500 km/jaar)
-    **OB km** = woon-werkverkeer kilometers
-
-    ---
-
-    ### Thuisadres-herkenning
-
-    Het dashboard gebruikt drie methodes om te bepalen of een locatie het thuisadres is (in volgorde van prioriteit):
-
-    1. **C-Track label** — Als de locatie begint met "Thuis [naam]" en de naam matcht met de bestuurder.
-    2. **Syntess adres** — De straatnaam uit Syntess (bijv. "Wooldseweg" voor Achraf Bouhabbadi) wordt vergeleken met de C-Track locatietekst.
-    3. **Eerste/laatste rit** — Als geen van bovenstaande matcht: de eerste rit van de dag wordt beschouwd als vertrek vanuit huis, de laatste rit als aankomst thuis.
-
-    ### Vestigingherkenning
-
-    Naast C-Track labels ("Vestiging ...") worden de twee Wassink-locaties ook herkend op basis van adres/plaatsnaam:
-    - **Winterswijk**: Snelliusstraat 11, 7102 ED
-    - **Doetinchem**: Fabrieksstraat 39-07, 7005 AP
-
-    ### Functie-mapping
-
-    Syntess functies zijn vertaald naar twee werktijd-categorieen:
-
-    | Syntess functie | Categorie | Werktijd | Controlevenster ochtend | Controlevenster middag |
-    |----------------|-----------|----------|------------------------|------------------------|
-    | Servicemonteur | Servicemonteur | 08:00-17:00 | 07:30-08:30 | 16:30-17:30 |
-    | Monteur, Elektromonteur, Hulpmonteur | Projectmonteur | 07:00-15:45 | 05:45-07:30 | 15:15-17:00 |
-    | Engineer, Werkvoorbereider, onbekend | Default | 08:00-16:30 | 07:00-08:30 | 16:00-17:00 |
-
-    **Prive-tussenstop:** maakt de volledige rit prive (brief regels verklaring privegebruik).
-    """)
-
-    st.markdown("**Classificatieregels (volgorde van toepassing):**")
-    regels = pd.DataFrame({
-        'Regel': [
-            '0. Verlof/ziektedag (Syntess)',
-            '1. Thuis collega',
-            '2. Eigen Thuis \u2192 eigen Thuis',
-            '3. Eigen Thuis \u2194 Vestiging/Project',
-            '4. Tussen werklocaties',
-            '5. Werklocatie \u2194 Overig adres',
-            '6. Weekend (alle ritten zonder werklocatie)',
-            '7. Buiten werktijd (16:30-08:00) zonder werklocatie',
-            '8. Overig \u2194 Overig (werkdag werktijd)',
-            '9. Eigen Thuis \u2194 Overig (werkdag werktijd)',
-            '10. Rest',
-        ],
-        'Classificatie': [
-            'Prive (LB) \u2014 alle ritten op verlofdag',
-            'Zakelijk \u2014 collega ophalen/afzetten',
-            'Prive (LB)',
-            'Woon-werk (OB)',
-            'Zakelijk',
-            'Zakelijk',
-            'Prive (LB)',
-            'Prive (LB)',
-            'Zakelijk \u2014 waarschijnlijk klantbezoek',
-            'Woon-werk (OB) \u2014 waarschijnlijk naar klant',
-            'Te beoordelen (handmatig)',
-        ],
-    })
-    st.dataframe(regels, use_container_width=True, hide_index=True)
+# Tabs: Classificatie | Uitleg
+tab_classificatie, tab_uitleg = st.tabs(["Ritclassificatie", "Uitleg & aannames"])
 
 
 # =====================================================================
@@ -406,448 +313,571 @@ trips['ob_km'] = trips.apply(
 )
 
 
-# =====================================================================
-# FILTERS
-# =====================================================================
+with tab_classificatie:
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    bestuurders = sorted(trips['bestuurder'].dropna().unique())
-    sel_bestuurder = st.selectbox("Bestuurder", ["Alle"] + bestuurders)
-with col2:
-    datums = sorted(trips['datum'].unique())
-    if len(datums) >= 2:
-        date_range = st.date_input(
-            "Periode",
-            value=(datums[0], datums[-1]),
-            min_value=datums[0],
-            max_value=datums[-1],
-        )
-    else:
-        date_range = (datums[0], datums[0])
-with col3:
-    classificaties = ['Alle', 'Woon-werk', 'Zakelijk', 'Prive', 'Te beoordelen']
-    sel_class = st.selectbox("Classificatie", classificaties)
+    # =====================================================================
+    # FILTERS
+    # =====================================================================
 
-# Filter toepassen
-data = trips.copy()
-if sel_bestuurder != "Alle":
-    data = data[data['bestuurder'] == sel_bestuurder]
-if isinstance(date_range, tuple) and len(date_range) == 2:
-    data = data[(data['datum'] >= date_range[0]) & (data['datum'] <= date_range[1])]
-if sel_class != "Alle":
-    data = data[data['classificatie'] == sel_class]
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        bestuurders = sorted(trips['bestuurder'].dropna().unique())
+        sel_bestuurder = st.selectbox("Bestuurder", ["Alle"] + bestuurders)
+    with col2:
+        datums = sorted(trips['datum'].unique())
+        if len(datums) >= 2:
+            date_range = st.date_input(
+                "Periode",
+                value=(datums[0], datums[-1]),
+                min_value=datums[0],
+                max_value=datums[-1],
+            )
+        else:
+            date_range = (datums[0], datums[0])
+    with col3:
+        classificaties = ['Alle', 'Woon-werk', 'Zakelijk', 'Prive', 'Te beoordelen']
+        sel_class = st.selectbox("Classificatie", classificaties)
 
-
-# =====================================================================
-# KPI'S + 500 KM GRENS
-# =====================================================================
-
-st.markdown("---")
-k1, k2, k3, k4, k5 = st.columns(5)
-with k1:
-    st.metric("Totaal ritten", f"{len(data):,}")
-with k2:
-    st.metric("Totaal km", f"{data['afstand_km'].sum():,.0f}")
-with k3:
-    prive_km = data['lb_km'].sum()
-    st.metric("LB km (prive)", f"{prive_km:,.0f}")
-with k4:
-    st.metric("OB km (woon-werk)", f"{data['ob_km'].sum():,.0f}")
-with k5:
-    te_beoordelen = len(data[data['classificatie'] == 'Te beoordelen'])
-    st.metric("Te beoordelen", f"{te_beoordelen}")
-
-
-# =====================================================================
-# PRIVE KM OVERZICHT PER BESTUURDER (500 km grens)
-# =====================================================================
-
-st.markdown("---")
-st.subheader("Prive km per bestuurder (500 km grens)")
-
-prive_per_bestuurder = trips.groupby('bestuurder').agg(
-    personeelsnr=('personeelsnummer', 'first'),
-    functie=('functie', 'first'),
-    prive_km=('lb_km', 'sum'),
-    woonwerk_km=('ob_km', 'sum'),
-    totaal_km=('afstand_km', 'sum'),
-    ritten=('afstand_km', 'count'),
-).reset_index()
-
-# Bereken percentage van 500 km grens
-prive_per_bestuurder['prive_km'] = prive_per_bestuurder['prive_km'].round(1)
-prive_per_bestuurder['woonwerk_km'] = prive_per_bestuurder['woonwerk_km'].round(1)
-prive_per_bestuurder['totaal_km'] = prive_per_bestuurder['totaal_km'].round(0)
-prive_per_bestuurder['% van 500 km'] = (prive_per_bestuurder['prive_km'] / 500 * 100).round(0)
-
-# Bepaal aantal maanden in dataset voor maandgemiddelde
-datum_range = trips['datum']
-if len(datum_range) > 0:
-    import datetime
-    min_d = min(datum_range)
-    max_d = max(datum_range)
-    dagen = (max_d - min_d).days + 1
-    maanden = max(dagen / 30.44, 1)
-    prive_per_bestuurder['gem/maand'] = (prive_per_bestuurder['prive_km'] / maanden).round(1)
-    prive_per_bestuurder['prognose jaar'] = (prive_per_bestuurder['gem/maand'] * 12).round(0)
-
-prive_per_bestuurder = prive_per_bestuurder.sort_values('prive_km', ascending=False)
-
-def highlight_prive(row):
-    """Markeer rijen waar prive km te hoog is."""
-    prognose = row.get('prognose jaar', 0)
-    if prognose > 500:
-        return ['background-color: #ffcccc'] * len(row)
-    elif prognose > 400:
-        return ['background-color: #fff3cd'] * len(row)
-    return [''] * len(row)
-
-display_prive = prive_per_bestuurder.rename(columns={
-    'bestuurder': 'Bestuurder',
-    'personeelsnr': 'Pers.nr',
-    'functie': 'Functie',
-    'prive_km': 'Prive km (LB)',
-    'woonwerk_km': 'Woon-werk km (OB)',
-    'totaal_km': 'Totaal km',
-    'ritten': 'Ritten',
-    '% van 500 km': '% van 500',
-    'gem/maand': 'Gem/maand',
-    'prognose jaar': 'Prognose jaar',
-})
-
-st.dataframe(
-    display_prive.style.apply(highlight_prive, axis=1),
-    use_container_width=True,
-    hide_index=True,
-)
-st.caption("Rood = jaarprognose > 500 km prive. Geel = > 400 km. Grens Belastingdienst: max 500 km prive/jaar (~41 km/maand).")
-
-
-# =====================================================================
-# CLASSIFICATIE VERDELING
-# =====================================================================
-
-st.markdown("---")
-col_chart, col_table = st.columns([2, 1])
-
-with col_chart:
-    st.subheader("Verdeling classificaties")
-    class_counts = trips.groupby('classificatie').agg(
-        ritten=('afstand_km', 'count'),
-        km=('afstand_km', 'sum')
-    ).reset_index()
-    class_counts['km'] = class_counts['km'].round(0)
-    class_counts = class_counts.sort_values('ritten', ascending=False)
-    st.bar_chart(class_counts.set_index('classificatie')['ritten'], horizontal=True)
-
-with col_table:
-    st.subheader("Samenvatting")
-    summary = class_counts.rename(columns={
-        'classificatie': 'Type', 'ritten': 'Ritten', 'km': 'Kilometers',
-    })
-    st.dataframe(summary, use_container_width=True, hide_index=True)
-
-
-# =====================================================================
-# CONTROLE-OVERZICHT (geflagde ritten)
-# =====================================================================
-
-st.markdown("---")
-st.subheader("Controle-ritten (buiten werktijd / weekend / verlofdag)")
-
-controle_ritten = data[data['controle'] != ''].copy()
-if not controle_ritten.empty:
-    controle_summary = controle_ritten.groupby('controle').agg(
-        ritten=('afstand_km', 'count'),
-        km=('afstand_km', 'sum'),
-    ).reset_index().sort_values('ritten', ascending=False)
-    controle_summary['km'] = controle_summary['km'].round(1)
-    st.dataframe(
-        controle_summary.rename(columns={
-            'controle': 'Controle type', 'ritten': 'Ritten', 'km': 'Kilometers',
-        }),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    with st.expander(f"Alle controle-ritten ({len(controle_ritten)})", expanded=False):
-        ctrl_display = controle_ritten[[
-            'bestuurder', 'personeelsnummer', 'functie', 'datum',
-            'start', 'eind', 'startlocation', 'endlocation',
-            'afstand_km', 'classificatie', 'controle',
-        ]].copy()
-        ctrl_display['start'] = ctrl_display['start'].dt.strftime('%H:%M')
-        ctrl_display['eind'] = ctrl_display['eind'].dt.strftime('%H:%M')
-        ctrl_display['afstand_km'] = ctrl_display['afstand_km'].round(1)
-        ctrl_display['startlocation'] = ctrl_display['startlocation'].str.split(';').str[0]
-        ctrl_display['endlocation'] = ctrl_display['endlocation'].str.split(';').str[0]
-        st.dataframe(
-            ctrl_display.rename(columns={
-                'bestuurder': 'Bestuurder', 'personeelsnummer': 'Pers.nr',
-                'functie': 'Functie', 'datum': 'Datum',
-                'start': 'Start', 'eind': 'Eind',
-                'startlocation': 'Van', 'endlocation': 'Naar',
-                'afstand_km': 'Km', 'classificatie': 'Type', 'controle': 'Controle',
-            }).sort_values(['Datum', 'Bestuurder', 'Start']),
-            use_container_width=True,
-            hide_index=True,
-            height=400,
-        )
-else:
-    st.info("Geen ritten gevonden die extra controle vereisen.")
-
-
-# =====================================================================
-# DAGOVERZICHT PER BESTUURDER
-# =====================================================================
-
-st.markdown("---")
-st.subheader("Dagoverzicht per bestuurder")
-
-if sel_bestuurder != "Alle":
-    alle_ritten_bestuurder = trips[trips['bestuurder'] == sel_bestuurder].copy()
+    # Filter toepassen
+    data = trips.copy()
+    if sel_bestuurder != "Alle":
+        data = data[data['bestuurder'] == sel_bestuurder]
     if isinstance(date_range, tuple) and len(date_range) == 2:
-        alle_ritten_bestuurder = alle_ritten_bestuurder[
-            (alle_ritten_bestuurder['datum'] >= date_range[0]) &
-            (alle_ritten_bestuurder['datum'] <= date_range[1])
-        ]
-
-    dag_data = alle_ritten_bestuurder.sort_values('start')
-    dag_overzicht = dag_data.groupby('datum').agg(
-        ritten=('afstand_km', 'count'),
-        totaal_km=('afstand_km', 'sum'),
-        lb_km=('lb_km', 'sum'),
-        ob_km=('ob_km', 'sum'),
-        eerste_start=('start', 'first'),
-        laatste_eind=('eind', 'last'),
-        eerste_locatie=('startlocation', 'first'),
-        laatste_locatie=('endlocation', 'last'),
-    ).reset_index()
-
-    dag_overzicht['totaal_km'] = dag_overzicht['totaal_km'].round(1)
-    dag_overzicht['lb_km'] = dag_overzicht['lb_km'].round(1)
-    dag_overzicht['ob_km'] = dag_overzicht['ob_km'].round(1)
-    dag_overzicht['eerste_start'] = dag_overzicht['eerste_start'].dt.strftime('%H:%M')
-    dag_overzicht['laatste_eind'] = dag_overzicht['laatste_eind'].dt.strftime('%H:%M')
-
-    st.dataframe(
-        dag_overzicht.rename(columns={
-            'datum': 'Datum', 'ritten': 'Ritten',
-            'totaal_km': 'Totaal km', 'lb_km': 'LB km', 'ob_km': 'OB km',
-            'eerste_start': 'Start', 'laatste_eind': 'Eind',
-            'eerste_locatie': 'Vertrek', 'laatste_locatie': 'Aankomst',
-        }),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    with st.expander("Volledige rittenreeks (route-continuiteit)", expanded=False):
-        if sel_class != "Alle":
-            st.caption(f"Alle ritten getoond voor route-continuiteit. Ritten buiten filter '{sel_class}' zijn grijs.")
-        for datum, dag_trips in dag_data.groupby('datum'):
-            dag_sorted = dag_trips.sort_values('start')
-            st.markdown(f"**{datum}** ({len(dag_sorted)} ritten)")
-            rows = []
-            for _, r in dag_sorted.iterrows():
-                sp = str(r['startlocation']).split(';')[0].strip()
-                ep = str(r['endlocation']).split(';')[0].strip()
-                rows.append({
-                    'Tijd': f"{r['start'].strftime('%H:%M')}-{r['eind'].strftime('%H:%M')}",
-                    'Startpunt': sp, 'Eindpunt': ep,
-                    'Km': round(r['afstand_km'], 1),
-                    'Type': r['classificatie'], 'Route': r['route_type'],
-                    'Controle': r['controle'],
-                })
-            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-else:
-    per_best = data.groupby('bestuurder').agg(
-        ritten=('afstand_km', 'count'),
-        totaal_km=('afstand_km', 'sum'),
-        lb_km=('lb_km', 'sum'),
-        ob_km=('ob_km', 'sum'),
-    ).reset_index()
-    per_best['totaal_km'] = per_best['totaal_km'].round(0)
-    per_best['lb_km'] = per_best['lb_km'].round(0)
-    per_best['ob_km'] = per_best['ob_km'].round(0)
-    per_best = per_best.sort_values('totaal_km', ascending=False)
-    st.dataframe(
-        per_best.rename(columns={
-            'bestuurder': 'Bestuurder', 'ritten': 'Ritten',
-            'totaal_km': 'Totaal km', 'lb_km': 'LB km (prive)', 'ob_km': 'OB km (woon-werk)',
-        }),
-        use_container_width=True,
-        hide_index=True,
-    )
+        data = data[(data['datum'] >= date_range[0]) & (data['datum'] <= date_range[1])]
+    if sel_class != "Alle":
+        data = data[data['classificatie'] == sel_class]
 
 
-# =====================================================================
-# GEDETAILLEERDE RITTENTABEL
-# =====================================================================
+    # =====================================================================
+    # KPI'S + 500 KM GRENS
+    # =====================================================================
 
-st.markdown("---")
-st.subheader("Ritten detail")
-
-detail = data[[
-    'bestuurder', 'personeelsnummer', 'functie', 'datum', 'start', 'eind',
-    'startlocation', 'endlocation', 'afstand_km',
-    'start_type', 'eind_type', 'classificatie', 'route_type', 'controle',
-    'lb_km', 'ob_km', 'kenteken',
-]].copy()
-
-detail['start_tijd'] = detail['start'].dt.strftime('%H:%M')
-detail['eind_tijd'] = detail['eind'].dt.strftime('%H:%M')
-detail['afstand_km'] = detail['afstand_km'].round(1)
-detail['lb_km'] = detail['lb_km'].round(1)
-detail['ob_km'] = detail['ob_km'].round(1)
-detail['startpunt'] = detail['startlocation'].str.split(';').str[0]
-detail['eindpunt'] = detail['endlocation'].str.split(';').str[0]
-
-display_cols = {
-    'personeelsnummer': 'Pers.nr',
-    'bestuurder': 'Bestuurder',
-    'functie': 'Functie',
-    'datum': 'Datum',
-    'start_tijd': 'Start',
-    'eind_tijd': 'Eind',
-    'startpunt': 'Startpunt',
-    'eindpunt': 'Eindpunt',
-    'afstand_km': 'Km',
-    'classificatie': 'Classificatie',
-    'route_type': 'Route',
-    'controle': 'Controle',
-    'lb_km': 'LB km',
-    'ob_km': 'OB km',
-}
-
-st.dataframe(
-    detail[list(display_cols.keys())].rename(columns=display_cols).sort_values(
-        ['Datum', 'Bestuurder', 'Start']
-    ),
-    use_container_width=True,
-    hide_index=True,
-    height=500,
-)
+    st.markdown("---")
+    k1, k2, k3, k4, k5 = st.columns(5)
+    with k1:
+        st.metric("Totaal ritten", f"{len(data):,}")
+    with k2:
+        st.metric("Totaal km", f"{data['afstand_km'].sum():,.0f}")
+    with k3:
+        prive_km = data['lb_km'].sum()
+        st.metric("LB km (prive)", f"{prive_km:,.0f}")
+    with k4:
+        st.metric("OB km (woon-werk)", f"{data['ob_km'].sum():,.0f}")
+    with k5:
+        te_beoordelen = len(data[data['classificatie'] == 'Te beoordelen'])
+        st.metric("Te beoordelen", f"{te_beoordelen}")
 
 
-# =====================================================================
-# EXCEL EXPORT (Belastingdienst format)
-# =====================================================================
+    # =====================================================================
+    # PRIVE KM OVERZICHT PER BESTUURDER (500 km grens)
+    # =====================================================================
 
-st.markdown("---")
-st.subheader("Excel export (Belastingdienst format)")
+    st.markdown("---")
+    st.subheader("Prive km per bestuurder (500 km grens)")
 
-st.markdown("Export conform `wassink sheet.xlsx`. Personeelsnummer wordt gevuld vanuit Syntess/CSV mapping.")
-
-# Bouw export dataframe
-export = data[[
-    'bestuurder', 'personeelsnummer', 'start', 'eind',
-    'startlocation', 'endlocation', 'afstand_km',
-    'classificatie', 'route_type', 'lb_km', 'ob_km',
-]].copy()
-
-export['starttijd'] = export['start'].dt.strftime('%Y-%m-%d %H:%M')
-export['eindtijd'] = export['eind'].dt.strftime('%Y-%m-%d %H:%M')
-export['rechtstreeks_nr_huis'] = export['route_type'].apply(
-    lambda x: 'Ja' if x == 'Rechtstreeks' else ''
-)
-export['via_vestiging'] = export['route_type'].apply(
-    lambda x: 'Ja' if x == 'Via vestiging' else ''
-)
-export['tussenstop_prive'] = export['classificatie'].apply(
-    lambda x: 'Ja' if x == 'Prive' else ''
-)
-
-# Kolomvolgorde conform wassink sheet.xlsx
-excel_df = export[[
-    'personeelsnummer', 'bestuurder', 'starttijd', 'eindtijd',
-    'startlocation', 'endlocation', 'afstand_km',
-    'rechtstreeks_nr_huis', 'via_vestiging', 'tussenstop_prive',
-    'lb_km', 'ob_km',
-]].copy()
-
-excel_df.columns = [
-    'Personeelsnummer', 'Naam medewerker', 'Starttijd', 'Eindtijd',
-    'Startpunt', 'Eindpunt', 'Aantal km',
-    'Rechtstreeks nr huis', 'Via vestiging', 'Tussenstop overig (prive)',
-    'LB KM', 'OB km',
-]
-excel_df = excel_df.sort_values(['Naam medewerker', 'Starttijd'])
-
-# Excel met meerdere sheets
-buffer = io.BytesIO()
-with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-    excel_df.to_excel(writer, sheet_name='Ritclassificatie', index=False)
-
-    # Controles sheet: geflagde ritten
-    controle_export = data[data['controle'] != ''][[
-        'personeelsnummer', 'bestuurder', 'functie', 'datum',
-        'start', 'eind', 'startlocation', 'endlocation',
-        'afstand_km', 'classificatie', 'controle',
-    ]].copy()
-    controle_export['start'] = controle_export['start'].dt.strftime('%Y-%m-%d %H:%M')
-    controle_export['eind'] = controle_export['eind'].dt.strftime('%Y-%m-%d %H:%M')
-    controle_export['startlocation'] = controle_export['startlocation'].str.split(';').str[0]
-    controle_export['endlocation'] = controle_export['endlocation'].str.split(';').str[0]
-    controle_export.columns = [
-        'Personeelsnummer', 'Naam medewerker', 'Functie', 'Datum',
-        'Starttijd', 'Eindtijd', 'Startpunt', 'Eindpunt',
-        'Aantal km', 'Classificatie', 'Controle',
-    ]
-    controle_export.to_excel(writer, sheet_name='Controles', index=False)
-
-    # Samenvatting: prive km per bestuurder per maand
-    trips_met_maand = trips.copy()
-    trips_met_maand['maand'] = trips_met_maand['start'].dt.to_period('M').astype(str)
-    prive_maand = trips_met_maand.groupby(['bestuurder', 'personeelsnummer', 'maand']).agg(
+    prive_per_bestuurder = trips.groupby('bestuurder').agg(
+        personeelsnr=('personeelsnummer', 'first'),
+        functie=('functie', 'first'),
         prive_km=('lb_km', 'sum'),
         woonwerk_km=('ob_km', 'sum'),
         totaal_km=('afstand_km', 'sum'),
+        ritten=('afstand_km', 'count'),
     ).reset_index()
-    prive_maand['prive_km'] = prive_maand['prive_km'].round(1)
-    prive_maand['woonwerk_km'] = prive_maand['woonwerk_km'].round(1)
-    prive_maand['totaal_km'] = prive_maand['totaal_km'].round(0)
-    prive_maand.columns = [
-        'Naam medewerker', 'Personeelsnummer', 'Maand',
-        'Prive km (LB)', 'Woon-werk km (OB)', 'Totaal km',
-    ]
-    prive_maand.to_excel(writer, sheet_name='Samenvatting per maand', index=False)
 
-    # Controleregels referentie
-    regels_sheet = pd.DataFrame({
-        'Controle': [
-            'Prive na werktijd',
-            'Projectmonteurs controlevenster',
-            'Servicemonteurs controlevenster',
-            'Weekend',
-            '500 km grens',
-        ],
-        'Omschrijving': [
-            'Ritten van huis naar adres en terug na 16:30 doordeweeks',
-            'Werktijd 7:00-15:45. Controle ritten 05:45-07:30 en 15:15-17:00',
-            'Werktijd 8:00-17:00. Controle ritten 07:30-08:30 en 16:30-17:30',
-            'Alle ritten op zaterdag en zondag',
-            'Max 500 prive km per kalenderjaar (~41 km/maand)',
-        ],
-        'Bron': [
-            'Email Wassink 11 mrt 2026',
-            'Excel wassink sheet.xlsx',
-            'Excel wassink sheet.xlsx',
-            'Email Wassink 11 mrt 2026',
-            'Brief regels verklaring privegebruik',
-        ],
+    # Bereken percentage van 500 km grens
+    prive_per_bestuurder['prive_km'] = prive_per_bestuurder['prive_km'].round(1)
+    prive_per_bestuurder['woonwerk_km'] = prive_per_bestuurder['woonwerk_km'].round(1)
+    prive_per_bestuurder['totaal_km'] = prive_per_bestuurder['totaal_km'].round(0)
+    prive_per_bestuurder['% van 500 km'] = (prive_per_bestuurder['prive_km'] / 500 * 100).round(0)
+
+    # Bepaal aantal maanden in dataset voor maandgemiddelde
+    datum_range = trips['datum']
+    if len(datum_range) > 0:
+        import datetime
+        min_d = min(datum_range)
+        max_d = max(datum_range)
+        dagen = (max_d - min_d).days + 1
+        maanden = max(dagen / 30.44, 1)
+        prive_per_bestuurder['gem/maand'] = (prive_per_bestuurder['prive_km'] / maanden).round(1)
+        prive_per_bestuurder['prognose jaar'] = (prive_per_bestuurder['gem/maand'] * 12).round(0)
+
+    prive_per_bestuurder = prive_per_bestuurder.sort_values('prive_km', ascending=False)
+
+    def highlight_prive(row):
+        """Markeer rijen waar prive km te hoog is."""
+        prognose = row.get('prognose jaar', 0)
+        if prognose > 500:
+            return ['background-color: #ffcccc'] * len(row)
+        elif prognose > 400:
+            return ['background-color: #fff3cd'] * len(row)
+        return [''] * len(row)
+
+    display_prive = prive_per_bestuurder.rename(columns={
+        'bestuurder': 'Bestuurder',
+        'personeelsnr': 'Pers.nr',
+        'functie': 'Functie',
+        'prive_km': 'Prive km (LB)',
+        'woonwerk_km': 'Woon-werk km (OB)',
+        'totaal_km': 'Totaal km',
+        'ritten': 'Ritten',
+        '% van 500 km': '% van 500',
+        'gem/maand': 'Gem/maand',
+        'prognose jaar': 'Prognose jaar',
     })
-    regels_sheet.to_excel(writer, sheet_name='Controleregels', index=False)
 
-buffer.seek(0)
+    st.dataframe(
+        display_prive.style.apply(highlight_prive, axis=1),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.caption("Rood = jaarprognose > 500 km prive. Geel = > 400 km. Grens Belastingdienst: max 500 km prive/jaar (~41 km/maand).")
 
-st.download_button(
-    label="Download Excel (Belastingdienst format)",
-    data=buffer,
-    file_name="ritclassificatie_wassink.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    use_container_width=True,
-)
 
-with st.expander("Preview export (eerste 20 rijen)"):
-    st.dataframe(excel_df.head(20), use_container_width=True, hide_index=True)
+    # =====================================================================
+    # CLASSIFICATIE VERDELING
+    # =====================================================================
+
+    st.markdown("---")
+    col_chart, col_table = st.columns([2, 1])
+
+    with col_chart:
+        st.subheader("Verdeling classificaties")
+        class_counts = trips.groupby('classificatie').agg(
+            ritten=('afstand_km', 'count'),
+            km=('afstand_km', 'sum')
+        ).reset_index()
+        class_counts['km'] = class_counts['km'].round(0)
+        class_counts = class_counts.sort_values('ritten', ascending=False)
+        st.bar_chart(class_counts.set_index('classificatie')['ritten'], horizontal=True)
+
+    with col_table:
+        st.subheader("Samenvatting")
+        summary = class_counts.rename(columns={
+            'classificatie': 'Type', 'ritten': 'Ritten', 'km': 'Kilometers',
+        })
+        st.dataframe(summary, use_container_width=True, hide_index=True)
+
+
+    # =====================================================================
+    # CONTROLE-OVERZICHT (geflagde ritten)
+    # =====================================================================
+
+    st.markdown("---")
+    st.subheader("Controle-ritten (buiten werktijd / weekend / verlofdag)")
+
+    controle_ritten = data[data['controle'] != ''].copy()
+    if not controle_ritten.empty:
+        controle_summary = controle_ritten.groupby('controle').agg(
+            ritten=('afstand_km', 'count'),
+            km=('afstand_km', 'sum'),
+        ).reset_index().sort_values('ritten', ascending=False)
+        controle_summary['km'] = controle_summary['km'].round(1)
+        st.dataframe(
+            controle_summary.rename(columns={
+                'controle': 'Controle type', 'ritten': 'Ritten', 'km': 'Kilometers',
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        with st.expander(f"Alle controle-ritten ({len(controle_ritten)})", expanded=False):
+            ctrl_display = controle_ritten[[
+                'bestuurder', 'personeelsnummer', 'functie', 'datum',
+                'start', 'eind', 'startlocation', 'endlocation',
+                'afstand_km', 'classificatie', 'controle',
+            ]].copy()
+            ctrl_display['start'] = ctrl_display['start'].dt.strftime('%H:%M')
+            ctrl_display['eind'] = ctrl_display['eind'].dt.strftime('%H:%M')
+            ctrl_display['afstand_km'] = ctrl_display['afstand_km'].round(1)
+            ctrl_display['startlocation'] = ctrl_display['startlocation'].str.split(';').str[0]
+            ctrl_display['endlocation'] = ctrl_display['endlocation'].str.split(';').str[0]
+            st.dataframe(
+                ctrl_display.rename(columns={
+                    'bestuurder': 'Bestuurder', 'personeelsnummer': 'Pers.nr',
+                    'functie': 'Functie', 'datum': 'Datum',
+                    'start': 'Start', 'eind': 'Eind',
+                    'startlocation': 'Van', 'endlocation': 'Naar',
+                    'afstand_km': 'Km', 'classificatie': 'Type', 'controle': 'Controle',
+                }).sort_values(['Datum', 'Bestuurder', 'Start']),
+                use_container_width=True,
+                hide_index=True,
+                height=400,
+            )
+    else:
+        st.info("Geen ritten gevonden die extra controle vereisen.")
+
+
+    # =====================================================================
+    # DAGOVERZICHT PER BESTUURDER
+    # =====================================================================
+
+    st.markdown("---")
+    st.subheader("Dagoverzicht per bestuurder")
+
+    if sel_bestuurder != "Alle":
+        alle_ritten_bestuurder = trips[trips['bestuurder'] == sel_bestuurder].copy()
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            alle_ritten_bestuurder = alle_ritten_bestuurder[
+                (alle_ritten_bestuurder['datum'] >= date_range[0]) &
+                (alle_ritten_bestuurder['datum'] <= date_range[1])
+            ]
+
+        dag_data = alle_ritten_bestuurder.sort_values('start')
+        dag_overzicht = dag_data.groupby('datum').agg(
+            ritten=('afstand_km', 'count'),
+            totaal_km=('afstand_km', 'sum'),
+            lb_km=('lb_km', 'sum'),
+            ob_km=('ob_km', 'sum'),
+            eerste_start=('start', 'first'),
+            laatste_eind=('eind', 'last'),
+            eerste_locatie=('startlocation', 'first'),
+            laatste_locatie=('endlocation', 'last'),
+        ).reset_index()
+
+        dag_overzicht['totaal_km'] = dag_overzicht['totaal_km'].round(1)
+        dag_overzicht['lb_km'] = dag_overzicht['lb_km'].round(1)
+        dag_overzicht['ob_km'] = dag_overzicht['ob_km'].round(1)
+        dag_overzicht['eerste_start'] = dag_overzicht['eerste_start'].dt.strftime('%H:%M')
+        dag_overzicht['laatste_eind'] = dag_overzicht['laatste_eind'].dt.strftime('%H:%M')
+
+        st.dataframe(
+            dag_overzicht.rename(columns={
+                'datum': 'Datum', 'ritten': 'Ritten',
+                'totaal_km': 'Totaal km', 'lb_km': 'LB km', 'ob_km': 'OB km',
+                'eerste_start': 'Start', 'laatste_eind': 'Eind',
+                'eerste_locatie': 'Vertrek', 'laatste_locatie': 'Aankomst',
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+        with st.expander("Volledige rittenreeks (route-continuiteit)", expanded=False):
+            if sel_class != "Alle":
+                st.caption(f"Alle ritten getoond voor route-continuiteit. Ritten buiten filter '{sel_class}' zijn grijs.")
+            for datum, dag_trips in dag_data.groupby('datum'):
+                dag_sorted = dag_trips.sort_values('start')
+                st.markdown(f"**{datum}** ({len(dag_sorted)} ritten)")
+                rows = []
+                for _, r in dag_sorted.iterrows():
+                    sp = str(r['startlocation']).split(';')[0].strip()
+                    ep = str(r['endlocation']).split(';')[0].strip()
+                    rows.append({
+                        'Tijd': f"{r['start'].strftime('%H:%M')}-{r['eind'].strftime('%H:%M')}",
+                        'Startpunt': sp, 'Eindpunt': ep,
+                        'Km': round(r['afstand_km'], 1),
+                        'Type': r['classificatie'], 'Route': r['route_type'],
+                        'Controle': r['controle'],
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    else:
+        per_best = data.groupby('bestuurder').agg(
+            ritten=('afstand_km', 'count'),
+            totaal_km=('afstand_km', 'sum'),
+            lb_km=('lb_km', 'sum'),
+            ob_km=('ob_km', 'sum'),
+        ).reset_index()
+        per_best['totaal_km'] = per_best['totaal_km'].round(0)
+        per_best['lb_km'] = per_best['lb_km'].round(0)
+        per_best['ob_km'] = per_best['ob_km'].round(0)
+        per_best = per_best.sort_values('totaal_km', ascending=False)
+        st.dataframe(
+            per_best.rename(columns={
+                'bestuurder': 'Bestuurder', 'ritten': 'Ritten',
+                'totaal_km': 'Totaal km', 'lb_km': 'LB km (prive)', 'ob_km': 'OB km (woon-werk)',
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
+    # =====================================================================
+    # GEDETAILLEERDE RITTENTABEL
+    # =====================================================================
+
+    st.markdown("---")
+    st.subheader("Ritten detail")
+
+    detail = data[[
+        'bestuurder', 'personeelsnummer', 'functie', 'datum', 'start', 'eind',
+        'startlocation', 'endlocation', 'afstand_km',
+        'start_type', 'eind_type', 'classificatie', 'route_type', 'controle',
+        'lb_km', 'ob_km', 'kenteken',
+    ]].copy()
+
+    detail['start_tijd'] = detail['start'].dt.strftime('%H:%M')
+    detail['eind_tijd'] = detail['eind'].dt.strftime('%H:%M')
+    detail['afstand_km'] = detail['afstand_km'].round(1)
+    detail['lb_km'] = detail['lb_km'].round(1)
+    detail['ob_km'] = detail['ob_km'].round(1)
+    detail['startpunt'] = detail['startlocation'].str.split(';').str[0]
+    detail['eindpunt'] = detail['endlocation'].str.split(';').str[0]
+
+    display_cols = {
+        'personeelsnummer': 'Pers.nr',
+        'bestuurder': 'Bestuurder',
+        'functie': 'Functie',
+        'datum': 'Datum',
+        'start_tijd': 'Start',
+        'eind_tijd': 'Eind',
+        'startpunt': 'Startpunt',
+        'eindpunt': 'Eindpunt',
+        'afstand_km': 'Km',
+        'classificatie': 'Classificatie',
+        'route_type': 'Route',
+        'controle': 'Controle',
+        'lb_km': 'LB km',
+        'ob_km': 'OB km',
+    }
+
+    st.dataframe(
+        detail[list(display_cols.keys())].rename(columns=display_cols).sort_values(
+            ['Datum', 'Bestuurder', 'Start']
+        ),
+        use_container_width=True,
+        hide_index=True,
+        height=500,
+    )
+
+
+    # =====================================================================
+    # EXCEL EXPORT (Belastingdienst format)
+    # =====================================================================
+
+    st.markdown("---")
+    st.subheader("Excel export (Belastingdienst format)")
+
+    st.markdown("Export conform `wassink sheet.xlsx`. Personeelsnummer wordt gevuld vanuit Syntess/CSV mapping.")
+
+    # Bouw export dataframe
+    export = data[[
+        'bestuurder', 'personeelsnummer', 'start', 'eind',
+        'startlocation', 'endlocation', 'afstand_km',
+        'classificatie', 'route_type', 'lb_km', 'ob_km',
+    ]].copy()
+
+    export['starttijd'] = export['start'].dt.strftime('%Y-%m-%d %H:%M')
+    export['eindtijd'] = export['eind'].dt.strftime('%Y-%m-%d %H:%M')
+    export['rechtstreeks_nr_huis'] = export['route_type'].apply(
+        lambda x: 'Ja' if x == 'Rechtstreeks' else ''
+    )
+    export['via_vestiging'] = export['route_type'].apply(
+        lambda x: 'Ja' if x == 'Via vestiging' else ''
+    )
+    export['tussenstop_prive'] = export['classificatie'].apply(
+        lambda x: 'Ja' if x == 'Prive' else ''
+    )
+
+    # Kolomvolgorde conform wassink sheet.xlsx
+    excel_df = export[[
+        'personeelsnummer', 'bestuurder', 'starttijd', 'eindtijd',
+        'startlocation', 'endlocation', 'afstand_km',
+        'rechtstreeks_nr_huis', 'via_vestiging', 'tussenstop_prive',
+        'lb_km', 'ob_km',
+    ]].copy()
+
+    excel_df.columns = [
+        'Personeelsnummer', 'Naam medewerker', 'Starttijd', 'Eindtijd',
+        'Startpunt', 'Eindpunt', 'Aantal km',
+        'Rechtstreeks nr huis', 'Via vestiging', 'Tussenstop overig (prive)',
+        'LB KM', 'OB km',
+    ]
+    excel_df = excel_df.sort_values(['Naam medewerker', 'Starttijd'])
+
+    # Excel met meerdere sheets
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        excel_df.to_excel(writer, sheet_name='Ritclassificatie', index=False)
+
+        # Controles sheet: geflagde ritten
+        controle_export = data[data['controle'] != ''][[
+            'personeelsnummer', 'bestuurder', 'functie', 'datum',
+            'start', 'eind', 'startlocation', 'endlocation',
+            'afstand_km', 'classificatie', 'controle',
+        ]].copy()
+        controle_export['start'] = controle_export['start'].dt.strftime('%Y-%m-%d %H:%M')
+        controle_export['eind'] = controle_export['eind'].dt.strftime('%Y-%m-%d %H:%M')
+        controle_export['startlocation'] = controle_export['startlocation'].str.split(';').str[0]
+        controle_export['endlocation'] = controle_export['endlocation'].str.split(';').str[0]
+        controle_export.columns = [
+            'Personeelsnummer', 'Naam medewerker', 'Functie', 'Datum',
+            'Starttijd', 'Eindtijd', 'Startpunt', 'Eindpunt',
+            'Aantal km', 'Classificatie', 'Controle',
+        ]
+        controle_export.to_excel(writer, sheet_name='Controles', index=False)
+
+        # Samenvatting: prive km per bestuurder per maand
+        trips_met_maand = trips.copy()
+        trips_met_maand['maand'] = trips_met_maand['start'].dt.to_period('M').astype(str)
+        prive_maand = trips_met_maand.groupby(['bestuurder', 'personeelsnummer', 'maand']).agg(
+            prive_km=('lb_km', 'sum'),
+            woonwerk_km=('ob_km', 'sum'),
+            totaal_km=('afstand_km', 'sum'),
+        ).reset_index()
+        prive_maand['prive_km'] = prive_maand['prive_km'].round(1)
+        prive_maand['woonwerk_km'] = prive_maand['woonwerk_km'].round(1)
+        prive_maand['totaal_km'] = prive_maand['totaal_km'].round(0)
+        prive_maand.columns = [
+            'Naam medewerker', 'Personeelsnummer', 'Maand',
+            'Prive km (LB)', 'Woon-werk km (OB)', 'Totaal km',
+        ]
+        prive_maand.to_excel(writer, sheet_name='Samenvatting per maand', index=False)
+
+        # Controleregels referentie
+        regels_sheet = pd.DataFrame({
+            'Controle': [
+                'Prive na werktijd',
+                'Projectmonteurs controlevenster',
+                'Servicemonteurs controlevenster',
+                'Weekend',
+                '500 km grens',
+            ],
+            'Omschrijving': [
+                'Ritten van huis naar adres en terug na 16:30 doordeweeks',
+                'Werktijd 7:00-15:45. Controle ritten 05:45-07:30 en 15:15-17:00',
+                'Werktijd 8:00-17:00. Controle ritten 07:30-08:30 en 16:30-17:30',
+                'Alle ritten op zaterdag en zondag',
+                'Max 500 prive km per kalenderjaar (~41 km/maand)',
+            ],
+            'Bron': [
+                'Email Wassink 11 mrt 2026',
+                'Excel wassink sheet.xlsx',
+                'Excel wassink sheet.xlsx',
+                'Email Wassink 11 mrt 2026',
+                'Brief regels verklaring privegebruik',
+            ],
+        })
+        regels_sheet.to_excel(writer, sheet_name='Controleregels', index=False)
+
+    buffer.seek(0)
+
+    st.download_button(
+        label="Download Excel (Belastingdienst format)",
+        data=buffer,
+        file_name="ritclassificatie_wassink.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+
+    with st.expander("Preview export (eerste 20 rijen)"):
+        st.dataframe(excel_df.head(20), use_container_width=True, hide_index=True)
+
+
+# =====================================================================
+# TAB: UITLEG & AANNAMES
+# =====================================================================
+
+with tab_uitleg:
+
+    # --- WERKING ---
+    st.header("Werking")
+
+    st.markdown("""
+    **Dataflow:**
+    1. Ritgegevens worden opgehaald uit de **C-Track DWH** (PostgreSQL) — tabel `stg.stg_vehicle_trips_detailed`
+    2. Medewerkergegevens (personeelsnummer, functie, thuisadres) komen uit de **Syntess DWH** (Azure SQL) — tabel `stam.Medewerkers`
+    3. Verlof- en ziektedagen komen uit Syntess — tabel `uren.Geboekte Uren` (gefilterd op verlof-taakcodes)
+    4. De koppeling bestuurder ↔ medewerker loopt via fuzzy matching op achternaam + voornaam
+
+    **Locatieherkenning (3 lagen):**
+    1. **C-Track labels** — locaties met prefix `Thuis`, `Vestiging`, `Project`, `Opdrachtgever`
+    2. **Syntess thuisadres** — als C-Track een locatie als 'Overig' labelt maar het straatnaam (uit Syntess) matcht → `Thuis`
+    3. **Eerste/laatste rit** — de eerste rit van de dag per bestuurder wordt als vertrek vanuit huis behandeld; de laatste rit als aankomst thuis
+
+    **Verlofdag-integratie:**
+    - Verlof- en ziektedagen worden opgehaald uit Syntess op basis van taakcodes (snipper, ADV, ziek, etc.)
+    - Alle ritten op een verlofdag worden automatisch als **Prive** geclassificeerd
+    - Deze ritten krijgen een controle-flag met het verloftype
+    """)
+
+    # --- KADERS WASSINK ---
+    st.header("Kaders Wassink")
+
+    st.markdown("""
+    **Bron:** Email Wassink 11 maart 2026 + Excel `wassink sheet.xlsx`
+
+    **Werktijden per functie:**
+    | Functie | Werktijd | Controlevenster ochtend | Controlevenster middag |
+    |---------|----------|------------------------|----------------------|
+    | Projectmonteur | 07:00 - 15:45 | 05:45 - 07:30 | 15:15 - 17:00 |
+    | Servicemonteur | 08:00 - 17:00 | 07:30 - 08:30 | 16:30 - 17:30 |
+
+    **Regels:**
+    - Vertrek ochtend is altijd vanaf huis
+    - LB km = prive-kilometers (doel: < 500 km/jaar, ~41 km/maand)
+    - OB km = woon-werk kilometers
+    - Weekenden: alle ritten zonder werklocatie zijn prive
+    - Prive-tussenstop maakt de volledige rit prive (brief regels)
+    - Controle buiten werktijd: 16:30 - 08:00
+
+    **Wassink vestigingen:**
+    - Winterswijk — Snelliusstraat 11, 7102 ED
+    - Doetinchem — Fabrieksstraat 39-07, 7005 AP
+    """)
+
+    # --- LIJSTWERK ---
+    st.header("Lijstwerk")
+
+    st.subheader("Classificatieregels")
+    st.dataframe(pd.DataFrame({
+        'Prioriteit': [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        'Regel': [
+            'Verlofdag → Prive',
+            'Thuis collega → Zakelijk',
+            'Thuis → Thuis → Prive',
+            'Weekend zonder werklocatie → Prive',
+            'Thuis ↔ Werklocatie → Woon-werk',
+            'Werklocatie ↔ Werklocatie → Zakelijk',
+            'Werklocatie ↔ Overig → Zakelijk',
+            'Buiten werktijd zonder werklocatie → Prive',
+            'Overig ↔ Overig doordeweeks → Zakelijk',
+            'Thuis ↔ Overig doordeweeks → Woon-werk',
+        ],
+        'Toelichting': [
+            'Syntess verlof/ziekte → alle ritten prive',
+            'Ophalen/afzetten collega = dienst',
+            'Korte rit rondom huis = prive',
+            'Za/zo zonder project/vestiging = prive',
+            'Thuis naar vestiging/project/opdrachtgever',
+            'Vestiging ↔ project, project ↔ project',
+            'Serviceadres, klantbezoek',
+            'Na 16:30 of voor 08:00 zonder werklocatie',
+            'Onbekend adres tijdens werktijd = zakelijk',
+            'Naar serviceadres vanuit huis',
+        ],
+    }), use_container_width=True, hide_index=True)
+
+    st.subheader("Verlof-taakcodes (Syntess)")
+    verlof_codes = pd.DataFrame({
+        'Code': list(VERLOF_TAAK_CODES.keys()),
+        'Omschrijving': list(VERLOF_TAAK_CODES.values()),
+    })
+    st.dataframe(verlof_codes, use_container_width=True, hide_index=True)
+
+    st.subheader("Aannames")
+    st.markdown("""
+    1. De eerste rit van de dag per bestuurder is altijd vertrek vanuit huis
+    2. De laatste rit van de dag eindigt altijd thuis
+    3. Locaties die niet door C-Track als 'Thuis' worden herkend maar wel matchen op Syntess-thuisadres worden als 'Thuis' behandeld
+    4. Monteur / Elektromonteur / Hulpmonteur worden behandeld als **Projectmonteur** (werktijd 07:00-15:45)
+    5. Bestuurders zonder functie-koppeling krijgen het standaard controlevenster (08:00-16:30)
+    6. Prive-km teller loopt per kalenderjaar (reset 1 januari)
+    7. Fuzzy matching op achternaam: als dezelfde achternaam in C-Track en Syntess voorkomt, worden ze gekoppeld
+    """)
+
+    st.subheader("Databronnen")
+    st.dataframe(pd.DataFrame({
+        'Bron': ['C-Track DWH', 'C-Track DWH', 'Syntess DWH', 'Syntess DWH'],
+        'Tabel': [
+            'stg.stg_vehicle_trips_detailed',
+            'stg.stg_ctrack_vehicles',
+            'stam.Medewerkers',
+            'uren.Geboekte Uren',
+        ],
+        'Gegevens': [
+            'Ritten (start, eind, locatie, km, bestuurder)',
+            'Voertuigen (kenteken, nodeid)',
+            'Medewerkers (personeelsnummer, naam, functie, adres)',
+            'Verlof- en ziektedagen (taakcodes, datum)',
+        ],
+        'Frequentie': ['Dagelijks', 'Dagelijks', 'Dagelijks', 'Dagelijks'],
+    }), use_container_width=True, hide_index=True)
