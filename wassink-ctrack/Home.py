@@ -6,7 +6,7 @@ from datetime import timedelta
 import sys, os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from src.database import load_trips, load_vehicles
+from src.database import load_trips, load_vehicles, check_connections
 from src.auth import check_password
 
 st.set_page_config(
@@ -24,6 +24,19 @@ show_logo()
 
 st.title("Wassink Vlootbeheer Dashboard")
 st.caption("C-Track voertuig- en ritdata | Wassink 1225")
+
+# --- Connection status in sidebar ---
+with st.sidebar:
+    st.markdown("---")
+    st.subheader("Koppelingen")
+    conn_status = check_connections()
+    for naam, label in [('ctrack', 'C-Track DWH'), ('syntess', 'Syntess DWH')]:
+        s = conn_status[naam]
+        icon = "🟢" if s['ok'] else "🔴"
+        st.markdown(f"{icon} **{label}**")
+        st.caption(f"{s['bron']}")
+        if s['detail']:
+            st.caption(s['detail'])
 
 # Load data
 try:

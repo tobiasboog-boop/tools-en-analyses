@@ -656,6 +656,62 @@ class NotificaDataSource:
 
 
 # =============================================================================
+# DirectDWHDataSource — Directe Azure SQL verbinding (bypass API)
+# =============================================================================
+
+class DirectDWHDataSource(NotificaDataSource):
+    """Data source via directe Azure SQL verbinding naar Syntess DWH.
+
+    Gebruikt dezelfde SQL queries als NotificaDataSource, maar connecteert
+    direct via pyodbc in plaats van de Notifica API.
+    Fallback als de API niet beschikbaar is.
+    """
+
+    def __init__(self, klantnummer: str):
+        # Skip NotificaDataSource.__init__ — we gebruiken geen API client
+        self.klantnummer = int(klantnummer)
+        self._conn = None
+
+        password = os.getenv('SYNTESS_DB_PASSWORD', '')
+        if not password:
+            raise ValueError("SYNTESS_DB_PASSWORD niet gevonden in .env")
+
+        import pyodbc
+        self._conn_str = (
+            "DRIVER={ODBC Driver 17 for SQL Server};"
+            "SERVER=bisqq.database.windows.net,1433;"
+            f"DATABASE={klantnummer}DWH;"
+            "UID=server_admin;"
+            f"PWD={password};"
+            "Encrypt=yes;"
+            "TrustServerCertificate=no;"
+            "Connection Timeout=30;"
+        )
+
+    def _query(self, sql: str) -> pd.DataFrame:
+        """Execute SQL direct op Azure SQL DWH."""
+        import pyodbc
+        conn = pyodbc.connect(self._conn_str)
+        cur = conn.cursor()
+        cur.execute(sql)
+        columns = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+        conn.close()
+        df = pd.DataFrame.from_records(rows, columns=columns)
+        for col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='ignore')
+        return df
+
+    def test_connection(self) -> bool:
+        try:
+            self._query("SELECT 1 as test")
+            return True
+        except Exception as e:
+            print(f"Direct DWH connection failed: {e}")
+            return False
+
+
+# =============================================================================
 # MockDatabase — Demo modus
 # =============================================================================
 
@@ -814,9 +870,9 @@ class FailedConnectionDatabase:
 # Factory function
 # =============================================================================
 
-def get_database(use_mock: bool = True, customer_code: Optional[str] = None) -> Union[NotificaDataSource, MockDatabase, FailedConnectionDatabase]:
+def get_database(use_mock: bool = True, customer_code: Optional[str] = None) -> Union[NotificaDataSource, DirectDWHDataSource, MockDatabase, FailedConnectionDatabase]:
     """
-    Factory: Notifica API of MockDatabase.
+    Factory: Direct DWH → Notifica API → MockDatabase.
 
     Args:
         use_mock: True = demo data
@@ -830,6 +886,17 @@ def get_database(use_mock: bool = True, customer_code: Optional[str] = None) -> 
         print("[WARNING] Geen klantnummer, gebruik demo data")
         return MockDatabase()
 
+    # Probeer directe DWH-verbinding eerst (sneller, geen API overhead)
+    if os.getenv('SYNTESS_DB_PASSWORD'):
+        try:
+            db = DirectDWHDataSource(klantnummer)
+            if db.test_connection():
+                print(f"[SUCCESS] Verbonden via directe DWH voor klant {klantnummer}")
+                return db
+        except Exception as e:
+            print(f"[INFO] Directe DWH niet beschikbaar: {e}")
+
+    # Fallback: Notifica API
     try:
         db = NotificaDataSource(klantnummer)
         if db.test_connection():
