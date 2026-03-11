@@ -203,7 +203,8 @@ class NotificaDataSource:
             adm_filter = f'AND adm."Administratie" = {_sql_str(administratie)}'
             adm_join = 'JOIN stam."Administraties" adm ON dag."AdministratieKey" = adm."AdministratieKey"'
         else:
-            return pd.DataFrame({"week_start": [], "week_nummer": [], "maand": [], "inkomsten": [], "uitgaven": [], "netto": []})
+            adm_filter = ""
+            adm_join = ""
 
         sql = f"""
         SELECT
@@ -241,10 +242,8 @@ class NotificaDataSource:
             einddatum = date.today()
         if startdatum is None:
             startdatum = date(einddatum.year - 2, einddatum.month, 1)
-        if not administratie:
-            return pd.DataFrame({"debiteur_code": [], "aantal_facturen": [], "gem_dagen_tot_betaling": [],
-                                 "std_dagen_tot_betaling": [], "min_dagen": [], "max_dagen": [],
-                                 "totaal_factuurbedrag": [], "laatste_betaling": [], "betrouwbaarheid": []})
+
+        adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
 
         sql = f"""
         WITH betaalde_facturen AS (
@@ -260,7 +259,7 @@ class NotificaDataSource:
             LEFT JOIN notifica."SSM Administraties" a ON be."AdministratieKey" = a."AdministratieKey"
             WHERE vft."Alloc_datum" >= {_sql_date(startdatum)}
               AND vft."Alloc_datum" <= {_sql_date(einddatum)}
-              AND a."Administratie" = {_sql_str(administratie)}
+              {adm_filter}
             GROUP BY vft."Debiteur", vft."VerkoopfactuurDocumentKey"
             HAVING ABS(SUM(vft."Bedrag")) < 0.01 AND COUNT(*) >= 2
         ),
@@ -305,38 +304,35 @@ class NotificaDataSource:
             einddatum = date.today()
         if startdatum is None:
             startdatum = date(einddatum.year - 2, einddatum.month, 1)
-        if not administratie:
-            return pd.DataFrame({"crediteur_code": [], "aantal_facturen": [], "gem_dagen_tot_betaling": [],
-                                 "std_dagen_tot_betaling": [], "totaal_factuurbedrag": [],
-                                 "laatste_betaling": [], "betrouwbaarheid": []})
+
+        adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
 
         sql = f"""
         WITH betaalde_facturen AS (
             SELECT
-                ift."Crediteur" as crediteur_code,
-                ift."InkoopFactuurKey" as factuur_key,
-                MIN(ift."Alloc_datum") as factuurdatum,
-                MAX(ift."Alloc_datum") as betaaldatum,
-                ABS(SUM(CASE WHEN ift."Bedrag" > 0 THEN ift."Bedrag" ELSE 0 END)) as factuurbedrag
-            FROM notifica."SSM Inkoopfactuur termijnen" ift
-            LEFT JOIN notifica."SSM Documenten" d ON ift."InkoopFactuurKey" = d."DocumentKey"
-            LEFT JOIN notifica."SSM Bedrijfseenheden" be ON d."BedrijfseenheidKey"::bigint = be."BedrijfseenheidKey"
-            LEFT JOIN notifica."SSM Administraties" a ON be."AdministratieKey" = a."AdministratieKey"
-            WHERE ift."Alloc_datum" >= {_sql_date(startdatum)}
-              AND ift."Alloc_datum" <= {_sql_date(einddatum)}
-              AND ift."Bankafschrift status" = 'Betaald'
-              AND a."Administratie" = {_sql_str(administratie)}
-            GROUP BY ift."Crediteur", ift."InkoopFactuurKey"
-            HAVING COUNT(*) >= 2
+                b."Crediteur" as crediteur_code,
+                b."Vervaldatum" as vervaldatum,
+                b."Betaaldatum" as betaaldatum,
+                ABS(b."BetaaldExclBTW") as factuurbedrag
+            FROM notifica."SSM Betalingen per inkoopregel" b
+            LEFT JOIN notifica."SSM Administraties" a ON b."AdministratieKey" = a."AdministratieKey"
+            WHERE b."Betaaldatum" IS NOT NULL
+              AND b."Vervaldatum" IS NOT NULL
+              AND b."Betaaldatum" >= {_sql_date(startdatum)}
+              AND b."Betaaldatum" <= {_sql_date(einddatum)}
+              AND ABS(b."BetaaldExclBTW") > 0
+              {adm_filter}
         ),
         crediteur_stats AS (
-            SELECT crediteur_code, COUNT(*) as aantal_facturen,
-                AVG(EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400) as gem_dagen_tot_betaling,
-                STDDEV(EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400) as std_dagen_tot_betaling,
+            SELECT
+                crediteur_code,
+                COUNT(*) as aantal_facturen,
+                AVG(EXTRACT(EPOCH FROM (betaaldatum - vervaldatum)) / 86400) as gem_dagen_tot_betaling,
+                STDDEV(EXTRACT(EPOCH FROM (betaaldatum - vervaldatum)) / 86400) as std_dagen_tot_betaling,
                 SUM(factuurbedrag) as totaal_factuurbedrag,
                 MAX(betaaldatum) as laatste_betaling
             FROM betaalde_facturen
-            WHERE EXTRACT(EPOCH FROM (betaaldatum - factuurdatum)) / 86400 BETWEEN 0 AND 365
+            WHERE EXTRACT(EPOCH FROM (betaaldatum - vervaldatum)) / 86400 BETWEEN -90 AND 365
             GROUP BY crediteur_code HAVING COUNT(*) >= 2
         )
         SELECT crediteur_code, aantal_facturen,
@@ -361,8 +357,9 @@ class NotificaDataSource:
             einddatum = date.today()
         if startdatum is None:
             startdatum = date(einddatum.year - 1, einddatum.month, 1)
-        if not administratie:
-            return pd.DataFrame({"maand": [], "kostensoort": [], "bedrag": []})
+
+        adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
+        adm_join = 'JOIN notifica."SSM Administraties" a ON j."AdministratieKey" = a."AdministratieKey"' if administratie else ""
 
         sql = f"""
         SELECT
@@ -378,12 +375,12 @@ class NotificaDataSource:
             SUM(CASE WHEN j."Debet/Credit" = 'C' THEN j."Bedrag" ELSE 0 END) as bedrag
         FROM financieel."Journaalregels" j
         JOIN financieel."Rubrieken" rub ON j."RubriekKey" = rub."RubriekKey"
-        JOIN notifica."SSM Administraties" a ON j."AdministratieKey" = a."AdministratieKey"
+        {adm_join}
         WHERE j."Boekdatum" >= {_sql_date(startdatum)}
           AND j."Boekdatum" < {_sql_date(einddatum)}
           AND (rub."Rubriek Code" LIKE '4%%' OR rub."Rubriek Code" LIKE '61%%'
                OR rub."Rubriek Code" LIKE '62%%' OR rub."Rubriek Code" LIKE '65%%')
-          AND a."Administratie" = {_sql_str(administratie)}
+          {adm_filter}
         GROUP BY DATE_TRUNC('month', j."Boekdatum"), kostensoort
         ORDER BY maand
         """
@@ -497,13 +494,14 @@ class NotificaDataSource:
 
         sql = f"""
         SELECT
-            DATE_TRUNC('month', btw."Boekdatum") as maand,
-            SUM(btw."Bedrag BTW") as btw_bedrag,
+            DATE_TRUNC('month', d."Boekdatum") as maand,
+            SUM(btw."BTW bedrag") as btw_bedrag,
             COUNT(*) as aantal_regels
         FROM financieel."BTW aangifteregels" btw
-        WHERE btw."Boekdatum" >= {_sql_date(startdatum)}
-          AND btw."Boekdatum" < {_sql_date(einddatum)}
-        GROUP BY DATE_TRUNC('month', btw."Boekdatum")
+        JOIN stam."Documenten" d ON btw."FactuurDocumentKey" = d."DocumentKey"
+        WHERE d."Boekdatum" >= {_sql_date(startdatum)}
+          AND d."Boekdatum" < {_sql_date(einddatum)}
+        GROUP BY DATE_TRUNC('month', d."Boekdatum")
         ORDER BY maand
         """
         try:
@@ -513,7 +511,11 @@ class NotificaDataSource:
             return pd.DataFrame({"maand": [], "btw_bedrag": [], "aantal_regels": []})
 
     def get_salarishistorie(self, startdatum: date = None, einddatum: date = None) -> pd.DataFrame:
-        """Salarishistorie per maand voor vakantiegeld/13e maand detectie."""
+        """Salarishistorie per maand via journaalboekingen op personeelskostenrubrieken (4xxx).
+
+        Zenith/Syntess heeft geen apart salarismodule — salaris wordt geboekt
+        op rubrieken die beginnen met '4' (personeelskosten).
+        """
         if einddatum is None:
             einddatum = date.today()
         if startdatum is None:
@@ -521,13 +523,16 @@ class NotificaDataSource:
 
         sql = f"""
         SELECT
-            DATE_TRUNC('month', sh."Datum") as maand,
-            SUM(sh."Bedrag") as salaris_bedrag,
-            COUNT(DISTINCT sh."MedewerkerKey") as aantal_medewerkers
-        FROM financieel."Salarishistorie" sh
-        WHERE sh."Datum" >= {_sql_date(startdatum)}
-          AND sh."Datum" < {_sql_date(einddatum)}
-        GROUP BY DATE_TRUNC('month', sh."Datum")
+            DATE_TRUNC('month', j."Boekdatum") as maand,
+            SUM(CASE WHEN j."Debet/Credit" = 'D' THEN j."Bedrag" ELSE 0 END) -
+            SUM(CASE WHEN j."Debet/Credit" = 'C' THEN j."Bedrag" ELSE 0 END) as salaris_bedrag,
+            0 as aantal_medewerkers
+        FROM financieel."Journaalregels" j
+        JOIN financieel."Rubrieken" rub ON j."RubriekKey" = rub."RubriekKey"
+        WHERE j."Boekdatum" >= {_sql_date(startdatum)}
+          AND j."Boekdatum" < {_sql_date(einddatum)}
+          AND rub."Rubriek Code" LIKE '4%%'
+        GROUP BY DATE_TRUNC('month', j."Boekdatum")
         ORDER BY maand
         """
         try:
@@ -563,22 +568,22 @@ class NotificaDataSource:
             return pd.DataFrame({"datum": [], "budget_bedrag": [], "rubriek": [], "rubriek_code": []})
 
     def get_orderportefeuille(self, administratie: str = None) -> pd.DataFrame:
-        """Openstaande orders (orderportefeuille)."""
+        """Openstaande orders (orderportefeuille) via eenmalige orderregels + projecten."""
         adm_filter = f'AND a."Administratie" = {_sql_str(administratie)}' if administratie else ""
 
         sql = f"""
         SELECT
-            o."Order" as order_code,
-            o."Opleverdatum" as opleverdatum,
-            o."Einddatum" as einddatum,
-            o."Orderbedrag" as orderbedrag,
-            p."Projectstatus" as status
-        FROM stam."Orders" o
-        LEFT JOIN projecten."Projecten" p ON o."ProjectKey" = p."ProjectKey"
-        LEFT JOIN notifica."SSM Administraties" a ON o."AdministratieKey" = a."AdministratieKey"
-        WHERE o."Orderbedrag" > 0
+            eor."Document code" as order_code,
+            eor."FactureerDatum" as opleverdatum,
+            p."Einddatum" as einddatum,
+            eor."TotaalRegelbedrag Excl. BTW" as orderbedrag,
+            p."Status" as status
+        FROM projecten."Eenmalige Orderregels" eor
+        LEFT JOIN projecten."Projecten" p ON eor."ProjectKey" = p."ProjectKey"
+        LEFT JOIN notifica."SSM Administraties" a ON eor."AdministratieKey" = a."AdministratieKey"
+        WHERE eor."TotaalRegelbedrag Excl. BTW" > 0
           {adm_filter}
-        ORDER BY o."Opleverdatum"
+        ORDER BY eor."FactureerDatum"
         """
         try:
             return self._query(sql)
@@ -625,20 +630,147 @@ class NotificaDataSource:
 
         sql = f"""
         SELECT
-            sp."Verwachte factuurdatum" as verwachte_factuurdatum,
-            sp."Verwacht bedrag" as verwacht_bedrag,
-            sp."Orderstatus" as status
+            sp."Factureerdatum" as verwachte_factuurdatum,
+            sp."Factureerbedrag excl. BTW" as verwacht_bedrag,
+            sp."document status" as status
         FROM service."Service Orders Prognose" sp
         LEFT JOIN notifica."SSM Administraties" a ON sp."AdministratieKey" = a."AdministratieKey"
-        WHERE sp."Verwachte factuurdatum" >= CURRENT_DATE
+        WHERE sp."Factureerdatum" >= CURRENT_DATE
           {adm_filter}
-        ORDER BY sp."Verwachte factuurdatum"
+        ORDER BY sp."Factureerdatum"
         """
         try:
             return self._query(sql)
         except Exception as e:
             print(f"Error fetching service orders prognose: {e}")
             return pd.DataFrame({"verwachte_factuurdatum": [], "verwacht_bedrag": [], "status": []})
+
+    # =========================================================================
+    # NIEUW: Orderregels, Abonnementen, BTW Prognose
+    # =========================================================================
+
+    def get_orderregels_periodiek(self, administratie: str = None) -> pd.DataFrame:
+        """Periodieke orderregels: terugkerende facturatie per project (huur, onderhoud, etc.)."""
+        adm_filter = f'AND por."AdministratieKey" IN (SELECT "AdministratieKey" FROM notifica."SSM Administraties" WHERE "Administratie" = {_sql_str(administratie)})' if administratie else ""
+
+        sql = f"""
+        SELECT
+            por."OrderDocumentKey",
+            por."ProjectKey",
+            por."Geplande factureerdatum" as geplande_factuurdatum,
+            por."Werkelijk factuurdatum" as werkelijke_factuurdatum,
+            por."Brutoprijs per eenheid" as prijs_per_eenheid,
+            por."Aantal" as aantal,
+            por."Kalendereenheid" as kalendereenheid,
+            por."Aantal kalendereenheden" as aantal_periodes,
+            por."Ingangsdatum index" as ingangsdatum,
+            por."Einddatum" as einddatum,
+            por."Omschrijving" as omschrijving,
+            (por."Brutoprijs per eenheid" * por."Aantal" * por."Kortingfactor" * por."BTWfactor") as regelbedrag
+        FROM projecten."Periodieke Orderregels" por
+        WHERE por."Geplande factureerdatum" IS NOT NULL
+          AND por."Brutoprijs per eenheid" > 0
+          {adm_filter}
+        ORDER BY por."Geplande factureerdatum"
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching periodieke orderregels: {e}")
+            return pd.DataFrame()
+
+    def get_orderregels_eenmalig(self, administratie: str = None) -> pd.DataFrame:
+        """Eenmalige orderregels: projectfacturatie met verwachte factuurdatum."""
+        adm_filter = f'AND eor."AdministratieKey" IN (SELECT "AdministratieKey" FROM notifica."SSM Administraties" WHERE "Administratie" = {_sql_str(administratie)})' if administratie else ""
+
+        sql = f"""
+        SELECT
+            eor."OrderDocumentKey",
+            eor."ProjectKey",
+            eor."FactureerDatum" as factuurdatum,
+            eor."TotaalRegelbedrag Excl. BTW" as totaalbedrag,
+            eor."Nog te factureren excl. BTW" as nog_te_factureren,
+            eor."Document status" as status,
+            eor."Omschrijving" as omschrijving
+        FROM projecten."Eenmalige Orderregels" eor
+        WHERE eor."Nog te factureren excl. BTW" > 0
+          {adm_filter}
+        ORDER BY eor."FactureerDatum"
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching eenmalige orderregels: {e}")
+            return pd.DataFrame()
+
+    def get_abonnementen(self, administratie: str = None) -> pd.DataFrame:
+        """Actieve abonnementen: recurring revenue uit servicecontracten."""
+        adm_filter = f'AND ab."AdministratieKey" IN (SELECT "AdministratieKey" FROM notifica."SSM Administraties" WHERE "Administratie" = {_sql_str(administratie)})' if administratie else ""
+
+        sql = f"""
+        SELECT
+            ab."AbonnementKey",
+            ab."Abonnementcode" as code,
+            ab."Abonnement omschrijving" as omschrijving,
+            ab."Status" as status,
+            ab."Facturatie plandatum" as facturatie_plandatum,
+            ab."Facturatiebedrag per eenheid" as bedrag_per_eenheid,
+            ab."Facturatie Aantal" as facturatie_aantal,
+            ab."Fin. aantal kal.eenheden" as aantal_periodes,
+            ab."financieel kalendereenheid" as kalendereenheid,
+            ab."Ingangsdatum" as ingangsdatum,
+            ab."Einddatum" as einddatum,
+            (ab."Facturatiebedrag per eenheid" * ab."Facturatie Aantal") as facturatiebedrag
+        FROM financieel."Abonnementen" ab
+        WHERE ab."Status" NOT IN ('Vervallen', 'Opgezegd', 'Beëindigd')
+          AND (ab."Einddatum" IS NULL OR ab."Einddatum" >= CURRENT_DATE)
+          {adm_filter}
+        ORDER BY ab."Facturatie plandatum"
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching abonnementen: {e}")
+            return pd.DataFrame()
+
+    def get_service_contract_intake(self, administratie: str = None) -> pd.DataFrame:
+        """Service contract intake: jaarwaarde van lopende servicecontracten."""
+        sql = f"""
+        SELECT
+            sci."Boekdatum" as boekdatum,
+            sci."Jaarbedrag zonder einddatum" as jaarbedrag_doorlopend,
+            sci."Jaarbedrag met einddatum" as jaarbedrag_eindig
+        FROM service."Order Intake Servicecontracten" sci
+        WHERE sci."Boekdatum" >= CURRENT_DATE - INTERVAL '12 months'
+        ORDER BY sci."Boekdatum" DESC
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching service contract intake: {e}")
+            return pd.DataFrame()
+
+    def get_btw_prognose(self, administratie: str = None) -> pd.DataFrame:
+        """BTW prognose uit SSM: te vorderen en af te dragen BTW per document."""
+        adm_filter = f'AND bp."AdministratieKey" IN (SELECT "AdministratieKey" FROM notifica."SSM Administraties" WHERE "Administratie" = {_sql_str(administratie)})' if administratie else ""
+
+        sql = f"""
+        SELECT
+            bp."BTW te vorderen" as btw_te_vorderen,
+            bp."BTW af te dragen" as btw_af_te_dragen,
+            bp."BTW bedrag" as btw_bedrag,
+            bp."Debet/Credit" as debet_credit,
+            bp."Standaard entiteit" as entiteit,
+            bp."Document code" as document_code
+        FROM notifica."SSM Prognose BTW" bp
+        WHERE bp."BTW bedrag" != 0
+          {adm_filter}
+        """
+        try:
+            return self._query(sql)
+        except Exception as e:
+            print(f"Error fetching BTW prognose: {e}")
+            return pd.DataFrame()
 
     def get_beschikbare_administraties(self) -> list:
         """Haal beschikbare administraties op."""
@@ -832,6 +964,82 @@ class MockDatabase:
     def get_service_orders_prognose(self, administratie=None):
         return pd.DataFrame({"verwachte_factuurdatum": [], "verwacht_bedrag": [], "status": []})
 
+    def get_orderregels_periodiek(self, administratie=None):
+        self.np.random.seed(50)
+        rows = []
+        for i in range(8):
+            plan_date = self.today + timedelta(days=self.np.random.randint(7, 90))
+            rows.append({
+                "OrderDocumentKey": i + 1,
+                "ProjectKey": 100 + i,
+                "geplande_factuurdatum": plan_date,
+                "werkelijke_factuurdatum": None,
+                "prijs_per_eenheid": float(self.np.random.uniform(2000, 15000)),
+                "aantal": 1.0,
+                "kalendereenheid": "Maand",
+                "aantal_periodes": 12,
+                "ingangsdatum": self.today - timedelta(days=180),
+                "einddatum": self.today + timedelta(days=365),
+                "omschrijving": f"Onderhoud contract {i+1}",
+                "regelbedrag": float(self.np.random.uniform(2500, 18000)),
+            })
+        return pd.DataFrame(rows)
+
+    def get_orderregels_eenmalig(self, administratie=None):
+        self.np.random.seed(51)
+        rows = []
+        for i in range(5):
+            rows.append({
+                "OrderDocumentKey": 200 + i,
+                "ProjectKey": 200 + i,
+                "factuurdatum": self.today + timedelta(days=self.np.random.randint(14, 70)),
+                "totaalbedrag": float(self.np.random.uniform(25000, 150000)),
+                "nog_te_factureren": float(self.np.random.uniform(10000, 100000)),
+                "status": self.np.random.choice(["Opdracht", "Actief", "Offerte"]),
+                "omschrijving": f"Project installatie {i+1}",
+            })
+        return pd.DataFrame(rows)
+
+    def get_abonnementen(self, administratie=None):
+        self.np.random.seed(52)
+        rows = []
+        for i in range(6):
+            bedrag = float(self.np.random.uniform(500, 5000))
+            rows.append({
+                "AbonnementKey": 300 + i,
+                "code": f"ABO-{i+1:04d}",
+                "omschrijving": f"Servicecontract {['HVAC', 'Elektra', 'Sanitair', 'Beveiliging', 'Lift', 'Brandveiligheid'][i]}",
+                "status": "Actief",
+                "facturatie_plandatum": self.today + timedelta(days=self.np.random.randint(0, 90)),
+                "bedrag_per_eenheid": bedrag,
+                "facturatie_aantal": 1.0,
+                "aantal_periodes": self.np.random.choice([1, 3, 12]),
+                "kalendereenheid": self.np.random.choice(["Maand", "Kwartaal"]),
+                "ingangsdatum": self.today - timedelta(days=365),
+                "einddatum": None,
+                "facturatiebedrag": bedrag,
+            })
+        return pd.DataFrame(rows)
+
+    def get_service_contract_intake(self, administratie=None):
+        self.np.random.seed(53)
+        months = pd.date_range(end=self.today, periods=12, freq='ME')
+        return pd.DataFrame({
+            "boekdatum": months,
+            "jaarbedrag_doorlopend": self.np.random.uniform(180000, 220000, 12).round(2),
+            "jaarbedrag_eindig": self.np.random.uniform(60000, 80000, 12).round(2),
+        })
+
+    def get_btw_prognose(self, administratie=None):
+        return pd.DataFrame({
+            "btw_te_vorderen": [12500, 8300, 15200],
+            "btw_af_te_dragen": [28000, 22000, 31000],
+            "btw_bedrag": [15500, 13700, 15800],
+            "debet_credit": ["C", "C", "C"],
+            "entiteit": ["Verkoopfactuur", "Inkoopfactuur", "Verkoopfactuur"],
+            "document_code": ["VF001", "IF001", "VF002"],
+        })
+
     def get_voorziening_debiteuren(self, standdatum=None, administratie=None):
         return 0.0
 
@@ -872,7 +1080,10 @@ class FailedConnectionDatabase:
 
 def get_database(use_mock: bool = True, customer_code: Optional[str] = None) -> Union[NotificaDataSource, DirectDWHDataSource, MockDatabase, FailedConnectionDatabase]:
     """
-    Factory: Direct DWH → Notifica API → MockDatabase.
+    Factory: Notifica API → Direct DWH → MockDatabase.
+
+    SQL queries zijn geschreven voor PostgreSQL (Notifica API).
+    DirectDWH (Azure SQL Server) heeft compatibiliteitsproblemen.
 
     Args:
         use_mock: True = demo data
@@ -886,7 +1097,16 @@ def get_database(use_mock: bool = True, customer_code: Optional[str] = None) -> 
         print("[WARNING] Geen klantnummer, gebruik demo data")
         return MockDatabase()
 
-    # Probeer directe DWH-verbinding eerst (sneller, geen API overhead)
+    # Primair: Notifica API (PostgreSQL-compatible queries)
+    try:
+        db = NotificaDataSource(klantnummer)
+        if db.test_connection():
+            print(f"[SUCCESS] Verbonden via API voor klant {klantnummer}")
+            return db
+    except Exception as e:
+        print(f"[INFO] API niet beschikbaar: {e}")
+
+    # Fallback: Directe DWH-verbinding (Azure SQL Server — SQL syntax kan afwijken)
     if os.getenv('SYNTESS_DB_PASSWORD'):
         try:
             db = DirectDWHDataSource(klantnummer)
@@ -896,17 +1116,7 @@ def get_database(use_mock: bool = True, customer_code: Optional[str] = None) -> 
         except Exception as e:
             print(f"[INFO] Directe DWH niet beschikbaar: {e}")
 
-    # Fallback: Notifica API
-    try:
-        db = NotificaDataSource(klantnummer)
-        if db.test_connection():
-            print(f"[SUCCESS] Verbonden via API voor klant {klantnummer}")
-            return db
-        else:
-            return FailedConnectionDatabase(klantnummer, "API test query failed")
-    except Exception as e:
-        print(f"[ERROR] API verbinding mislukt: {e}")
-        return FailedConnectionDatabase(klantnummer, str(e))
+    return FailedConnectionDatabase(klantnummer, "Geen verbinding mogelijk (API noch DirectDWH)")
 
 
 # Backwards compatibility

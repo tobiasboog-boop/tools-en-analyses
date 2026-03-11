@@ -177,6 +177,50 @@ class BacktestFramework:
 
             result['geplande_salarissen'] = pd.DataFrame()
 
+            # NIEUW: Service orders, terugkerende kosten, orderregels, abonnementen, BTW prognose
+            try:
+                result['service_orders_prognose'] = self.db.get_service_orders_prognose(
+                    administratie=self.administratie)
+            except Exception:
+                result['service_orders_prognose'] = pd.DataFrame()
+
+            try:
+                result['terugkerende_kosten'] = self.db.get_terugkerende_kosten(
+                    startdatum=hist_start, einddatum=cutoff,
+                    administratie=self.administratie)
+            except Exception:
+                result['terugkerende_kosten'] = pd.DataFrame()
+
+            try:
+                result['orderregels_periodiek'] = self.db.get_orderregels_periodiek(
+                    administratie=self.administratie)
+            except Exception:
+                result['orderregels_periodiek'] = pd.DataFrame()
+
+            try:
+                result['orderregels_eenmalig'] = self.db.get_orderregels_eenmalig(
+                    administratie=self.administratie)
+            except Exception:
+                result['orderregels_eenmalig'] = pd.DataFrame()
+
+            try:
+                result['abonnementen'] = self.db.get_abonnementen(
+                    administratie=self.administratie)
+            except Exception:
+                result['abonnementen'] = pd.DataFrame()
+
+            try:
+                result['service_contract_intake'] = self.db.get_service_contract_intake(
+                    administratie=self.administratie)
+            except Exception:
+                result['service_contract_intake'] = pd.DataFrame()
+
+            try:
+                result['btw_prognose'] = self.db.get_btw_prognose(
+                    administratie=self.administratie)
+            except Exception:
+                result['btw_prognose'] = pd.DataFrame()
+
         return result
 
     def _get_historical_cashflow_before_cutoff(

@@ -410,6 +410,14 @@ def _fetch_data_cached(use_mock: bool, customer_code: str, standdatum_str: str, 
         if hasattr(db, 'get_betaalgedrag_per_debiteur'):
             data["betaalgedrag_debiteuren"] = db.get_betaalgedrag_per_debiteur()
             data["betaalgedrag_crediteuren"] = db.get_betaalgedrag_per_crediteur()
+        if hasattr(db, 'get_service_orders_prognose'):
+            data["service_orders_prognose"] = db.get_service_orders_prognose()
+        # Nieuwe V7 databronnen (mock)
+        data["orderregels_periodiek"] = db.get_orderregels_periodiek()
+        data["orderregels_eenmalig"] = db.get_orderregels_eenmalig()
+        data["abonnementen"] = db.get_abonnementen()
+        data["service_contract_intake"] = db.get_service_contract_intake()
+        data["btw_prognose"] = db.get_btw_prognose()
     elif detected_admin:
         # Echte database met administratie
         if hasattr(db, 'get_historische_cashflow_per_week'):
@@ -461,6 +469,54 @@ def _fetch_data_cached(use_mock: bool, customer_code: str, standdatum_str: str, 
                 administratie=detected_admin)
         except Exception:
             data["orderportefeuille"] = pd.DataFrame()
+
+        # NIEUW V7: Service Orders Prognose (verwachte toekomstige facturatie)
+        try:
+            data["service_orders_prognose"] = db.get_service_orders_prognose(
+                administratie=detected_admin)
+        except Exception:
+            data["service_orders_prognose"] = pd.DataFrame()
+
+        # NIEUW V7: Terugkerende kosten (voor echte DB, was alleen mock)
+        try:
+            data["terugkerende_kosten"] = db.get_terugkerende_kosten(
+                startdatum=hist_startdatum, einddatum=standdatum,
+                administratie=detected_admin)
+        except Exception:
+            data["terugkerende_kosten"] = pd.DataFrame()
+
+        # NIEUW V7: Periodieke + Eenmalige Orderregels (projectfacturatie-timing)
+        try:
+            data["orderregels_periodiek"] = db.get_orderregels_periodiek(
+                administratie=detected_admin)
+        except Exception:
+            data["orderregels_periodiek"] = pd.DataFrame()
+
+        try:
+            data["orderregels_eenmalig"] = db.get_orderregels_eenmalig(
+                administratie=detected_admin)
+        except Exception:
+            data["orderregels_eenmalig"] = pd.DataFrame()
+
+        # NIEUW V7: Abonnementen + Servicecontracten (recurring revenue)
+        try:
+            data["abonnementen"] = db.get_abonnementen(
+                administratie=detected_admin)
+        except Exception:
+            data["abonnementen"] = pd.DataFrame()
+
+        try:
+            data["service_contract_intake"] = db.get_service_contract_intake(
+                administratie=detected_admin)
+        except Exception:
+            data["service_contract_intake"] = pd.DataFrame()
+
+        # NIEUW V7: BTW Prognose uit SSM
+        try:
+            data["btw_prognose"] = db.get_btw_prognose(
+                administratie=detected_admin)
+        except Exception:
+            data["btw_prognose"] = pd.DataFrame()
 
         data["geplande_salarissen"] = pd.DataFrame()
 
@@ -2159,6 +2215,18 @@ def main():
         st.sidebar.caption(f"Databronnen: {active_sources}/{len(sources)} actief")
         if sp.get('history_months'):
             st.sidebar.caption(f"Historie: {sp['history_months']} maanden")
+
+        # Bedrijfstype en pijplijn info
+        bp = forecast_metadata.get('business_profile', {})
+        if bp.get('type'):
+            type_labels = {'project_based': 'Projectmatig', 'stable': 'Stabiel', 'mixed': 'Gemengd'}
+            st.sidebar.caption(f"Bedrijfstype: {type_labels.get(bp['type'], bp['type'])}")
+            if bp.get('income_cv'):
+                st.sidebar.caption(f"Volatiliteit: {bp['income_cv']:.0%}")
+
+        pp = forecast_metadata.get('project_pipeline', {})
+        if pp.get('total_value', 0) > 0:
+            st.sidebar.caption(f"Pijplijn: EUR {pp['total_value']:,.0f} ({pp.get('coverage_weeks', 0)} weken)")
 
     # === KLANTPROFIEL (optioneel voor insights) ===
     customer_profile = None
