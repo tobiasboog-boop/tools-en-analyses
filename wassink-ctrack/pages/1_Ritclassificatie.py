@@ -70,7 +70,7 @@ _verlof_count = trips['is_verlofdag'].sum()
 
 
 # Tabs: Classificatie | Uitleg
-tab_classificatie, tab_uitleg = st.tabs(["Ritclassificatie", "Uitleg & aannames"])
+tab_classificatie, tab_uitleg, tab_methode = st.tabs(["Ritclassificatie", "Uitleg & aannames", "Methode"])
 
 
 # =====================================================================
@@ -251,6 +251,44 @@ def controle_flag(row: pd.Series) -> str:
     return ''
 
 
+def detecteer_tussenstops(df: pd.DataFrame) -> list:
+    """Detecteer prive-tussenstops in dagelijkse ritketens.
+
+    Een tussenstop is wanneer een bestuurder op weg van/naar werk stopt bij
+    een niet-werkgerelateerde locatie ('Overig'). De omweg-rit wordt Prive.
+
+    Patronen:
+    - Ochtend: Thuis → [Overig] → Werklocatie  →  Thuis→Overig = Prive
+    - Avond:   Werklocatie → [Overig] → Thuis  →  Werk→Overig = Prive
+
+    Returns: lijst van (index, flag_tekst) tuples
+    """
+    werk_types = {'Vestiging', 'Project', 'Opdrachtgever'}
+    results = []
+
+    for (_bestuurder, _datum), dag in df.groupby(['bestuurder', 'datum']):
+        dag_sorted = dag.sort_values('start')
+        idxs = dag_sorted.index.tolist()
+
+        for i in range(len(idxs) - 1):
+            curr = df.loc[idxs[i]]
+            nxt = df.loc[idxs[i + 1]]
+
+            # Ochtend: Thuis → Overig, gevolgd door rit naar Werklocatie
+            if (curr['start_type'] == 'Thuis'
+                    and curr['eind_type'] == 'Overig'
+                    and nxt['eind_type'] in werk_types):
+                results.append((idxs[i], 'Prive-tussenstop (ochtend)'))
+
+            # Avond: Werklocatie → Overig, gevolgd door rit naar Thuis
+            if (curr['start_type'] in werk_types
+                    and curr['eind_type'] == 'Overig'
+                    and nxt['eind_type'] == 'Thuis'):
+                results.append((idxs[i], 'Prive-tussenstop (avond)'))
+
+    return results
+
+
 # Bouw lookup: bestuurder → thuisadres (straat uit Syntess)
 _thuis_lookup = {}
 if 'straat' in trips.columns:
@@ -304,7 +342,17 @@ trips['classificatie'] = trips.apply(classificeer_rit, axis=1)
 trips['route_type'] = trips.apply(bepaal_route_type, axis=1)
 trips['controle'] = trips.apply(controle_flag, axis=1)
 
-# LB/OB km berekenen (LB = prive, OB = woon-werk)
+# Tussenstop-detectie: overschrijft classificatie naar Prive waar nodig
+_tussenstops = detecteer_tussenstops(trips)
+_tussenstop_count = len(_tussenstops)
+for _ts_idx, _ts_flag in _tussenstops:
+    trips.loc[_ts_idx, 'classificatie'] = 'Prive'
+    trips.loc[_ts_idx, 'route_type'] = 'Tussenstop'
+    # Controle-flag: combineer met bestaande flag als die er al is
+    bestaand = trips.loc[_ts_idx, 'controle']
+    trips.loc[_ts_idx, 'controle'] = _ts_flag if not bestaand else f'{bestaand} + {_ts_flag}'
+
+# LB/OB km berekenen (na tussenstop-correctie)
 trips['lb_km'] = trips.apply(
     lambda r: r['afstand_km'] if r['classificatie'] == 'Prive' else 0, axis=1
 )
@@ -881,3 +929,117 @@ with tab_uitleg:
         ],
         'Frequentie': ['Dagelijks', 'Dagelijks', 'Dagelijks', 'Dagelijks'],
     }), use_container_width=True, hide_index=True)
+
+
+# =====================================================================
+# TAB: METHODE
+# =====================================================================
+
+with tab_methode:
+
+    st.header("Methode: classificatie en tussenstop-detectie")
+
+    st.subheader("1. Classificatie per rit (stap 1)")
+
+    st.markdown("""
+    Elke rit wordt **individueel** geclassificeerd op basis van startlocatie, eindlocatie, tijdstip en weekdag.
+    De regels worden in vaste prioriteitsvolgorde doorlopen — de eerste match wint.
+
+    **Locatietypen** (bepaald door C-Track labels + Syntess adres):
+    - **Thuis** — C-Track label `Thuis <naam>` met achternaam-match, of Syntess straatnaam-match, of eerste/laatste rit van de dag
+    - **Thuis collega** — C-Track label `Thuis <naam>` waar de naam NIET matcht met de bestuurder
+    - **Vestiging** — C-Track label `Vestiging` of adres-match op Wassink-vestigingen (Snelliusstraat, Fabrieksstraat)
+    - **Project / Opdrachtgever** — C-Track labels
+    - **Overig** — alles wat niet in bovenstaande valt (serviceadressen, winkels, tankstations, etc.)
+
+    **Classificatie-uitkomsten:**
+    | Uitkomst | Betekenis | Belastingdienst |
+    |----------|-----------|-----------------|
+    | Woon-werk | Huis ↔ werklocatie | OB km |
+    | Prive | Privégebruik | LB km (max 500/jaar) |
+    | Zakelijk | Dienstritten tussen werklocaties | Niet belast |
+    | Te beoordelen | Geen regel matcht — handmatige beoordeling nodig | — |
+    """)
+
+    st.subheader("2. Tussenstop-detectie (stap 2)")
+
+    st.markdown(f"""
+    Na de individuele classificatie wordt een **tweede pass** gedaan op dagketen-niveau.
+    Hierbij wordt per bestuurder per dag de volledige rittenreeks in chronologische volgorde geanalyseerd.
+
+    **Regel uit brief Wassink:** *"Een prive-tussenstop maakt de volledige rit prive."*
+
+    **Detectiemethode:**
+    Voor elke twee opeenvolgende ritten (A → B) op dezelfde dag:
+
+    **Ochtendpatroon:**
+    ```
+    Rit A: Thuis → [Overig]     (bijv. supermarkt, school, tankstation)
+    Rit B: [Overig] → Werklocatie
+    → Rit A wordt herclassificeerd als Prive (de omweg)
+    → Rit B blijft Woon-werk (het daadwerkelijke woon-werktraject)
+    ```
+
+    **Avondpatroon:**
+    ```
+    Rit A: Werklocatie → [Overig]  (bijv. boodschappen na werk)
+    Rit B: [Overig] → Thuis
+    → Rit A wordt herclassificeerd als Prive (de omweg)
+    → Rit B blijft Woon-werk
+    ```
+
+    **Resultaat in deze dataset:** {_tussenstop_count} tussenstops gedetecteerd.
+    """)
+
+    st.subheader("3. Controlevensters (stap 3)")
+
+    st.markdown("""
+    Ritten in de controlevensters krijgen een **controle-flag** voor handmatige beoordeling.
+    De controlevensters zijn de overgangsperiodes tussen werktijd en vrije tijd.
+
+    **Logica:**
+    1. **Verlofdag** → altijd geflagd (met verloftype uit Syntess)
+    2. **Weekend** (za/zo) → altijd geflagd
+    3. **Controlevenster ochtend/middag** → per functiecategorie (zie werktijden)
+    4. **Buiten werktijd** → voor de ochtendvenster of na het middagvenster
+
+    Ritten die niet in een controlevenster vallen krijgen geen flag en worden niet apart gecontroleerd.
+    """)
+
+    st.subheader("4. Aannames en beperkingen")
+
+    st.markdown("""
+    **Aannames:**
+    - De eerste rit van de dag is vertrek vanuit huis (ook als C-Track het startpunt niet als 'Thuis' herkent)
+    - De laatste rit van de dag eindigt thuis
+    - Bestuurders zonder functie in Syntess krijgen het standaard controlevenster (08:00-16:30)
+    - Monteur / Elektromonteur / Hulpmonteur = Projectmonteur (werktijd 07:00-15:45)
+
+    **Beperkingen tussenstop-detectie:**
+    - Alleen **enkelvoudige tussenstops** worden gedetecteerd (A→B paren). Meerdere tussenstops achter elkaar
+      (Thuis → Overig₁ → Overig₂ → Werk) worden niet volledig herkend — alleen de eerste omweg-rit.
+    - De detectie kijkt naar **locatietypen**, niet naar adressen. Een "Overig" locatie naast het werk
+      (bijv. tankstation om de hoek) wordt ook als tussenstop gedetecteerd.
+    - Ritten die C-Track als één doorlopende rit registreert (zonder stop) worden niet opgepikt —
+      er moet een daadwerkelijke stop zijn (motor uit, nieuwe rit gestart).
+    - Tussenstops op **verlof-** en **weekenddagen** worden niet apart gedetecteerd
+      (die ritten zijn al volledig Prive).
+
+    **Niet geïmplementeerd:**
+    - Tussenstop-detectie op basis van route-afwijking (GPS-trace vs directe route)
+    - Automatische detectie of een "Overig" adres een prive-adres of zakelijk adres is
+    - Ketens van 3+ tussenstops in één commute
+    """)
+
+    st.subheader("5. LB/OB berekening")
+
+    st.markdown("""
+    Na alle classificatie-stappen (individueel + tussenstops):
+    - **LB km** (loonbelasting) = som van km voor ritten met classificatie `Prive`
+    - **OB km** (omzetbelasting) = som van km voor ritten met classificatie `Woon-werk`
+    - **Zakelijke km** worden niet belast en niet meegerekend
+
+    **500 km grens:** Per kalenderjaar mag een medewerker maximaal 500 km prive rijden.
+    De jaarprognose wordt berekend als: `(prive_km / aantal_maanden_in_data) × 12`.
+    Rood = prognose > 500 km, Geel = prognose > 400 km.
+    """)
