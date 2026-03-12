@@ -26,6 +26,32 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# --- Wachtwoordbeveiliging ---
+def check_password():
+    """Toon login-scherm en controleer wachtwoord."""
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if st.session_state.authenticated:
+        return True
+
+    st.title("Instain Budgetanalyse")
+    st.markdown("Voer het wachtwoord in om toegang te krijgen.")
+
+    password = st.text_input("Wachtwoord", type="password")
+    if st.button("Inloggen"):
+        correct = st.secrets.get("PASSWORD", "InstainPrototype2026")
+        if password == correct:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Onjuist wachtwoord.")
+    return False
+
+
+if not check_password():
+    st.stop()
+
 # --- Styling ---
 st.markdown("""
 <style>
