@@ -604,6 +604,102 @@ def _detect_business_type(hist_cf: pd.DataFrame, debiteuren: pd.DataFrame) -> Bu
 
 
 # =============================================================================
+# PROFIEL OVERRIDES — Klantconfiguratie toepassen op business profile
+# =============================================================================
+
+# Import mapping: profiel_naam → business_type
+_PROFIEL_TO_BTYPE = {
+    'onderhoud': 'stable',
+    'gemengd': 'mixed',
+    'project': 'project_based',
+}
+
+_BTYPE_TO_PROFIEL = {v: k for k, v in _PROFIEL_TO_BTYPE.items()}
+
+
+def _apply_profile_overrides(
+    detected: 'BusinessProfile',
+    profile,
+) -> 'BusinessProfile':
+    """Pas klant-specifieke ForecastProfile overrides toe op het gedetecteerde BusinessProfile.
+
+    Het ForecastProfile bevat optionele overrides per knop. Waar de klant
+    een waarde heeft ingesteld, wordt die gebruikt. Anders de profiel-default.
+    """
+    # Als het profiel een ander bedrijfstype forceert, pas blend_extension aan
+    if profile.manually_set and profile.profiel_naam:
+        forced_btype = _PROFIEL_TO_BTYPE.get(profile.profiel_naam, detected.business_type)
+    else:
+        forced_btype = detected.business_type
+
+    # Realiteit-horizon → blend_extension = horizon - BLEND_REAL_END
+    horizon = profile.effective_realiteit_horizon
+    if horizon is not None:
+        blend_ext = max(0, horizon - BLEND_REAL_END)
+    else:
+        blend_ext = detected.blend_extension
+
+    # Nieuwe facturatie percentage wordt in _blend_pillars gelezen
+    # via business_profile, dus we zetten het hier op het profiel
+
+    return BusinessProfile(
+        business_type=forced_btype,
+        income_cv=detected.income_cv,
+        cost_ratio=detected.cost_ratio,
+        avg_invoice_size=detected.avg_invoice_size,
+        income_frequency=detected.income_frequency,
+        blend_extension=blend_ext,
+    )
+
+
+def auto_suggest_profile(
+    hist_cashflow: pd.DataFrame,
+    debiteuren: pd.DataFrame,
+    klantnummer: str = "",
+) -> dict:
+    """Analyseer de data en stel een ForecastProfile voor.
+
+    Returns een dict met:
+        - profiel_naam: 'onderhoud', 'gemengd', of 'project'
+        - reden: menselijke uitleg waarom dit profiel past
+        - detectie_data: dict met de onderliggende statistieken
+    """
+    bp = _detect_business_type(hist_cashflow, debiteuren)
+    profiel_naam = _BTYPE_TO_PROFIEL.get(bp.business_type, 'gemengd')
+
+    # Reden opbouwen
+    if profiel_naam == 'onderhoud':
+        reden = (
+            f"Lage volatiliteit (CV={bp.income_cv:.2f}) en regelmatige facturatie "
+            f"({bp.income_frequency:.1f} per week). Dit past bij een bedrijf met "
+            f"vaste servicecontracten en regulier onderhoud."
+        )
+    elif profiel_naam == 'project':
+        reden = (
+            f"Hoge volatiliteit (CV={bp.income_cv:.2f}) en wisselende facturatie. "
+            f"Dit past bij een bedrijf met grote projecten en termijnfacturatie."
+        )
+    else:
+        reden = (
+            f"Gemiddelde volatiliteit (CV={bp.income_cv:.2f}) met "
+            f"{bp.income_frequency:.1f} significante inkomstenweken per maand. "
+            f"Dit past bij een mix van onderhoud/service en projectwerk."
+        )
+
+    return {
+        'profiel_naam': profiel_naam,
+        'reden': reden,
+        'detectie_data': {
+            'income_cv': round(bp.income_cv, 3),
+            'cost_ratio': round(bp.cost_ratio, 3),
+            'avg_invoice_size': round(bp.avg_invoice_size, 2),
+            'income_frequency': round(bp.income_frequency, 1),
+            'business_type_raw': bp.business_type,
+        },
+    }
+
+
+# =============================================================================
 # PROJECTPIJPLIJN (Facturering prioriteitshierarchie v3)
 # =============================================================================
 
@@ -936,6 +1032,7 @@ def _blend_pillars(
     recurring_costs: Optional[Dict[int, float]] = None,
     business_profile: Optional[BusinessProfile] = None,
     income_pattern: Optional[Dict[int, float]] = None,
+    forecast_profile=None,
 ) -> Dict[int, Dict[str, float]]:
     """
     Blend alle pilaren met projectpijplijn-prioriteit.
@@ -974,16 +1071,18 @@ def _blend_pillars(
         p_conf = pipeline.weekly_confidence.get(w, 0) if has_pipeline else 0
         pat_inc = income_pattern.get(w, 0) if income_pattern else 0
 
-        # NIEUW INVOICING GEWICHT:
+        # INVOICING GEWICHT:
         # Realiteit toont alleen BEKENDE debiteuren. Maar bedrijven genereren
         # continu nieuwe facturen die ook betaald worden tijdens de forecast.
         # min_new_invoice_w = minimaal gewicht voor nieuwe facturatie-schattingen.
-        if business_profile and business_profile.business_type == 'project_based':
-            min_new_invoice_w = 0.40  # 40% — veel nieuwe projectfacturatie
+        if forecast_profile is not None:
+            min_new_invoice_w = forecast_profile.effective_nieuwe_facturatie
+        elif business_profile and business_profile.business_type == 'project_based':
+            min_new_invoice_w = 0.40
         elif business_profile and business_profile.business_type == 'mixed':
             min_new_invoice_w = 0.25
         else:
-            min_new_invoice_w = 0.15  # stabiel bedrijf: weinig nieuwe facturatie
+            min_new_invoice_w = 0.15
 
         effective_sv_w = max(sv_w, min_new_invoice_w)
 
@@ -1072,6 +1171,7 @@ def create_forecast_v7(
     reference_date=None,
     calibrated_dso: Optional[float] = None,
     calibrated_dpo: Optional[float] = None,
+    forecast_profile=None,
 ) -> Tuple[pd.DataFrame, int, Dict]:
     """
     V7 forecast: Structuur x Volume x Realiteit.
@@ -1083,6 +1183,8 @@ def create_forecast_v7(
         reference_date: Peildatum (default: vandaag)
         calibrated_dso: Gecalibreerde DSO in dagen
         calibrated_dpo: Gecalibreerde DPO in dagen
+        forecast_profile: Optioneel ForecastProfile met klant-specifieke instellingen.
+            Als None wordt het profiel automatisch gedetecteerd.
 
     Returns:
         (forecast_df, forecast_start_idx, metadata)
@@ -1129,9 +1231,16 @@ def create_forecast_v7(
     dpo_days = calibrated_dpo if calibrated_dpo is not None else 0.0
 
     # =========================================================================
-    # BEDRIJFSTYPE DETECTIE (bepaalt blending-strategie)
+    # BEDRIJFSTYPE DETECTIE + PROFIEL OVERRIDES
     # =========================================================================
     business_profile = _detect_business_type(hist_cf, debiteuren)
+
+    # Auto-detectie resultaat bewaren (voor UI: "model stelt voor...")
+    auto_detected_type = business_profile.business_type
+
+    # Als er een ForecastProfile is meegegeven, pas de business_profile aan
+    if forecast_profile is not None:
+        business_profile = _apply_profile_overrides(business_profile, forecast_profile)
 
     # =========================================================================
     # PILAAR 1: REALITEIT (harde ERP-feiten)
@@ -1178,6 +1287,12 @@ def create_forecast_v7(
     # NIEUW: INKOMSTEN-PATROONHERKENNING (voor projectbedrijven)
     # =========================================================================
     income_pattern = None
+    use_pipeline = True  # default
+    use_recurring = True  # default
+    if forecast_profile is not None:
+        use_pipeline = forecast_profile.effective_pijplijn
+        use_recurring = forecast_profile.effective_recurring
+
     if business_profile.business_type == 'project_based':
         income_pattern = _estimate_income_pattern(
             hist_cf, reference_date, weeks_forecast,
@@ -1188,10 +1303,11 @@ def create_forecast_v7(
     # =========================================================================
     blended = _blend_pillars(
         realiteit, volume, structuur, reference_date, weeks_forecast,
-        pipeline=pipeline,
-        recurring_costs=recurring_costs,
+        pipeline=pipeline if use_pipeline else None,
+        recurring_costs=recurring_costs if use_recurring else None,
         business_profile=business_profile,
         income_pattern=income_pattern,
+        forecast_profile=forecast_profile,
     )
 
     # =========================================================================
@@ -1255,10 +1371,20 @@ def create_forecast_v7(
         'data_quality': data_quality,
         'business_profile': {
             'type': business_profile.business_type,
+            'auto_detected': auto_detected_type,
+            'manually_overridden': forecast_profile is not None and forecast_profile.manually_set,
             'income_cv': round(business_profile.income_cv, 3),
             'cost_ratio': round(business_profile.cost_ratio, 3),
             'blend_extension': business_profile.blend_extension,
             'income_frequency': round(business_profile.income_frequency, 1),
+            'effective_settings': {
+                'realiteit_horizon_weken': business_profile.blend_extension + BLEND_REAL_END,
+                'outlier_iqr_multiplier': forecast_profile.effective_iqr_multiplier if forecast_profile else (2.5 if business_profile.business_type == 'project_based' else 2.0 if business_profile.business_type == 'mixed' else 1.5),
+                'run_rate_methode': forecast_profile.effective_run_rate_methode if forecast_profile else ('p75' if business_profile.business_type == 'project_based' else 'median' if business_profile.business_type == 'mixed' else 'mean'),
+                'nieuwe_facturatie_pct': forecast_profile.effective_nieuwe_facturatie if forecast_profile else (0.40 if business_profile.business_type == 'project_based' else 0.25 if business_profile.business_type == 'mixed' else 0.15),
+                'gebruik_pijplijn': use_pipeline,
+                'gebruik_recurring_revenue': use_recurring,
+            },
         },
         'project_pipeline': {
             'total_value': pipeline.total_pipeline_value,

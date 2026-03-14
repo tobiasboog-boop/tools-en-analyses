@@ -1,12 +1,14 @@
 """
 Liquiditeitsprognose - Configuration
 =====================================
-Configuratie voor database connecties en app settings.
+Configuratie voor database connecties, app settings en forecast profielen.
 """
 
 import os
-from dataclasses import dataclass, field
-from typing import Optional
+import json
+from dataclasses import dataclass, field, asdict
+from typing import Optional, Dict
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load .env file if present
@@ -143,4 +145,240 @@ COLORS = {
     "warning": "#F39C12",      # Orange
     "danger": "#E74C3C",       # Red
     "neutral": "#95A5A6",      # Gray
+}
+
+
+# =============================================================================
+# FORECAST PROFIELEN — Configureerbaar per klant
+# =============================================================================
+
+@dataclass
+class ForecastProfile:
+    """Configureerbaar forecast profiel per klant.
+
+    Het model detecteert automatisch een bedrijfstype en stelt een profiel voor.
+    De klant of consultant kan dit overrulen en per knop finetunen.
+
+    Knoppen:
+        realiteit_horizon_weken: Hoe lang ERP-feiten dominant zijn in de blend.
+            Langer = meer vertrouwen op openstaande posten, korter = sneller
+            overschakelen naar statistische forecast.
+        outlier_iqr_multiplier: Hoe streng grote facturen gefilterd worden bij
+            het berekenen van de run rate. Hoger = meer uitschieters behouden.
+        run_rate_methode: Welk statistisch "normaal niveau" wordt gebruikt.
+            'mean' = gemiddelde (gevoelig voor uitschieters),
+            'median' = mediaan (robuust),
+            'p75' = 75e percentiel (conservatief hoog, vangt pieken).
+        nieuwe_facturatie_pct: Minimaal gewicht voor geschatte nieuwe facturatie
+            die nog niet in ERP staat. Hoger = meer verwachte nieuwe facturen.
+        gebruik_pijplijn: Of de orderportefeuille/service orders worden
+            meegenomen als aanvullende inkomstenbron.
+        gebruik_recurring_revenue: Of servicecontracten/abonnementen als
+            vaste recurring revenue worden meegeteld.
+    """
+    # Identificatie
+    klantnummer: str = ""
+    profiel_naam: str = "gemengd"  # 'onderhoud', 'gemengd', 'project'
+
+    # Bron van keuze
+    auto_detected: str = ""        # Wat het model voorstelde
+    manually_set: bool = False      # Heeft klant/consultant dit overruled?
+
+    # De knoppen (None = gebruik profiel-default via get_effective_*)
+    realiteit_horizon_weken: Optional[int] = None
+    outlier_iqr_multiplier: Optional[float] = None
+    run_rate_methode: Optional[str] = None         # 'mean', 'median', 'p75'
+    nieuwe_facturatie_pct: Optional[float] = None   # 0.0 - 1.0
+    gebruik_pijplijn: Optional[bool] = None
+    gebruik_recurring_revenue: Optional[bool] = None
+
+    # Metadata
+    laatst_gewijzigd: Optional[str] = None
+    gewijzigd_door: Optional[str] = None   # 'systeem' of naam consultant
+
+    def get_effective(self, knop: str):
+        """Geef effectieve waarde: handmatige override of profiel-default."""
+        override = getattr(self, knop, None)
+        if override is not None:
+            return override
+        return PROFIEL_DEFAULTS[self.profiel_naam].get(knop)
+
+    @property
+    def effective_realiteit_horizon(self) -> int:
+        return self.get_effective('realiteit_horizon_weken')
+
+    @property
+    def effective_iqr_multiplier(self) -> float:
+        return self.get_effective('outlier_iqr_multiplier')
+
+    @property
+    def effective_run_rate_methode(self) -> str:
+        return self.get_effective('run_rate_methode')
+
+    @property
+    def effective_nieuwe_facturatie(self) -> float:
+        return self.get_effective('nieuwe_facturatie_pct')
+
+    @property
+    def effective_pijplijn(self) -> bool:
+        return self.get_effective('gebruik_pijplijn')
+
+    @property
+    def effective_recurring(self) -> bool:
+        return self.get_effective('gebruik_recurring_revenue')
+
+    def to_dict(self) -> dict:
+        """Serialiseer naar dict (voor opslag in API)."""
+        d = asdict(self)
+        # Verwijder None waarden voor compacte opslag
+        return {k: v for k, v in d.items() if v is not None}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ForecastProfile":
+        """Deserialiseer vanuit dict (uit API)."""
+        # Filter alleen bekende velden
+        known_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in data.items() if k in known_fields}
+        return cls(**filtered)
+
+    def describe(self) -> str:
+        """Menselijk leesbare beschrijving van het actieve profiel."""
+        naam = PROFIEL_LABELS.get(self.profiel_naam, self.profiel_naam)
+        bron = "handmatig ingesteld" if self.manually_set else "automatisch gedetecteerd"
+        overrides = []
+        for knop in KNOPPEN:
+            val = getattr(self, knop, None)
+            if val is not None:
+                default = PROFIEL_DEFAULTS[self.profiel_naam].get(knop)
+                if val != default:
+                    overrides.append(f"  {KNOP_LABELS[knop]}: {val} (default: {default})")
+        ovr = "\n".join(overrides) if overrides else "  Geen"
+        return f"Profiel: {naam} ({bron})\nAangepaste instellingen:\n{ovr}"
+
+
+# Profiel labels (voor UI)
+PROFIEL_LABELS = {
+    "onderhoud": "Onderhoud & Service",
+    "gemengd": "Gemengd",
+    "project": "Projectmatig",
+}
+
+# Profiel beschrijvingen (voor UI)
+PROFIEL_BESCHRIJVINGEN = {
+    "onderhoud": (
+        "Regelmatige werkbonnen, storingen en servicecontracten. "
+        "Voorspelbare cashflow met seizoenspatronen."
+    ),
+    "gemengd": (
+        "Mix van onderhoud/service en af en toe grotere projecten. "
+        "De meeste installatiebedrijven vallen in deze categorie."
+    ),
+    "project": (
+        "Grote projecten met termijnfacturatie, wisselende omzet. "
+        "Nieuwbouw, grote installaties, lange doorlooptijden."
+    ),
+}
+
+# Default waarden per profiel (de "fabrieksinstellingen")
+PROFIEL_DEFAULTS: Dict[str, dict] = {
+    "onderhoud": {
+        "realiteit_horizon_weken": 3,
+        "outlier_iqr_multiplier": 1.5,
+        "run_rate_methode": "mean",
+        "nieuwe_facturatie_pct": 0.15,
+        "gebruik_pijplijn": False,
+        "gebruik_recurring_revenue": True,
+    },
+    "gemengd": {
+        "realiteit_horizon_weken": 5,
+        "outlier_iqr_multiplier": 2.0,
+        "run_rate_methode": "median",
+        "nieuwe_facturatie_pct": 0.25,
+        "gebruik_pijplijn": True,
+        "gebruik_recurring_revenue": True,
+    },
+    "project": {
+        "realiteit_horizon_weken": 7,
+        "outlier_iqr_multiplier": 2.5,
+        "run_rate_methode": "p75",
+        "nieuwe_facturatie_pct": 0.40,
+        "gebruik_pijplijn": True,
+        "gebruik_recurring_revenue": False,
+    },
+}
+
+# Alle configureerbare knoppen
+KNOPPEN = [
+    "realiteit_horizon_weken",
+    "outlier_iqr_multiplier",
+    "run_rate_methode",
+    "nieuwe_facturatie_pct",
+    "gebruik_pijplijn",
+    "gebruik_recurring_revenue",
+]
+
+# Labels voor UI
+KNOP_LABELS = {
+    "realiteit_horizon_weken": "Realiteit-horizon",
+    "outlier_iqr_multiplier": "Outlier-gevoeligheid",
+    "run_rate_methode": "Run rate methode",
+    "nieuwe_facturatie_pct": "Nieuwe facturatie",
+    "gebruik_pijplijn": "Orderportefeuille",
+    "gebruik_recurring_revenue": "Servicecontracten",
+}
+
+# Tooltips voor UI
+KNOP_TOOLTIPS = {
+    "realiteit_horizon_weken": (
+        "Hoe lang openstaande posten uit het ERP dominant zijn in de prognose. "
+        "Langer = meer vertrouwen op bekende facturen. "
+        "Korter = sneller overschakelen naar statistische forecast."
+    ),
+    "outlier_iqr_multiplier": (
+        "Hoe streng grote facturen worden gefilterd bij het berekenen van het "
+        "gemiddelde niveau. Soepeler = grote facturen tellen mee. "
+        "Strenger = uitschieters worden weggefilterd."
+    ),
+    "run_rate_methode": (
+        "Welk statistisch niveau als 'normaal' wordt gebruikt. "
+        "Gemiddelde werkt goed bij stabiele inkomsten. "
+        "Mediaan is robuuster bij wisselende bedragen. "
+        "75e percentiel vangt grote pieken beter."
+    ),
+    "nieuwe_facturatie_pct": (
+        "Hoeveel nieuwe facturatie (die nog niet in het ERP staat) verwacht wordt. "
+        "Bij onderhoudsbedrijven is dit laag (werkbonnen worden snel gefactureerd). "
+        "Bij projectbedrijven is dit hoog (termijnfacturen komen later)."
+    ),
+    "gebruik_pijplijn": (
+        "Of de orderportefeuille en service orders worden meegenomen als "
+        "aanvullende inkomstenbron. Relevant bij projectmatig werk."
+    ),
+    "gebruik_recurring_revenue": (
+        "Of servicecontracten en abonnementen als vaste recurring revenue "
+        "worden meegerekend. Relevant bij onderhoud met contracten."
+    ),
+}
+
+# Opties voor UI dropdowns/sliders
+KNOP_OPTIES = {
+    "realiteit_horizon_weken": {"min": 1, "max": 10, "step": 1, "format": "{} weken"},
+    "outlier_iqr_multiplier": {
+        "choices": [
+            (1.5, "Streng (1.5x)"),
+            (2.0, "Normaal (2.0x)"),
+            (2.5, "Soepel (2.5x)"),
+            (3.0, "Zeer soepel (3.0x)"),
+        ]
+    },
+    "run_rate_methode": {
+        "choices": [
+            ("mean", "Gemiddelde"),
+            ("median", "Mediaan"),
+            ("p75", "75e percentiel"),
+        ]
+    },
+    "nieuwe_facturatie_pct": {"min": 0.0, "max": 0.60, "step": 0.05, "format": "{:.0%}"},
+    "gebruik_pijplijn": {"type": "toggle"},
+    "gebruik_recurring_revenue": {"type": "toggle"},
 }

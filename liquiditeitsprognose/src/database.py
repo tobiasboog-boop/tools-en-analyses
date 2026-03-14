@@ -786,6 +786,98 @@ class NotificaDataSource:
         except Exception:
             return []
 
+    # =========================================================================
+    # FORECAST PROFIEL — Opslaan/laden via app_forecast_profiles
+    # =========================================================================
+
+    def _ensure_profile_table(self):
+        """Maak de app_forecast_profiles tabel aan als deze niet bestaat."""
+        sql = """
+        CREATE TABLE IF NOT EXISTS app_forecast_profiles (
+            klantnummer TEXT NOT NULL,
+            profiel_data JSONB NOT NULL,
+            laatst_gewijzigd TIMESTAMP DEFAULT NOW(),
+            gewijzigd_door TEXT DEFAULT 'systeem',
+            PRIMARY KEY (klantnummer)
+        )
+        """
+        try:
+            self.client.write(self.klantnummer, sql)
+        except Exception as e:
+            print(f"[INFO] Profile table check: {e}")
+
+    def load_forecast_profile(self):
+        """Laad het opgeslagen forecast profiel voor deze klant.
+
+        Returns:
+            ForecastProfile of None als er geen profiel is opgeslagen.
+        """
+        from config import ForecastProfile
+        sql = f"""
+        SELECT profiel_data
+        FROM app_forecast_profiles
+        WHERE klantnummer = '{self.klantnummer}'
+        LIMIT 1
+        """
+        try:
+            df = self._query(sql)
+            if df.empty:
+                return None
+            raw = df.iloc[0]['profiel_data']
+            data = raw if isinstance(raw, dict) else __import__('json').loads(raw)
+            return ForecastProfile.from_dict(data)
+        except Exception as e:
+            print(f"[INFO] Geen opgeslagen profiel gevonden: {e}")
+            return None
+
+    def save_forecast_profile(self, profile) -> bool:
+        """Sla het forecast profiel op voor deze klant (upsert).
+
+        Args:
+            profile: ForecastProfile instance
+
+        Returns:
+            True bij succes, False bij fout.
+        """
+        import json as _json
+        data = profile.to_dict()
+        data_json = _json.dumps(data).replace("'", "''")
+        gewijzigd_door = (profile.gewijzigd_door or 'systeem').replace("'", "''")
+
+        sql = f"""
+        INSERT INTO app_forecast_profiles (klantnummer, profiel_data, laatst_gewijzigd, gewijzigd_door)
+        VALUES ('{self.klantnummer}', '{data_json}'::jsonb, NOW(), '{gewijzigd_door}')
+        ON CONFLICT (klantnummer)
+        DO UPDATE SET
+            profiel_data = '{data_json}'::jsonb,
+            laatst_gewijzigd = NOW(),
+            gewijzigd_door = '{gewijzigd_door}'
+        """
+        try:
+            self._ensure_profile_table()
+            self.client.write(self.klantnummer, sql)
+            return True
+        except Exception as e:
+            print(f"[ERROR] Profiel opslaan mislukt: {e}")
+            return False
+
+    def delete_forecast_profile(self) -> bool:
+        """Verwijder het opgeslagen profiel (reset naar auto-detectie).
+
+        Returns:
+            True bij succes, False bij fout.
+        """
+        sql = f"""
+        DELETE FROM app_forecast_profiles
+        WHERE klantnummer = '{self.klantnummer}'
+        """
+        try:
+            self.client.write(self.klantnummer, sql)
+            return True
+        except Exception as e:
+            print(f"[ERROR] Profiel verwijderen mislukt: {e}")
+            return False
+
 
 # =============================================================================
 # DirectDWHDataSource — Directe Azure SQL verbinding (bypass API)

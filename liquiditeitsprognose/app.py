@@ -49,6 +49,7 @@ from src.calculations import (
 from src.daily_forecast import create_daily_forecast
 from src.forecast_model import create_forecast_for_app, run_walk_forward_backtest as run_backtest_new
 from src.forecast_v7 import create_forecast_v7
+from src.profile_ui import render_profile_selector, render_profile_info_card
 from src.customer_insights import generate_customer_insights, generate_insights_markdown
 
 # Klant configuratie
@@ -400,6 +401,7 @@ def _fetch_data_cached(use_mock: bool, customer_code: str, standdatum_str: str, 
         "betaalgedrag_crediteuren": pd.DataFrame(),
         "terugkerende_kosten": pd.DataFrame(),
         "historische_cashflow": pd.DataFrame(),
+        "_db": db,  # Database referentie voor profiel opslag
     }
 
     is_mock_db = type(db).__name__ == "MockDatabase"
@@ -2177,6 +2179,16 @@ def main():
     )
 
     # =========================================================================
+    # BEDRIJFSPROFIEL — Klant-specifieke forecast instellingen
+    # =========================================================================
+    forecast_profile = render_profile_selector(
+        db=data.get('_db'),
+        hist_cashflow=filtered_data.get('historische_cashflow'),
+        debiteuren=filtered_data.get('debiteuren'),
+        klantnummer=customer_code or "",
+    )
+
+    # =========================================================================
     # FORECAST MODEL V7: Structuur x Volume x Realiteit
     # =========================================================================
     calibrated_dso = filtered_data.get("calibrated_dso")
@@ -2189,6 +2201,7 @@ def main():
         reference_date=standdatum,
         calibrated_dso=calibrated_dso,
         calibrated_dpo=calibrated_dpo,
+        forecast_profile=forecast_profile,
     )
 
     # Toon model info in sidebar
@@ -2250,6 +2263,10 @@ def main():
         st.markdown("---")
         render_kpi_cards(metrics)
         render_data_summary(filtered_data, filtered=has_active_filters)
+
+        # Bedrijfsprofiel info
+        if forecast_metadata:
+            render_profile_info_card(forecast_metadata)
 
         # Scenario controls (between KPI cards and chart)
         st.markdown("---")
